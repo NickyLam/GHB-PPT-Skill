@@ -1,0 +1,19 @@
+# 示例/产物（非 skill 本体）
+projects/
+superpowers-vs-openspec.md
+mattpocock-skills-ppt.md
+
+# 根目录冗余模板副本（canonical 在 templates/）
+/GHB_PPT_模板.pptx
+
+# Python
+__pycache__/
+*.py[cod]
+.ruff_cache/
+
+# macOS
+.DS_Store
+
+# 临时
+*.tmp
+*.bak
