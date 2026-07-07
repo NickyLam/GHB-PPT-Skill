@@ -1,11 +1,11 @@
 ---
 name: GHB-PPT-SKILL
-description: 用自带 GHB 模板生成完整演示文稿——封面 template-fill 保留模板首页格式、正文 SVG 流水线生成富视觉内容、末页续接模板致谢页，全 deck 统一继承模板母版（含背景装饰图）。自包含：脚本与模板均已内置，仅需 python-pptx，安装本 skill 即可出 PPT。触发：用 GHB 模板做PPT、生成演示文稿、GHB PPT、保留模板母版和首页格式、模板母版统一、续接致谢页。
+description: 用自带 GHB 模板生成完整演示文稿——封面 template-fill 保留模板首页格式、正文 SVG 流水线生成富视觉内容、末页续接模板致谢页，全 deck 统一继承模板母版（含背景装饰图）。自包含：脚本/模板/图标均已内置，需 python-pptx + requests + Pillow；可选联网搜图/AI 生图配图。触发：用 GHB 模板做PPT、生成演示文稿、GHB PPT、保留模板母版和首页格式、模板母版统一、续接致谢页、给模板 PPT 配图。
 ---
 
 # GHB-PPT-SKILL
 
-> 用自带的 `GHB_PPT_模板.pptx` 生成 PPT：**封面**用 template-fill 克隆模板首页并填文本，**正文**走 SVG 流水线生成富视觉内容，**末页**续接模板致谢页；最后通过 OOXML 母版注入合并，让全 deck 每一页都挂在模板母版下（背景装饰图透出）。**自包含**——ppt-master 的用到的脚本已 vendor 进 `scripts/ppt_master/`，模板放 `templates/`，用户只装本 skill + python-pptx 即可。
+> 用自带的 `GHB_PPT_模板.pptx` 生成 PPT：**封面**用 template-fill 克隆模板首页并填文本，**正文**走 SVG 流水线生成富视觉内容，**末页**续接模板致谢页；最后通过 OOXML 母版注入合并，让全 deck 每一页都挂在模板母版下（背景装饰图透出）。**自包含**——ppt-master 的脚本（含联网搜图/AI 生图）已 vendor 进 `scripts/ppt_master/`，模板放 `templates/`、图标放 `templates/icons/`，用户装本 skill + python-pptx + requests + Pillow 即可（配图增强路径可选联网/key）。
 
 ## 何时使用
 
@@ -15,25 +15,31 @@ description: 用自带 GHB 模板生成完整演示文稿——封面 template-f
 | 要保留模板母版/首页 | "保留模板母版和首页格式"、"母版不要变" |
 | 模板缺正文版式 | 模板只有封面/章节/致谢页，没有可填正文的内容版式 |
 | 正文要视觉丰富 | 不满足纯文本填槽，要卡片/表格/结构化布局 |
+| 要给模板 PPT 配图 | 需要截图/示意图/网搜图/AI 生图/图标 |
 | 要续接致谢页 | 末页用模板原致谢页 |
 
 **不要用于**：完全自由设计不需要模板（直接自由设计 SVG 即可）；或模板本身有成熟正文版式且只需文本替换（直接 template-fill 即可，不必走 SVG 流水线）。
 
 ## 前置依赖
 
-- **本 skill 自包含**：`scripts/ppt_master/`（vendor 自 ppt-master 的 7 个脚本 + 3 个内部包）、`scripts/merge_template_master.py`（母版统一合并，纯标准库）、`scripts/fix_cover_font.py`（封面字体修复，纯标准库）、`templates/GHB_PPT_模板.pptx`（自带模板）。
-- **python-pptx**（`pip install python-pptx`）——仅 Phase 5 校验用。
+- **本 skill 自包含**：`scripts/ppt_master/`（vendor 自 ppt-master：封面/正文/合并脚本 + `image_search.py`/`image_gen.py` + `image_backends/`/`image_sources/` + 后处理包）、`scripts/merge_template_master.py`（母版统一合并，纯标准库）、`scripts/fix_cover_font.py`（封面字体修复，纯标准库）、`templates/GHB_PPT_模板.pptx`（自带模板）、`templates/icons/`（5 套图标，vendor 自 ppt-master）。
+- **python-pptx + requests + Pillow**（`pip install python-pptx requests Pillow`）——python-pptx 仅 Phase 5 校验用；requests + Pillow 为配图管线（image_search / finalize 内嵌 / 质检分辨率）所需。
+- **可选**（仅当 ⑥ 配图来源选 D 联网搜图 / E AI 生成时）：网络；网搜 `PEXELS_API_KEY`/`PIXABAY_API_KEY`（免费，Openverse/Wikimedia 零配置）；AI 生图 `IMAGE_BACKEND` + 对应 key（`python3 $PM/image_gen.py --list-backends` 查全部）。
 - **不再依赖外部 ppt-master skill**。
 
 ## 环境变量
 
 ```bash
 SKILL_DIR=<本 skill 根目录>                 # 即 GHB-PPT-SKILL/
-VENV_PY=python3                              # 需 python-pptx（仅校验用）
+VENV_PY=python3                              # 需 python-pptx + requests + Pillow
 TEMPLATE="$SKILL_DIR/templates/GHB_PPT_模板.pptx"   # 自带模板
 PM="$SKILL_DIR/scripts/ppt_master"           # vendored ppt-master 脚本
 MERGE="$SKILL_DIR/scripts/merge_template_master.py"
 FIXFONT="$SKILL_DIR/scripts/fix_cover_font.py"
+IMG_SEARCH="$PM/image_search.py"             # 联网搜图（零配置 Openverse/Wikimedia）
+IMG_GEN="$PM/image_gen.py"                   # AI 生图（多后端，需 key）
+ICONS="$SKILL_DIR/templates/icons"           # 5 套图标（tabler-outline/chunk-filled/...）
+# 可选 key（仅 ⑥ 选 D/E 时）：PEXELS_API_KEY / PIXABAY_API_KEY / IMAGE_BACKEND + 对应后端 key
 ```
 
 ## 模板已知事实（Phase 0 已预分析）
@@ -58,7 +64,7 @@ FIXFONT="$SKILL_DIR/scripts/fix_cover_font.py"
 
 模板只有封面/章节/致谢页 → 正文无法直接填槽。分两条线再合并，末尾续接致谢页：
 
-```
+```text
 模板.pptx ─┬─→ template-fill 克隆封面 + 填文本 ──→ cover.pptx (真模板母版)
            │      └→ fix_cover_font 楷体→微软雅黑
            └─→ (母版/版式/主题/背景图 由合并脚本注入)
@@ -107,12 +113,123 @@ $VENV_PY "$FIXFONT" exports/cover.pptx
 # 1. 建项目
 $VENV_PY "$PM/project_manager.py" init <name> --format ppt169
 cp source.md "$PROJECT/sources/"
+```
 
-# 2. Strategist：写 design_spec.md + spec_lock.md（锁定品牌）
-# 3. Executor：逐页手写 SVG → svg_output/NN_name.svg
-# 4. 质量检查（0 error 才继续）
+#### Phase 2.5 — 内容确认（⛔ BLOCKING，不可跳过）
+
+模板已预锁**视觉项**（画布 / 配色 / 字体），无需再问；但**内容方向 + 配图来源**必须先与用户确认，确认后才能写 `spec_lock.md`、生成任何 SVG、获取任何配图。读完源材料后，**一次性**把下面 6 项作为一条确认消息发出，⛔ 等用户明确确认或修改后再继续。
+
+**输出契约（6 项每一项都必须含这 3 块，缺一不可）：**
+
+1. **可选选项** — 该项候选项，每个附一句取舍 / 影响，用 `A/B/C…` 编号。
+2. **我的推荐** — 标 `★`，附一句理由。
+3. **怎么改** — 一句话告诉用户如何选/改（如「回 `①B`」「页数改 12」「第 3 页节奏改 breathing」「⑥D 联网搜图」）。
+
+> 受众 / 内容取舍这类开放项：选项由你**据源材料拟 2–4 个具体候选**，不得给「自定义」这种空选项。
+
+**6 项确认项与选项菜单：**
+
+| # | 确认项 | 候选选项（菜单） | 怎么改 |
+|---|---|---|---|
+| ① | 目标受众 | 据源材料拟 2–4 个具体受众，每个附语气/信息密度影响 | 回 `①` + 受众名 |
+| ② | 页数范围 | A 沿用源 md `---SLIDE N---` 分页 / B 重新规划 / C 压缩合并 / D 扩展拆分；附推荐页数区间 | 回 `②` + 字母或页数 |
+| ③ | mode | A instructional / B briefing / C narrative，各附适用场景 | 回 `③` + 字母 |
+| ④ | 拟定页大纲 | 每页：标题 + 节奏（`anchor`/`dense`/`breathing`） | 回 `④` + 页号 + 节奏，或整表替换 |
+| ⑤ | 内容取舍/侧重 | 据 source 拟：重点展开 / 省略 / 合并 各列哪些 | 回 `⑤` + 调整说明 |
+| ⑥ | 配图来源 | A 无图（纯排版）/ B 源材料提取 / C 用户自备 / D 联网搜图 / E AI 生成；图标：无 / 有（tabler-outline · chunk-filled） | 回 `⑥` + 字母；图标回 `⑥图标` + 集名 |
+
+**⑥ 配图来源各路取舍（展开供用户判断）：**
+
+- **A 无图** — 纯排版+形状+色彩；自包含、与模板母版最统一。★ 多数情况推荐。
+- **B 源材料提取** — 源是 pdf/ppt/doc/web 时 `source_to_md` 提取图进 `images/`；源已是 .md 则等同 C。
+- **C 用户自备** — 用户把图放 `images/`，SVG `<image href>` 引用，finalize 自动内嵌。
+- **D 联网搜图** — `image_search.py` 搜 Openverse/Wikimedia（零配置）+ Pexels/Pixabay（免费 key）；按 license 过滤、`image_sources.json` 记版权，CC BY/BY-SA 自动要求内联署名。
+- **E AI 生成** — `image_gen.py` 多后端（openai/gemini/siliconflow…），需 `IMAGE_BACKEND` + key；`--list-backends` 查全部。
+- **图标** — `<use data-icon="名"/>`，finalize 内嵌；集在 `templates/icons/`（tabler-outline 线性 / chunk-filled 实心 等 5 套）。
+
+**示例（一条确认消息长这样）：**
+
+```
+内容确认（确认后即生成，请逐项过）：
+
+① 目标受众
+   A 后端开发 — 偏实现细节，可上代码
+   B 技术负责人 — 平衡架构与落地
+   C 管理层 — 偏结论与 ROI
+   ★ 推荐 B — 源材料偏架构决策
+   改法：回 ① + 受众名（如 ①C）
+
+② 页数范围
+   A 沿用源 md 8 页分页  B 重新规划
+   ★ 推荐 A — 源 md 分页已合理，建议 8 页
+   改法：回 ② + 字母或页数（如 ② 12）
+
+③ mode
+   A instructional（教学/步骤） B briefing（简报/要点） C narrative（叙事）
+   ★ 推荐 A — 内容是教程性质
+   改法：回 ③ + 字母
+
+④ 拟定页大纲
+   1 <标题> dense   2 <标题> anchor   3 <标题> breathing …
+   ★ 推荐如上
+   改法：回 ④ + 页号 + 节奏（如 ④ 3 breathing），或整表替换
+
+⑤ 内容取舍
+   重点展开：第 2、4 节   省略：附录 A   合并：第 6、7 节
+   ★ 推荐如上
+   改法：回 ⑤ + 调整说明
+
+⑥ 配图来源
+   A 无图  B 源提取  C 自备  D 联网搜图  E AI 生成   图标：无/有
+   ★ 推荐 A — 与模板母版背景最契合
+   改法：回 ⑥ + 字母（如 ⑥D）；图标回 ⑥图标 + 集名
+
+回复「全部确认」按推荐执行，或逐项告诉我怎么改。
+```
+
+⛔ **BLOCKING 纪律**：
+
+- 用户确认前**不得**写 `spec_lock.md`、**不得**生成任何 SVG、**不得**获取任何配图。
+- 不得替用户做决定——用户改了哪项就以改后的为准，覆盖你自己的推荐。
+- 这是 Phase 2 唯一的硬停点；确认后，写 spec →（按 ⑥）配图获取 → 生成 SVG → 质检 → 备注**可连续进行**，无需再次确认。
+- 这条闸门补的是 ppt-master「八项确认」里未被模板预锁的向度：内容向度（页数 / 受众 / mode / 大纲 / 取舍）+ 配图向度（来源 / 图标）。视觉向度（画布 / 配色 / 字体）已由模板锁定，故不再单列。
+
+#### Phase 2.6 — 配图获取（可选，仅 ⑥ 选 B/C/D/E 时；A 无图跳过）
+
+按 ⑥ 确认值与拟定大纲，先备齐配图再写 SVG：
+
+1. **列配图需求**（写进 `design_spec.md`）：每页要不要图、用途（hero/side/accent）、`slide_id`、`orientation`。
+2. **按来源取图进 `images/`**：
+   - **B 源提取**：源是 pdf/ppt/doc/web 时 `source_to_md` 转换会连带复制图进 `images/`（`project_manager.py` 的 `_copy_image_assets`）；源已是 .md 则等同 C。
+   - **C 自备**：用户把图放进 `images/`。
+   - **D 联网搜图**（一次一张，~1 req/s 限速）：
+
+     ```bash
+     $VENV_PY "$IMG_SEARCH" "<query>" --filename <name>.jpg --slide <id> \
+       --orientation landscape --purpose hero -o "$PROJECT/images"
+     ```
+
+     license 仅取 CC0/PD/Pexels/Pixabay/CC BY/CC BY-SA；`image_sources.json` 记 tier；`--strict-no-attribution` 可强制免署名。规则见 [`references/image-searcher.md`](references/image-searcher.md)。
+   - **E AI 生成**：
+
+     ```bash
+     $VENV_PY "$IMG_GEN" "<prompt>" --aspect_ratio 16:9 --image_size 1K -o "$PROJECT/images"
+     # 批处理：$VENV_PY "$IMG_GEN" --manifest "$PROJECT/images/image_prompts.json" -o "$PROJECT/images"
+     ```
+
+     后端由 `IMAGE_BACKEND` + key 决定；规则见 [`references/image-generator.md`](references/image-generator.md)。
+3. **图标**：SVG 用 `<use data-icon="名"/>` 占位，`finalize_svg.py` 的 embed-icons 从 `$ICONS` 内嵌。
+4. **版权闸门**：`svg_quality_checker.py` 强制——`image_sources.json` 里 `license_tier=attribution-required` 的图，对应 SVG 须有可见 `CC BY`/`CC BY-SA` 署名 `<text>`，否则质检 fail。署名规范见 [`references/image-searcher.md`](references/image-searcher.md) §7。
+
+> 取图后产物在 `images/`（图 + `image_sources.json`/`image_manifest.json`）；SVG 用 `<image href="images/xxx.jpg">` 引用，`finalize_svg.py` 的 align-images 步骤自动对齐+base64 内嵌。
+
+```bash
+# 2. Strategist：写 design_spec.md + spec_lock.md + 配图需求清单（按 ①–⑥ 确认值）
+# 3. Phase 2.6：按 ⑥ 取图进 images/（A 无图跳过）
+# 4. Executor：逐页手写 SVG → svg_output/NN_name.svg（配图页用 <image href>；每页生成前重读 spec_lock.md，防长 deck 漂移）
+# 5. 质量检查（0 error 才继续）
 $VENV_PY "$PM/svg_quality_checker.py" "$PROJECT"
-# 5. 演讲者备注 → notes/total.md（# NN_name 标题，--- 分隔）
+# 6. 演讲者备注 → notes/total.md（# NN_name 标题，--- 分隔）
 ```
 
 #### spec_lock 锁定值（GHB 品牌）
@@ -133,6 +250,10 @@ typography:
   title_family: "'Arial Black', 'Microsoft YaHei', Arial, sans-serif"
   code_family: "Consolas, 'Courier New', monospace"
   body: 18 / title: 30 / subtitle: 22 / annotation: 13
+images:                            # 由 ⑥ 确认值填
+  source: none                     # none / extract / user / web / gen
+  icons: none                      # none / tabler-outline / chunk-filled / ...
+  attribution: auto                # web 图按 image_sources.json license_tier 自动加内联署名
 ```
 
 #### 每页统一 chrome（调整后标准坐标，已下移 40 让顶部背景装饰透出）
@@ -161,7 +282,7 @@ typography:
 
 > **设计要点**：内容面板 `y=96`（下移 40px，留顶部 ~96px 让模板 image1 顶部装饰透出）；`fill-opacity="0.92"` 让模板背景作整页淡色底。`<g id="bg-surface">` 含 `bg` 词干会被导出器当 chrome（不参与动画），且 Phase 3 删除正则只匹配 `<g id="bg">` 精确名，不会误删。
 
-**SVG 技术约束**（违反即导出失败）：viewBox=0 0 1280 720；HEX 色 + fill-opacity（禁 rgba / `<g opacity>`）；一行逻辑文本=一个 `<text>`+内联 `<tspan>`（内联 tspan 不得带 x/y/dy）；字体栈以预装家族结尾；禁 mask/style/class/foreignObject/`<symbol>`+`<use>`/textPath/animate。完整清单见 `scripts/ppt_master` 上游 shared-standards。本 skill 流程不用图标/图片/图表（纯排版+形状+色彩），故无需 `templates/icons`。
+**SVG 技术约束**（违反即导出失败）：viewBox=0 0 1280 720；HEX 色 + fill-opacity（禁 rgba / `<g opacity>`）；一行逻辑文本=一个 `<text>`+内联 `<tspan>`（内联 tspan 不得带 x/y/dy）；字体栈以预装家族结尾；禁 mask/style/class/foreignObject/textPath/animate。完整清单见 `scripts/ppt_master` 上游 shared-standards。**配图**用 `<image href="images/xxx.jpg">`（finalize 的 align-images 步骤自动对齐+base64 内嵌；`<image>` 上禁用 opacity，需半透明用 overlay 遮罩）。**图标**用 `<use data-icon="名"/>` 占位符（embed-icons 步骤从 `templates/icons/` 内嵌成实际图标，此占位符不属下方禁用的 `<symbol>`+`<use>` 输出模式）。配图与图标的嵌入/版权规范见 [`references/svg-image-embedding.md`](references/svg-image-embedding.md) 与 [`references/image-searcher.md`](references/image-searcher.md)。
 
 ### Phase 3 — 移除正文白底 + 导出 content.pptx
 
@@ -251,6 +372,14 @@ $VENV_PY "$PM/source_to_md/ppt_to_md.py" final.pptx
 
 - 内容面板默认 `y=56` 会盖住模板背景顶部装饰。下移 40 到 `y=96`，留顶部装饰透出，底部仍留 16px 边距。已固化为 chrome 标准。
 
+### 选配图来源（⑥）
+
+- **A 无图**：默认。与“模板母版背景透出 + 半透明内容面板”的设计最契合，自包含零外部依赖。
+- **B 源提取 / C 自备**：源里有现成截图/示意图时用；图进 `images/`，SVG `<image>` 引用。
+- **D 联网搜图**：要配图但手头没有时用；Openverse/Wikimedia 零配置即可，Pexels/Pixabay 配免费 key 提升质量。注意 CC BY/BY-SA 须内联署名（质检强制）。
+- **E AI 生成**：要定制示意图/无版权顾虑时用；需选后端 + key。
+- **图标**：要点图示用 `<use data-icon>`，`templates/icons/` 已内置 5 套；线性首选 tabler-outline，实心用 chunk-filled。
+
 ## 常见问题
 
 | 问题 | 处理 |
@@ -262,13 +391,19 @@ $VENV_PY "$PM/source_to_md/ppt_to_md.py" final.pptx
 | 封面显示楷体 | 忘跑 `fix_cover_font.py`；补跑即可 |
 | 正文页挂载仍指向 SVG 母版 | merge 脚本的 rels 正则 `Target="\.\./slideLayouts/slideLayout\d+\.xml"` 未命中；检查 content slide rels 格式 |
 | 致谢页没出现 | 用了 `--no-ending`；默认即续接，或 `--ending-slide N` 指定模板页号 |
+| 质检报 "Missing inline attribution for sourced image" | 该网搜图 license 是 CC BY/BY-SA，对应 SVG 必须加可见 `CC BY`/`CC BY-SA` 署名 `<text>`（见 image-searcher.md §7）；或换 `--strict-no-attribution` 重搜免署名图 |
+| 质检报 "Image file not found" | SVG `<image href>` 指向的图不在 `images/`；先跑 Phase 2.6 取图，或修正 href 路径 |
+| 图标没渲染 | 用了 `<use data-icon>` 但 `templates/icons/` 缺该图标；换集名或换图标，确认 embed-icons 步骤跑了 |
+| 联网搜图全 fail / 无候选 | query 太长/太抽象；用 1–2 具体名词，或配 PEXELS/PIXABAY key；详见 image-searcher.md §4/§8 |
+| AI 生图报缺 key | `IMAGE_BACKEND` 未设或对应 key 缺；`python3 $PM/image_gen.py --list-backends` 查所需 key |
 
 ## 产物结构
 
-```
+```text
 project/
 ├── sources/            # Markdown 源
 ├── analysis/           # slide_library.json + cover_fill_plan.json
+├── images/             # 配图（⑥ 非 A 时）+ image_sources.json（网搜版权）/ image_manifest.json
 ├── svg_output/         # 正文 SVG（白底已删，chrome 含 translate/或 y=96 坐标）
 ├── notes/              # 演讲者备注
 ├── design_spec.md / spec_lock.md
@@ -281,28 +416,37 @@ project/
 
 ## skill 自身结构
 
-```
+```text
 GHB-PPT-SKILL/
 ├── SKILL.md                         # 本文件
 ├── templates/GHB_PPT_模板.pptx       # 自带模板
+├── templates/icons/                 # 5 套图标（tabler-outline/chunk-filled/simple-icons/phosphor-duotone/tabler-filled）
 ├── scripts/
 │   ├── merge_template_master.py     # 母版统一合并（含致谢页续接），纯标准库
 │   ├── fix_cover_font.py            # 封面字体楷体→微软雅黑，纯标准库
 │   └── ppt_master/                  # vendor 自 ppt-master 的脚本（自包含）
 │       ├── project_manager.py / template_fill_pptx.py / svg_quality_checker.py
 │       ├── total_md_split.py / finalize_svg.py / svg_to_pptx.py
+│       ├── image_search.py / image_gen.py     # 联网搜图 / AI 生图（⑥ D/E）
+│       ├── image_backends/ (15 生图后端) / image_sources/ (4 搜图 provider)
 │       ├── config.py / error_helper.py / pptx_animations.py / project_utils.py
 │       ├── source_to_md/ (ppt_to_md.py ...)
 │       ├── svg_to_pptx/  (DrawingML 转换包)
-│       ├── svg_finalize/ (SVG 后处理包)
+│       ├── svg_finalize/ (SVG 后处理包：含 align_embed_images / embed_icons)
 │       └── template_fill_pptx/ (template-fill 包)
 ├── references/template-analysis.md  # 换模板时的结构分析方法
+├── references/image-searcher.md / image-generator.md / image-base.md / svg-image-embedding.md  # 配图工作流
 └── (可选) 示例源 md
 ```
 
 ## 参考
 
 - [references/template-analysis.md](references/template-analysis.md) — 换模板时的结构分析方法
+- [references/image-searcher.md](references/image-searcher.md) — 联网搜图：license tier、query 语法、署名规范
+- [references/image-generator.md](references/image-generator.md) — AI 生图：后端、prompt、manifest 批处理
+- [references/image-base.md](references/image-base.md) — 配图通用框架（资源清单、Acquire Via、Executor 交接）
+- [references/svg-image-embedding.md](references/svg-image-embedding.md) — `<image>`/`<use data-icon>` 嵌入与版权技术约束
 - `scripts/merge_template_master.py --help` — 合并脚本参数（含 `--ending-slide` / `--no-ending`）
 - `scripts/fix_cover_font.py` — 封面字体修复
+- `scripts/ppt_master/image_search.py --help` / `image_gen.py --list-backends` — 配图 CLI
 - vendor 自 ppt-master 的脚本位于 `scripts/ppt_master/`，用法与上游一致

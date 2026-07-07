@@ -17,3 +17,4 @@ __pycache__/
 # 临时
 *.tmp
 *.bak
+.pi-subagents/
