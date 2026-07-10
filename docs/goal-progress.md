@@ -2,7 +2,7 @@
 
 ## Current stage
 
-- Stage: deterministic fixtures and pre-change baseline
+- Stage: unified CLI and OOXML/PPTX validation
 - Branch: `codex/goal-optimize-ghb-ppt-skill`
 - Goal source: `/Users/linmaogui/.codex/attachments/678ede90-cc8d-4e0a-b4db-45de74d589d6/goal-objective.md`
 
@@ -34,6 +34,12 @@ overwritten or attributed to this goal without verification.
 - Generated nine non-overwriting pre-change baseline projects (30 MB).
 - Verified all final baseline PPTX files with ZIP tests and `python-pptx`.
 - Rendered all 57 baseline pages with LibreOffice and generated contact sheets.
+- Added a safe, idempotent SVG preview-background remover with backups.
+- Added the initial unified `scripts/ghb_ppt.py` entry point with `doctor`,
+  `init`, `analyze-template`, `build-cover`, `check-svg`, `build-content`,
+  `merge`, and full `build` commands.
+- Added structured run logs and `.ghb/state.json` checkpoints.
+- Verified the unified full build on a copied 3-body-slide baseline project.
 
 ## Modified files
 
@@ -43,6 +49,10 @@ overwritten or attributed to this goal without verification.
 - `tests/fixtures/scenarios.json` (fixed offline content cases)
 - `tests/fixtures/build_baseline.py` (non-overwriting baseline builder)
 - `.gitignore` (exclude reproducible large artifact binaries)
+- `scripts/remove_svg_background.py` (formal validated background removal)
+- `scripts/ghb_ppt.py` (unified orchestration, logs, checkpoints, dry-run)
+- `tests/test_remove_svg_background.py`
+- `tests/test_ghb_ppt_cli.py`
 
 ## Validation commands and results
 
@@ -55,6 +65,10 @@ overwritten or attributed to this goal without verification.
 - `python3 tests/fixtures/build_baseline.py`: nine cases generated successfully.
 - `unzip -tqq` + `python-pptx`: all nine final PPTX files passed/opened.
 - LibreOfficeDev 26.8 + `pdftoppm`: 57 page PNGs and nine contact sheets generated.
+- `python3 -m pytest -q tests/test_ghb_ppt_cli.py tests/test_remove_svg_background.py`:
+  9 tests passed.
+- Unified CLI copied-fixture build: cover → checks → background removal →
+  notes → finalize → editable content → merge completed with a persistent run log.
 
 ## Generated artifacts
 
@@ -76,5 +90,5 @@ overwritten or attributed to this goal without verification.
 
 ## Next step
 
-- Add tests for the unified CLI seam: deterministic background removal, output
-  discovery, explicit error codes, and run/checkpoint logging.
+- Replace regex-fragile GHB merge allocation with collision-safe OOXML helpers,
+  add the final validator, and cover the full D case matrix with regression tests.
