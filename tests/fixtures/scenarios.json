@@ -1,0 +1,43 @@
+{
+  "technical_sharing": {
+    "title": "企业级 Agent 工程实践",
+    "subtitle": "从能力认知到稳定交付",
+    "date": "2026年7月",
+    "audience": "技术负责人和核心开发团队",
+    "slides": [
+      {"purpose": "目录与章节", "key_message": "稳定交付需要流程、工程和治理三条线同时闭环", "density": "breathing", "layout_type": "timeline", "visual_encoding": "阶段时间轴", "items": ["能力认知", "工程实现", "质量治理"]},
+      {"purpose": "核心概念", "key_message": "Agent 不是单一模型调用，而是一组可观察、可恢复的执行模块", "density": "anchor", "layout_type": "layered_arch", "visual_encoding": "分层架构", "items": ["交互与目标", "规划与编排", "工具与执行", "状态与审计"]},
+      {"purpose": "流程", "key_message": "每次交付都应经过确认、构建、验证和复盘", "density": "anchor", "layout_type": "waterfall", "visual_encoding": "递进流程", "items": ["确认", "规划", "构建", "验证", "复盘"]},
+      {"purpose": "方案对比", "key_message": "脚本化质量门比人工命令更可重复、更容易恢复", "density": "dense", "layout_type": "matrix", "visual_encoding": "二维对比", "items": ["手工且脆弱", "脚本且可复现", "自动但不可解释", "自动且可审计"]},
+      {"purpose": "架构图", "key_message": "统一入口负责串联，而核心转换仍由稳定模块承担", "density": "anchor", "layout_type": "pyramid", "visual_encoding": "能力金字塔", "items": ["模板与品牌", "SVG 与可编辑对象", "OOXML 合并", "验证与渲染"]},
+      {"purpose": "风险与对策", "key_message": "关系图完整性、输出可恢复性和视觉复核是三类首要风险", "density": "dense", "layout_type": "swimlane", "visual_encoding": "责任泳道", "items": ["生成侧", "合并侧", "验证侧"]},
+      {"purpose": "总结", "key_message": "企业级质量必须由代码、测试、产物和报告共同证明", "density": "breathing", "layout_type": "flywheel", "visual_encoding": "质量飞轮", "items": ["生成", "检查", "修复", "沉淀"]}
+    ]
+  },
+  "management_plan": {
+    "title": "智能化交付能力建设规划",
+    "subtitle": "2026—2027 管理层汇报",
+    "date": "2026年7月",
+    "audience": "管理委员会与业务负责人",
+    "slides": [
+      {"purpose": "现状问题", "key_message": "当前瓶颈不是缺少工具，而是标准、数据和责任链断裂", "density": "anchor", "layout_type": "iceberg", "visual_encoding": "问题冰山", "items": ["交付周期波动", "标准不统一", "质量证据缺失", "职责边界模糊"]},
+      {"purpose": "目标", "key_message": "一年内形成可规模复制的智能化交付体系", "density": "breathing", "layout_type": "pyramid", "visual_encoding": "目标金字塔", "items": ["统一入口", "稳定流程", "量化质量"]},
+      {"purpose": "三项重点举措", "key_message": "平台、机制、人才三项举措必须同步推进", "density": "anchor", "layout_type": "layered_arch", "visual_encoding": "三层能力", "items": ["平台工具", "治理机制", "组织与人才"]},
+      {"purpose": "路线图", "key_message": "先打通 P0 可靠性，再建立质量闭环，最后规模推广", "density": "anchor", "layout_type": "timeline", "visual_encoding": "季度路线图", "items": ["Q3 可靠性", "Q4 质量闭环", "Q1 试点", "Q2 推广"]},
+      {"purpose": "价值与指标", "key_message": "价值用周期、一次通过率和复用率三项指标衡量", "density": "dense", "layout_type": "matrix", "visual_encoding": "价值指标矩阵", "items": ["周期 -30%", "一次通过率 ≥95%", "复用率 ≥70%", "严重缺陷 0"]},
+      {"purpose": "下一步计划", "key_message": "未来四周完成基线、入口、验证器和首轮试点", "density": "breathing", "layout_type": "staircase", "visual_encoding": "四步计划", "items": ["锁定基线", "统一入口", "结构验证", "试点复盘"]}
+    ]
+  },
+  "layout_stress": {
+    "title": "跨区域核心系统现代化治理与可持续交付能力建设阶段性复盘",
+    "subtitle": "Architecture / Delivery / Governance 中英文混排压力测试 · FY2026 H2",
+    "date": "2026-07-10",
+    "audience": "架构委员会、管理层、研发与运维负责人",
+    "slides": [
+      {"purpose": "长文本结论", "key_message": "在不牺牲 Reliability、Security 与 Compliance 的前提下，将跨区域交付 Lead Time 从 21 天压缩到 7 天", "density": "dense", "layout_type": "waterfall", "visual_encoding": "多节点流程图", "items": ["需求澄清与依赖识别", "Architecture Review / ADR", "自动化构建与集成验证", "灰度发布与可观测性检查", "审计证据归档与复盘"]},
+      {"purpose": "复杂表格", "key_message": "优先级由业务价值、技术风险、合规影响和迁移复杂度共同决定", "density": "dense", "layout_type": "matrix", "visual_encoding": "复杂四象限", "items": ["高价值 / 低复杂度：Quick Win", "高价值 / 高复杂度：Strategic Bet", "低价值 / 低复杂度：Maintain", "低价值 / 高复杂度：Defer"]},
+      {"purpose": "多卡片", "key_message": "治理覆盖 API、Data、Identity、Observability、Resilience 与 Cost 六个域", "density": "dense", "layout_type": "swimlane", "visual_encoding": "多泳道卡片", "items": ["业务与产品", "平台工程", "安全合规", "SRE 运维"]},
+      {"purpose": "来源与总结", "key_message": "所有指标都必须能追溯到 Source of Truth，并在 QBR 前完成 owner 复核", "density": "anchor", "layout_type": "flywheel", "visual_encoding": "数据治理闭环", "items": ["采集 Collect", "校验 Validate", "解释 Explain", "行动 Act", "复盘 Learn"]}
+    ]
+  }
+}
