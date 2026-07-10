@@ -40,6 +40,16 @@ overwritten or attributed to this goal without verification.
   `merge`, and full `build` commands.
 - Added structured run logs and `.ghb/state.json` checkpoints.
 - Verified the unified full build on a copied 3-body-slide baseline project.
+- Replaced regex-based GHB OOXML merging with namespace-aware XML mutation,
+  dynamic part/ID allocation, collision-safe media/tags, and atomic output.
+- Fixed the ending-layout registration defect reproduced by the baseline.
+- Added D-matrix merge regression coverage for 1/3/10 body pages, layout
+  variants, ending options, media collisions, IDs, content types, and failures.
+- Added the GHB final PPTX validator with console, JSON, and Markdown outputs.
+- Added per-slide editability/object summaries, full-slide-image detection,
+  mount/theme checks, text/placeholder/font/brand checks, and report limitations.
+- Integrated `validate` and `report` into the unified CLI and full `build`.
+- Made cover-font repair atomic, idempotent, and testable.
 
 ## Modified files
 
@@ -53,6 +63,12 @@ overwritten or attributed to this goal without verification.
 - `scripts/ghb_ppt.py` (unified orchestration, logs, checkpoints, dry-run)
 - `tests/test_remove_svg_background.py`
 - `tests/test_ghb_ppt_cli.py`
+- `scripts/merge_template_master.py` (rewritten GHB OOXML seam)
+- `scripts/validate_ghb_pptx.py`
+- `scripts/fix_cover_font.py` (atomic API + CLI)
+- `tests/test_merge_template_master.py`
+- `tests/test_validate_ghb_pptx.py`
+- `tests/test_fix_cover_font.py`
 
 ## Validation commands and results
 
@@ -69,6 +85,10 @@ overwritten or attributed to this goal without verification.
   9 tests passed.
 - Unified CLI copied-fixture build: cover → checks → background removal →
   notes → finalize → editable content → merge completed with a persistent run log.
+- `python3 -m pytest -q`: `40 passed in 2.29s`.
+- Modified-before baseline validation: correctly fails with
+  `unregistered-used-layout` for the ending layout.
+- Fixed merge validation: same 3-body case passes with one manual template-bleed warning.
 
 ## Generated artifacts
 
@@ -90,5 +110,5 @@ overwritten or attributed to this goal without verification.
 
 ## Next step
 
-- Replace regex-fragile GHB merge allocation with collision-safe OOXML helpers,
-  add the final validator, and cover the full D case matrix with regression tests.
+- Add renderer orchestration, contact-sheet generation, final PPTX layout checks,
+  and a combined quality report that records font-substitution limitations.

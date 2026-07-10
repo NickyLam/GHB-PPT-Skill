@@ -308,6 +308,42 @@ def merge_deck(
     return output
 
 
+def validate_deck(
+    run: RunContext,
+    *,
+    pptx: Path,
+    body_count: int | None,
+    expect_ending: bool,
+    json_output: Path,
+    markdown_output: Path,
+    render_dir: Path | None = None,
+) -> tuple[Path, Path]:
+    if not pptx.is_file() and not run.dry_run:
+        raise PipelineError(f"final PPTX not found: {pptx}")
+    if body_count is None:
+        body_count = len(list((run.project / "svg_output").glob("*.svg")))
+    command = [
+        sys.executable,
+        str(ROOT / "scripts" / "validate_ghb_pptx.py"),
+        str(pptx),
+        "--body-count", str(body_count),
+        "--source-svg-dir", str(run.project / "svg_output"),
+        "--json-output", str(json_output),
+        "--markdown-output", str(markdown_output),
+    ]
+    layout_plan = run.project / "layout_plan.json"
+    if layout_plan.exists() or run.dry_run:
+        command.extend(["--layout-plan", str(layout_plan)])
+    command.append("--expect-ending" if expect_ending else "--no-ending")
+    if render_dir is not None:
+        command.extend(["--render-dir", str(render_dir)])
+    run.run("validate", command)
+    run.output(json_output)
+    run.output(markdown_output)
+    run.checkpoint("validate", [pptx, json_output, markdown_output])
+    return json_output, markdown_output
+
+
 def doctor_payload(template: Path) -> dict[str, Any]:
     imports: dict[str, bool] = {}
     for module in ("pptx", "PIL", "requests"):
@@ -410,6 +446,19 @@ def parser() -> argparse.ArgumentParser:
     ending.add_argument("--no-ending", action="store_true")
     ending.add_argument("--ending-slide", type=int)
 
+    for name, help_text in (
+        ("validate", "Validate final PPTX structure, mounts, content, and editability"),
+        ("report", "Regenerate JSON and Markdown quality reports"),
+    ):
+        validate = sub.add_parser(name, help=help_text)
+        add_project(validate)
+        validate.add_argument("--pptx", type=Path)
+        validate.add_argument("--body-count", type=int)
+        validate.add_argument("--json-output", type=Path)
+        validate.add_argument("--markdown-output", type=Path)
+        validate.add_argument("--render-dir", type=Path)
+        validate.add_argument("--no-ending", action="store_true")
+
     build = sub.add_parser("build", help="Run cover, SVG gates/content export, and master merge")
     add_project(build)
     build.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
@@ -492,6 +541,17 @@ def main(argv: list[str] | None = None) -> int:
                     no_ending=args.no_ending,
                     ending_slide=args.ending_slide,
                 )
+            elif args.command in {"validate", "report"}:
+                report_dir = project / "reports"
+                validate_deck(
+                    run,
+                    pptx=_project_output(project, args.pptx, "final.pptx"),
+                    body_count=args.body_count,
+                    expect_ending=not args.no_ending,
+                    json_output=(args.json_output.resolve() if args.json_output else report_dir / "quality-report.json"),
+                    markdown_output=(args.markdown_output.resolve() if args.markdown_output else report_dir / "quality-report.md"),
+                    render_dir=args.render_dir.resolve() if args.render_dir else None,
+                )
             elif args.command == "build":
                 cover_path = _project_output(project, None, "cover.pptx")
                 content_path = _project_output(project, None, "content.pptx")
@@ -516,7 +576,16 @@ def main(argv: list[str] | None = None) -> int:
                     no_ending=args.no_ending,
                     ending_slide=args.ending_slide,
                 )
-                run.checkpoint("build", [final_path])
+                report_dir = project / "reports"
+                validate_deck(
+                    run,
+                    pptx=final_path,
+                    body_count=None,
+                    expect_ending=not args.no_ending,
+                    json_output=report_dir / "quality-report.json",
+                    markdown_output=report_dir / "quality-report.md",
+                )
+                run.checkpoint("build", [final_path, report_dir / "quality-report.json", report_dir / "quality-report.md"])
             run.finish()
             if not run.dry_run:
                 print(f"[OK] Run log: {run.run_dir / 'run.json'}")

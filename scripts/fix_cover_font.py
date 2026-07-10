@@ -1,51 +1,101 @@
 #!/usr/bin/env python3
-"""fix_cover_font.py — 把封面 PPTX 中的字体替换为微软雅黑（Microsoft YaHei）。
+"""Normalize filled GHB cover slide fonts to Microsoft YaHei atomically."""
 
-GHB_PPT_模板的封面文本原用楷体，与正文 SVG（Microsoft YaHei）不一致。
-template-fill 克隆封面时会保留楷体，故 apply 之后跑本脚本统一改成微软雅黑。
+from __future__ import annotations
 
-用法:
-    python3 scripts/fix_cover_font.py exports/cover.pptx
-    python3 scripts/fix_cover_font.py exports/cover.pptx "Microsoft YaHei"
-
-幂等：已是微软雅黑则无变化。
-"""
-
+import argparse
+import os
 import re
-import shutil
 import sys
+import tempfile
 import zipfile
+from dataclasses import dataclass
+from pathlib import Path
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("usage: fix_cover_font.py <cover.pptx> [font]")
-        sys.exit(1)
-    path = sys.argv[1]
-    font = sys.argv[2] if len(sys.argv) > 2 else "Microsoft YaHei"
+SOURCE_FONTS = ("Arial Unicode MS", "Arial Black", "楷体", "KaiTi", "Arial")
 
-    with zipfile.ZipFile(path, "r") as z:
-        data = {n: z.read(n) for n in z.namelist()}
 
-    slides = sorted(n for n in data if re.match(r"ppt/slides/slide\d+\.xml$", n))
-    changed = 0
-    # 长串先替换，避免被短串误伤（带引号精确匹配，顺序其实无关）
-    for old in ("Arial Unicode MS", "Arial Black", "楷体", "Arial"):
-        needle = f'typeface="{old}"'
-        repl = f'typeface="{font}"'
-        for s in slides:
-            x = data[s].decode("utf-8")
-            if needle in x:
-                data[s] = x.replace(needle, repl).encode("utf-8")
-                changed += 1
+class FontFixError(RuntimeError):
+    """Raised when a cover package cannot be safely rewritten."""
 
-    tmp = path + ".tmp"
-    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-        for n, d in data.items():
-            z.writestr(n, d)
-    shutil.move(tmp, path)
-    print(f"[OK] cover font -> {font} (touched {changed} slide part(s))")
+
+@dataclass(frozen=True)
+class FontFixResult:
+    path: Path
+    changed_parts: int
+    replacements: int
+
+
+def fix_cover_font(path: Path, font: str = "Microsoft YaHei") -> FontFixResult:
+    if not path.is_file():
+        raise FontFixError(f"cover PPTX not found: {path}")
+    try:
+        with zipfile.ZipFile(path) as archive:
+            bad = archive.testzip()
+            if bad:
+                raise FontFixError(f"corrupt ZIP member: {bad}")
+            entries = {
+                info.filename: archive.read(info.filename)
+                for info in archive.infolist()
+                if not info.is_dir()
+            }
+    except zipfile.BadZipFile as exc:
+        raise FontFixError(f"invalid PPTX ZIP: {path}") from exc
+
+    slides = sorted(name for name in entries if re.fullmatch(r"ppt/slides/slide\d+\.xml", name))
+    if not slides:
+        raise FontFixError("cover PPTX has no slide parts")
+    changed_parts = 0
+    replacements = 0
+    for slide in slides:
+        text = entries[slide].decode("utf-8")
+        updated = text
+        for old in SOURCE_FONTS:
+            updated, count = re.subn(
+                rf'typeface="{re.escape(old)}"',
+                f'typeface="{font}"',
+                updated,
+            )
+            replacements += count
+        if updated != text:
+            entries[slide] = updated.encode("utf-8")
+            changed_parts += 1
+
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    os.close(fd)
+    temp_path = Path(temp_name)
+    try:
+        with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            for name, payload in entries.items():
+                archive.writestr(name, payload)
+        with zipfile.ZipFile(temp_path) as archive:
+            bad = archive.testzip()
+            if bad:
+                raise FontFixError(f"rewritten cover contains corrupt member: {bad}")
+        os.replace(temp_path, path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+    return FontFixResult(path, changed_parts, replacements)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("cover", type=Path)
+    parser.add_argument("font", nargs="?", default="Microsoft YaHei")
+    args = parser.parse_args(argv)
+    try:
+        result = fix_cover_font(args.cover, args.font)
+    except (OSError, UnicodeDecodeError, FontFixError) as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"[OK] cover font -> {args.font} "
+        f"(parts={result.changed_parts}, replacements={result.replacements})"
+    )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
