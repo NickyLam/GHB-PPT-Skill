@@ -1,480 +1,560 @@
 #!/usr/bin/env python3
-"""merge_template_master.py — Unify a SVG-generated content deck onto a user
-template's slide master, so EVERY slide inherits the template's background /
-theme / decorations, while keeping the SVG content visuals.
+"""Merge editable SVG body slides onto a selected template master.
 
-Input:
-  --content      SVG-generated PPTX (white background rects already removed
-                 from the source SVGs, so slides are transparent)
-  --template     Original user template PPTX (source of master / layouts /
-                 theme / background images)
-  --cover        Filled cover PPTX produced by ppt-master template-fill
-                 (clones the template cover slide with new text)
-  --content-layout  Template slideLayout index to drive content-page background
-                 (e.g. 2 = the chapter / content layout whose decorations you
-                 want behind every content page). Default 2.
-  --ending-slide Template slide index to append as the ending (thank-you) page
-                 (default: last slide of the template). Cloned with its layout
-                 + images, hung on the template master, appended last.
-  --no-ending    Do not append the template ending slide.
-  --output       Final unified PPTX.
-
-What it does:
-  1. Injects the template's slideMaster (trimmed to 2 layouts) + the cover
-     layout + the chosen content layout + theme + all background images as
-     ADDITIONAL parts inside the content PPTX.
-  2. Re-points every content slide's layout relationship to the injected
-     content layout (so content pages inherit the template master + its
-     background decorations).
-  3. Prepends the filled cover slide (which uses the injected cover layout).
-  Result: all slides share the template master; cover looks like the template
-  cover, content pages look like the template's chosen layout with SVG content
-  on top.
-
-Assumptions (true for ppt-master svg_to_pptx output):
-  - content PPTX has exactly one slideMaster (slideMaster1) and one theme
-    (theme1); injected parts are named slideMaster2 / theme2.
-  - content slides reference slideLayoutK.xml via ../slideLayouts/slideLayoutK.xml.
+This is the GHB-owned OOXML seam.  It keeps the existing architecture (filled
+template cover + editable SVG body + template ending) while allocating parts,
+IDs, relationships, tags, and media without fixed names or string-regex XML
+mutation.  The public output is replaced atomically only after relationship
+targets have been checked.
 """
 
+from __future__ import annotations
+
 import argparse
-import zipfile
-import re
+import mimetypes
 import os
+import posixpath
+import re
+import sys
+import tempfile
+import zipfile
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+from xml.etree import ElementTree as ET
 
-REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+
+NS = {
+    "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+    "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
+    "ct": "http://schemas.openxmlformats.org/package/2006/content-types",
+}
+for prefix in ("a", "p", "r"):
+    ET.register_namespace(prefix, NS[prefix])
+ET.register_namespace("", NS["rel"])
+
 OFF = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+CONTENT_TYPES = {
+    "master": "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml",
+    "layout": "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml",
+    "slide": "application/vnd.openxmlformats-officedocument.presentationml.slide+xml",
+    "theme": "application/vnd.openxmlformats-officedocument.theme+xml",
+    "tags": "application/vnd.openxmlformats-officedocument.presentationml.tags+xml",
+}
+MEDIA_TYPES = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "gif": "image/gif",
+    "svg": "image/svg+xml",
+    "emf": "image/x-emf",
+    "wmf": "image/x-wmf",
+}
 
 
-def read_zip(path):
-    parts = {}
-    with zipfile.ZipFile(path, "r") as z:
-        for i in z.infolist():
-            parts[i.filename] = z.read(i.filename)
-    return parts
+class MergeError(RuntimeError):
+    """Raised for a malformed or unsupported package graph."""
 
 
-def must(d, k):
-    if k not in d:
-        raise KeyError(f"missing part: {k}")
-    return d[k]
+@dataclass(frozen=True)
+class MergeResult:
+    output: Path
+    body_count: int
+    has_ending: bool
+    master_part: str
+    cover_layout_part: str
+    content_layout_part: str
+    ending_layout_part: str | None
 
 
-def parse_rels(rels_xml: str):
-    """Return list of (id, type_tail, target)."""
-    out = []
-    for m in re.finditer(
-        r'<Relationship\s+Id="([^"]*)"\s+Type="([^"]*)"\s+Target="([^"]*)"\s*/?>',
-        rels_xml,
-    ):
-        out.append((m.group(1), m.group(2).rsplit("/", 1)[-1], m.group(3)))
-    return out
+def qn(prefix: str, local: str) -> str:
+    return f"{{{NS[prefix]}}}{local}"
 
 
-def max_layout_index(parts):
-    ns = []
-    for k in parts:
-        m = re.match(r"ppt/slideLayouts/slideLayout(\d+)\.xml$", k)
-        if m:
-            ns.append(int(m.group(1)))
-    return max(ns) if ns else 0
+def xml_bytes(root: ET.Element) -> bytes:
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
-def max_rid(rels_xml: str):
-    ns = [int(x) for x in re.findall(r'Id="rId(\d+)"', rels_xml)]
-    return max(ns) if ns else 0
+def load_package(path: Path) -> dict[str, bytes]:
+    if not path.is_file():
+        raise MergeError(f"PPTX not found: {path}")
+    try:
+        with zipfile.ZipFile(path) as archive:
+            bad = archive.testzip()
+            if bad:
+                raise MergeError(f"corrupt ZIP member in {path}: {bad}")
+            return {
+                info.filename: archive.read(info.filename)
+                for info in archive.infolist()
+                if not info.is_dir()
+            }
+    except zipfile.BadZipFile as exc:
+        raise MergeError(f"invalid PPTX ZIP: {path}") from exc
 
 
-def max_sldid(pres_xml: str):
-    ns = [int(x) for x in re.findall(r'<p:sldId\s+id="(\d+)"', pres_xml)]
-    return max(ns) if ns else 256
+def require(parts: dict[str, bytes], name: str) -> bytes:
+    try:
+        return parts[name]
+    except KeyError as exc:
+        raise MergeError(f"missing part: {name}") from exc
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--content", required=True)
-    ap.add_argument("--template", required=True)
-    ap.add_argument("--cover", required=True)
-    ap.add_argument("--content-layout", type=int, default=2)
-    ap.add_argument(
-        "--ending-slide",
-        type=int,
-        default=None,
-        help="Template slide index to append as ending page (default: last slide)",
-    )
-    ap.add_argument(
-        "--no-ending",
-        action="store_true",
-        help="Do not append the template ending slide",
-    )
-    ap.add_argument("--output", required=True)
-    args = ap.parse_args()
+def rels_name(part: str) -> str:
+    path = PurePosixPath(part)
+    return str(path.parent / "_rels" / f"{path.name}.rels")
 
-    content = read_zip(args.content)
-    template = read_zip(args.template)
-    cover = read_zip(args.cover)
 
-    # --- locate the cover slide file inside cover.pptx (single slide) ---
-    cover_slide_files = sorted(
-        k for k in cover if re.match(r"ppt/slides/slide\d+\.xml$", k)
-    )
-    if not cover_slide_files:
-        raise SystemExit("cover pptx has no slide")
-    cover_slide_file = cover_slide_files[0]
-    cover_slide_rels = (
-        cover_slide_file.replace("ppt/slides/", "ppt/slides/_rels/") + ".rels"
-    )
+def resolve_target(source_part: str, target: str) -> str:
+    if target.startswith("/"):
+        return target.lstrip("/")
+    return posixpath.normpath(posixpath.join(posixpath.dirname(source_part), target))
 
-    # --- which template layout does the cover use? ---
-    cover_layout_n = None
-    if cover_slide_rels in cover:
-        for _id, _t, tgt in parse_rels(cover[cover_slide_rels].decode("utf-8")):
-            m = re.search(r"slideLayouts/slideLayout(\d+)\.xml", tgt)
-            if m:
-                cover_layout_n = int(m.group(1))
-                break
-    if cover_layout_n is None:
-        raise SystemExit("could not determine cover layout from cover slide rels")
-    content_layout_n = args.content_layout
-    print(
-        f"[info] cover layout: slideLayout{cover_layout_n} | "
-        f"content layout: slideLayout{content_layout_n}"
-    )
 
-    # --- new part names inside content ---
-    M = max_layout_index(content)
-    cover_layout_new = M + 1
-    content_layout_new = M + 2
-    master_new = "slideMaster2"
-    theme_new = "theme2"
-    print(
-        f"[info] inject: {master_new}, slideLayout{cover_layout_new} (cover), "
-        f"slideLayout{content_layout_new} (content), {theme_new}"
-    )
+def relative_target(source_part: str, target_part: str) -> str:
+    return posixpath.relpath(target_part, posixpath.dirname(source_part))
 
-    # --- parse template master rels: rId -> (type_tail, target) ---
-    m_rels = parse_rels(
-        must(template, "ppt/slideMasters/_rels/slideMaster1.xml.rels").decode("utf-8")
-    )
-    theme_rid = None
-    master_image_targets = []
-    layout_rid_to_n = {}
-    for rid, ttail, tgt in m_rels:
-        if ttail == "theme":
-            theme_rid = rid
-        elif ttail == "image":
-            master_image_targets.append(tgt)
-        elif ttail == "slideLayout":
-            mm = re.search(r"slideLayout(\d+)\.xml", tgt)
-            if mm:
-                layout_rid_to_n[rid] = int(mm.group(1))
-    keep_rids = {
-        rid
-        for rid, n in layout_rid_to_n.items()
-        if n in (cover_layout_n, content_layout_n)
-    }
-    keep_rids.add(theme_rid)
-    for rid, _t, _tg in m_rels:
-        if _t == "image":
-            keep_rids.add(rid)
 
-    # --- collect all images needed (master + 2 layouts) ---
-    needed_images = set(os.path.basename(t) for t in master_image_targets)
-    for lay_n in (cover_layout_n, content_layout_n):
-        lr = must(
-            template, f"ppt/slideLayouts/_rels/slideLayout{lay_n}.xml.rels"
-        ).decode("utf-8")
-        for _id, _t, tgt in parse_rels(lr):
-            if _t == "image":
-                needed_images.add(os.path.basename(tgt))
-    print(f"[info] background images: {sorted(needed_images)}")
+def relation_type(rel: ET.Element) -> str:
+    return rel.get("Type", "").rsplit("/", 1)[-1]
 
-    # === 1. master (trim sldLayoutIdLst to kept layout rIds) ===
-    m_xml = must(template, "ppt/slideMasters/slideMaster1.xml").decode("utf-8")
 
-    def keep_sldLayoutId(match):
-        inner = match.group(1)
-        kept = "".join(
-            e
-            for e in re.findall(r"<p:sldLayoutId[^>]*/>", inner)
-            if re.search(r'r:id="(rId\d+)"', e).group(1) in keep_rids
-        )
-        return f"<p:sldLayoutIdLst>{kept}</p:sldLayoutIdLst>"
+def parse_rels(parts: dict[str, bytes], part: str) -> ET.Element:
+    name = rels_name(part)
+    data = require(parts, name)
+    try:
+        return ET.fromstring(data)
+    except ET.ParseError as exc:
+        raise MergeError(f"invalid relationships XML: {name}: {exc}") from exc
 
-    m_xml = re.sub(
-        r"<p:sldLayoutIdLst>(.*?)</p:sldLayoutIdLst>",
-        keep_sldLayoutId,
-        m_xml,
-        count=1,
-        flags=re.S,
-    )
-    # also trim sldLayoutIdLst that may have explicit ids — keep verbatim entries that pass filter (already done)
-    content[f"ppt/slideMasters/{master_new}.xml"] = m_xml.encode("utf-8")
 
-    # master rels: kept rIds, rewire layout targets to new names + theme to theme_new
-    new_m_rels = [
-        f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
-        f'<Relationships xmlns="{REL_NS}">'
-    ]
-    for rid, ttail, tgt in m_rels:
-        if rid not in keep_rids:
+def max_index(parts: dict[str, bytes], pattern: str) -> int:
+    regex = re.compile(pattern)
+    values = [int(match.group(1)) for name in parts if (match := regex.fullmatch(name))]
+    return max(values, default=0)
+
+
+def allocate_indexed_part(parts: dict[str, bytes], directory: str, stem: str, suffix: str = ".xml") -> str:
+    pattern = rf"{re.escape(directory)}/{re.escape(stem)}(\d+){re.escape(suffix)}"
+    index = max_index(parts, pattern) + 1
+    while f"{directory}/{stem}{index}{suffix}" in parts:
+        index += 1
+    return f"{directory}/{stem}{index}{suffix}"
+
+
+def allocate_rid(root: ET.Element) -> str:
+    values = []
+    for rel in root:
+        match = re.fullmatch(r"rId(\d+)", rel.get("Id", ""))
+        if match:
+            values.append(int(match.group(1)))
+    return f"rId{max(values, default=0) + 1}"
+
+
+def add_relationship(root: ET.Element, rel_type: str, target: str, *, rid: str | None = None, external: bool = False) -> str:
+    rid = rid or allocate_rid(root)
+    if any(rel.get("Id") == rid for rel in root):
+        raise MergeError(f"duplicate relationship ID allocation: {rid}")
+    attrs = {"Id": rid, "Type": OFF + rel_type, "Target": target}
+    if external:
+        attrs["TargetMode"] = "External"
+    ET.SubElement(root, qn("rel", "Relationship"), attrs)
+    return rid
+
+
+def copy_collision_safe(
+    destination: dict[str, bytes],
+    source: dict[str, bytes],
+    source_part: str,
+    *,
+    preferred: str | None = None,
+) -> str:
+    payload = require(source, source_part)
+    candidate = preferred or source_part
+    if candidate not in destination:
+        destination[candidate] = payload
+        return candidate
+    if destination[candidate] == payload:
+        return candidate
+    path = PurePosixPath(candidate)
+    for index in range(2, 10000):
+        renamed = str(path.with_name(f"{path.stem}_ghb{index}{path.suffix}"))
+        if renamed not in destination:
+            destination[renamed] = payload
+            return renamed
+        if destination[renamed] == payload:
+            return renamed
+    raise MergeError(f"unable to allocate collision-safe part for {source_part}")
+
+
+def presentation_slide_parts(parts: dict[str, bytes]) -> list[str]:
+    pres = ET.fromstring(require(parts, "ppt/presentation.xml"))
+    rels = ET.fromstring(require(parts, "ppt/_rels/presentation.xml.rels"))
+    rel_map = {rel.get("Id"): rel for rel in rels}
+    output: list[str] = []
+    for slide_id in pres.findall(".//p:sldId", NS):
+        rid = slide_id.get(qn("r", "id"))
+        rel = rel_map.get(rid)
+        if rel is None or relation_type(rel) != "slide":
+            raise MergeError(f"presentation slide relationship missing: {rid}")
+        output.append(resolve_target("ppt/presentation.xml", rel.get("Target", "")))
+    return output
+
+
+def slide_layout_part(parts: dict[str, bytes], slide_part: str) -> str:
+    rels = parse_rels(parts, slide_part)
+    layouts = [rel for rel in rels if relation_type(rel) == "slideLayout"]
+    if len(layouts) != 1:
+        raise MergeError(f"{slide_part}: expected one slideLayout relationship, found {len(layouts)}")
+    return resolve_target(slide_part, layouts[0].get("Target", ""))
+
+
+def copy_media_relation(
+    destination: dict[str, bytes],
+    source: dict[str, bytes],
+    source_owner: str,
+    destination_owner: str,
+    rel: ET.Element,
+) -> None:
+    source_part = resolve_target(source_owner, rel.get("Target", ""))
+    preferred = f"ppt/media/{PurePosixPath(source_part).name}"
+    copied = copy_collision_safe(destination, source, source_part, preferred=preferred)
+    rel.set("Target", relative_target(destination_owner, copied))
+
+
+def copy_tag_relation(
+    destination: dict[str, bytes],
+    source: dict[str, bytes],
+    source_owner: str,
+    destination_owner: str,
+    rel: ET.Element,
+) -> str:
+    source_part = resolve_target(source_owner, rel.get("Target", ""))
+    preferred = f"ppt/tags/{PurePosixPath(source_part).name}"
+    copied = copy_collision_safe(destination, source, source_part, preferred=preferred)
+    rel.set("Target", relative_target(destination_owner, copied))
+    return copied
+
+
+def content_types_root(parts: dict[str, bytes]) -> ET.Element:
+    try:
+        return ET.fromstring(require(parts, "[Content_Types].xml"))
+    except ET.ParseError as exc:
+        raise MergeError(f"invalid [Content_Types].xml: {exc}") from exc
+
+
+def add_override(root: ET.Element, part: str, content_type: str) -> None:
+    part_name = "/" + part.lstrip("/")
+    matches = [node for node in root.findall(qn("ct", "Override")) if node.get("PartName") == part_name]
+    if matches:
+        if any(node.get("ContentType") != content_type for node in matches):
+            raise MergeError(f"conflicting content type for {part}")
+        for extra in matches[1:]:
+            root.remove(extra)
+        return
+    ET.SubElement(root, qn("ct", "Override"), {"PartName": part_name, "ContentType": content_type})
+
+
+def add_media_defaults(root: ET.Element, parts: dict[str, bytes]) -> None:
+    existing = {node.get("Extension", "").lower(): node for node in root.findall(qn("ct", "Default"))}
+    for name in parts:
+        if not name.startswith("ppt/media/") or "." not in name:
             continue
-        if ttail == "theme":
-            new_tgt = f"../theme/{theme_new}.xml"
-        elif ttail == "slideLayout":
-            n = layout_rid_to_n[rid]
-            new_n = cover_layout_new if n == cover_layout_n else content_layout_new
-            new_tgt = f"../slideLayouts/slideLayout{new_n}.xml"
-        else:  # image
-            new_tgt = tgt  # keep image path (we copy with same basename)
-        new_m_rels.append(
-            f'<Relationship Id="{rid}" Type="{OFF}{ttail}" Target="{new_tgt}"/>'
-        )
-    new_m_rels.append("</Relationships>")
-    content[f"ppt/slideMasters/_rels/{master_new}.xml.rels"] = "".join(
-        new_m_rels
-    ).encode("utf-8")
-
-    # === 2. cover + content layouts (verbatim; rels rewire master + keep images) ===
-    for lay_n, lay_new in (
-        (cover_layout_n, cover_layout_new),
-        (content_layout_n, content_layout_new),
-    ):
-        content[f"ppt/slideLayouts/slideLayout{lay_new}.xml"] = must(
-            template, f"ppt/slideLayouts/slideLayout{lay_n}.xml"
-        )
-        lr = must(
-            template, f"ppt/slideLayouts/_rels/slideLayout{lay_n}.xml.rels"
-        ).decode("utf-8")
-        lr = lr.replace("slideMaster1.xml", f"{master_new}.xml")
-        content[f"ppt/slideLayouts/_rels/slideLayout{lay_new}.xml.rels"] = lr.encode(
-            "utf-8"
-        )
-
-    # === 3. theme + images ===
-    content[f"ppt/theme/{theme_new}.xml"] = must(template, "ppt/theme/theme1.xml")
-    for img in needed_images:
-        content[f"ppt/media/{img}"] = must(template, f"ppt/media/{img}")
-
-    # === 4. cover slide -> slide{N+1}; keep tags rels, drop notesSlide, rewire layout ===
-    N = len([k for k in content if re.match(r"ppt/slides/slide\d+\.xml$", k)])
-    cover_new = N + 1
-    content[f"ppt/slides/slide{cover_new}.xml"] = must(cover, cover_slide_file)
-    new_c_rels = [
-        f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
-        f'<Relationships xmlns="{REL_NS}">'
-    ]
-    for _id, ttail, tgt in parse_rels(cover[cover_slide_rels].decode("utf-8")):
-        if ttail == "notesSlide":
-            continue  # drop cover notes (acceptable)
-        if ttail == "slideLayout":
-            new_tgt = f"../slideLayouts/slideLayout{cover_layout_new}.xml"
-        elif ttail == "tags":
-            # copy the tags part verbatim into content
-            tgt_basename = os.path.basename(tgt)
-            content[f"ppt/tags/{tgt_basename}"] = must(
-                cover, f"ppt/tags/{tgt_basename}"
-            )
-            new_tgt = f"../tags/{tgt_basename}"
-        else:
-            new_tgt = tgt
-        new_c_rels.append(
-            f'<Relationship Id="{_id}" Type="{OFF}{ttail}" Target="{new_tgt}"/>'
-        )
-    new_c_rels.append("</Relationships>")
-    content[f"ppt/slides/_rels/slide{cover_new}.xml.rels"] = "".join(new_c_rels).encode(
-        "utf-8"
-    )
-
-    # === 5. re-point every content slide's layout -> content_layout_new ===
-    repl = f'Target="../slideLayouts/slideLayout{content_layout_new}.xml"'
-    for k in list(content):
-        m = re.match(r"ppt/slides/_rels/slide(\d+)\.xml\.rels$", k)
-        if not m or int(m.group(1)) == cover_new:
+        ext = name.rsplit(".", 1)[-1].lower()
+        if ext in existing:
             continue
-        r = content[k].decode("utf-8")
-        r2 = re.sub(r'Target="\.\./slideLayouts/slideLayout\d+\.xml"', repl, r)
-        content[k] = r2.encode("utf-8")
+        content_type = MEDIA_TYPES.get(ext) or mimetypes.guess_type(f"x.{ext}")[0]
+        if not content_type:
+            raise MergeError(f"unknown media content type: {name}")
+        ET.SubElement(root, qn("ct", "Default"), {"Extension": ext, "ContentType": content_type})
+        existing[ext] = root[-1]
 
-    # === 5b. ending slide (致谢页): clone template's ending slide + its layout ===
-    has_ending = False
-    ending_new = None
-    ending_layout_new = M + 3
-    if not args.no_ending:
-        if args.ending_slide:
-            ending_slide_file = f"ppt/slides/slide{args.ending_slide}.xml"
+
+def verify_relationship_targets(parts: dict[str, bytes]) -> None:
+    problems: list[str] = []
+    for name, payload in parts.items():
+        if not name.endswith(".rels"):
+            continue
+        try:
+            root = ET.fromstring(payload)
+        except ET.ParseError as exc:
+            problems.append(f"{name}: invalid XML ({exc})")
+            continue
+        if "/_rels/" in name:
+            prefix, filename = name.split("/_rels/", 1)
+            owner = f"{prefix}/{filename[:-5]}"
+        elif name.startswith("_rels/"):
+            owner = name[len("_rels/") : -5]
         else:
-            end_files = sorted(
-                (k for k in template if re.match(r"ppt/slides/slide\d+\.xml$", k)),
-                key=lambda s: int(re.search(r"slide(\d+)\.xml", s).group(1)),
-            )
-            ending_slide_file = end_files[-1]
-        ending_slide_rels = (
-            ending_slide_file.replace("ppt/slides/", "ppt/slides/_rels/") + ".rels"
-        )
-        ending_layout_n = None
-        for _id, _t, tgt in parse_rels(template[ending_slide_rels].decode("utf-8")):
-            m = re.search(r"slideLayouts/slideLayout(\d+)\.xml", tgt)
-            if m:
-                ending_layout_n = int(m.group(1))
-                break
-        if ending_layout_n is None:
-            raise SystemExit("could not determine ending layout from ending slide rels")
-        # reuse an already-injected layout if the ending shares cover/content layout
-        if ending_layout_n == cover_layout_n:
-            ending_layout_new = cover_layout_new
-        elif ending_layout_n == content_layout_n:
-            ending_layout_new = content_layout_new
-        print(
-            f"[info] ending: slide {os.path.basename(ending_slide_file)} "
-            f"(layout {ending_layout_n} -> slideLayout{ending_layout_new})"
-        )
-        if ending_layout_new not in (cover_layout_new, content_layout_new):
-            content[f"ppt/slideLayouts/slideLayout{ending_layout_new}.xml"] = must(
-                template, f"ppt/slideLayouts/slideLayout{ending_layout_n}.xml"
-            )
-            elr = must(
-                template,
-                f"ppt/slideLayouts/_rels/slideLayout{ending_layout_n}.xml.rels",
-            ).decode("utf-8")
-            elr = elr.replace("slideMaster1.xml", f"{master_new}.xml")
-            content[
-                f"ppt/slideLayouts/_rels/slideLayout{ending_layout_new}.xml.rels"
-            ] = elr.encode("utf-8")
-            for _id, _t, tgt in parse_rels(elr):
-                if _t == "image":
-                    needed_images.add(os.path.basename(tgt))
-        # clone ending slide as slide{N+2}
-        ending_new = N + 2
-        content[f"ppt/slides/slide{ending_new}.xml"] = must(template, ending_slide_file)
-        new_e_rels = [
-            f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
-            f'<Relationships xmlns="{REL_NS}">'
-        ]
-        for _id, ttail, tgt in parse_rels(template[ending_slide_rels].decode("utf-8")):
-            if ttail == "notesSlide":
+            continue
+        ids = [rel.get("Id", "") for rel in root]
+        for rid in sorted({rid for rid in ids if ids.count(rid) > 1}):
+            problems.append(f"{name}: duplicate {rid}")
+        for rel in root:
+            if rel.get("TargetMode") == "External":
                 continue
-            if ttail == "slideLayout":
-                new_tgt = f"../slideLayouts/slideLayout{ending_layout_new}.xml"
-            elif ttail == "image":
-                needed_images.add(os.path.basename(tgt))
-                new_tgt = tgt
-            elif ttail == "tags":
-                tgt_basename = os.path.basename(tgt)
-                content[f"ppt/tags/{tgt_basename}"] = must(
-                    template, f"ppt/tags/{tgt_basename}"
-                )
-                new_tgt = f"../tags/{tgt_basename}"
+            target = resolve_target(owner, rel.get("Target", ""))
+            if target not in parts:
+                problems.append(f"{name}: {rel.get('Id')} -> missing {target}")
+    if problems:
+        raise MergeError("relationship validation failed:\n  - " + "\n  - ".join(problems))
+
+
+def merge_pptx(
+    *,
+    content_path: Path,
+    template_path: Path,
+    cover_path: Path,
+    output_path: Path,
+    content_layout_index: int = 2,
+    ending_slide_index: int | None = None,
+    no_ending: bool = False,
+) -> MergeResult:
+    content = load_package(content_path)
+    template = load_package(template_path)
+    cover = load_package(cover_path)
+
+    body_slides = presentation_slide_parts(content)
+    if not body_slides:
+        raise MergeError("content PPTX has no slides")
+    cover_slides = presentation_slide_parts(cover)
+    if not cover_slides:
+        raise MergeError("cover PPTX has no slides")
+    cover_source_slide = cover_slides[0]
+    cover_source_layout = slide_layout_part(cover, cover_source_slide)
+    template_content_layout = f"ppt/slideLayouts/slideLayout{content_layout_index}.xml"
+    require(template, template_content_layout)
+
+    template_slides = presentation_slide_parts(template)
+    ending_source_slide: str | None = None
+    ending_source_layout: str | None = None
+    if not no_ending:
+        index = ending_slide_index or len(template_slides)
+        if index < 1 or index > len(template_slides):
+            raise MergeError(f"ending slide index out of range: {index} (template has {len(template_slides)})")
+        ending_source_slide = template_slides[index - 1]
+        ending_source_layout = slide_layout_part(template, ending_source_slide)
+
+    template_master = slide_layout_part(template, template_slides[0])
+    # slide_layout_part returns a layout; follow it to its master.
+    template_master_rels = parse_rels(template, template_master)
+    master_rel = next((rel for rel in template_master_rels if relation_type(rel) == "slideMaster"), None)
+    if master_rel is None:
+        raise MergeError(f"template layout has no slideMaster relationship: {template_master}")
+    template_master = resolve_target(template_master, master_rel.get("Target", ""))
+
+    master_part = allocate_indexed_part(content, "ppt/slideMasters", "slideMaster")
+    selected_layouts: list[str] = []
+    for part in (cover_source_layout, template_content_layout, ending_source_layout):
+        if part and part not in selected_layouts:
+            selected_layouts.append(part)
+    layout_map: dict[str, str] = {}
+    for source_layout in selected_layouts:
+        destination_layout = allocate_indexed_part(content, "ppt/slideLayouts", "slideLayout")
+        content[destination_layout] = require(template if source_layout in template else cover, source_layout)
+        layout_map[source_layout] = destination_layout
+
+    # Copy and rewire selected layout relationship parts.
+    copied_tags: set[str] = set()
+    for source_layout, destination_layout in layout_map.items():
+        source_package = template if source_layout in template else cover
+        rels = parse_rels(source_package, source_layout)
+        for rel in list(rels):
+            kind = relation_type(rel)
+            if kind == "slideMaster":
+                rel.set("Target", relative_target(destination_layout, master_part))
+            elif kind == "image":
+                copy_media_relation(content, source_package, source_layout, destination_layout, rel)
+            elif rel.get("TargetMode") == "External":
+                continue
             else:
-                new_tgt = tgt
-            new_e_rels.append(
-                f'<Relationship Id="{_id}" Type="{OFF}{ttail}" Target="{new_tgt}"/>'
-            )
-        new_e_rels.append("</Relationships>")
-        content[f"ppt/slides/_rels/slide{ending_new}.xml.rels"] = "".join(
-            new_e_rels
-        ).encode("utf-8")
-        has_ending = True
+                raise MergeError(f"unsupported layout relationship {kind}: {source_layout}")
+        content[rels_name(destination_layout)] = xml_bytes(rels)
 
-    # copy any images newly needed by the ending layout/slide
-    for img in needed_images:
-        if f"ppt/media/{img}" not in content:
-            content[f"ppt/media/{img}"] = must(template, f"ppt/media/{img}")
+    # Copy master XML, retain only selected layout IDs, and rewire its rels.
+    master_xml = ET.fromstring(require(template, template_master))
+    master_rels = parse_rels(template, template_master)
+    layout_rel_map: dict[str, str] = {}
+    theme_part: str | None = None
+    for rel in list(master_rels):
+        kind = relation_type(rel)
+        if kind == "slideLayout":
+            source_target = resolve_target(template_master, rel.get("Target", ""))
+            if source_target not in layout_map:
+                master_rels.remove(rel)
+                continue
+            rel.set("Target", relative_target(master_part, layout_map[source_target]))
+            layout_rel_map[rel.get("Id", "")] = source_target
+        elif kind == "theme":
+            source_target = resolve_target(template_master, rel.get("Target", ""))
+            theme_part = allocate_indexed_part(content, "ppt/theme", "theme")
+            content[theme_part] = require(template, source_target)
+            rel.set("Target", relative_target(master_part, theme_part))
+        elif kind == "image":
+            copy_media_relation(content, template, template_master, master_part, rel)
+        elif rel.get("TargetMode") == "External":
+            continue
+        else:
+            raise MergeError(f"unsupported master relationship {kind}: {template_master}")
+    if theme_part is None:
+        raise MergeError("template master has no theme relationship")
 
-    # === 6. presentation.xml: add master + prepend cover slide (+ append ending) ===
-    pres = must(content, "ppt/presentation.xml").decode("utf-8")
-    pres_rels = must(content, "ppt/_rels/presentation.xml.rels").decode("utf-8")
-    rmaster = max_rid(pres_rels) + 1
-    rslide = rmaster + 1
-    sldid = max_sldid(pres) + 1
-    pres = pres.replace(
-        "<p:sldMasterIdLst>",
-        f'<p:sldMasterIdLst><p:sldMasterId id="2147483649" r:id="rId{rmaster}"/>',
-        1,
-    )
-    pres = pres.replace(
-        "<p:sldIdLst>", f'<p:sldIdLst><p:sldId id="{sldid}" r:id="rId{rslide}"/>', 1
-    )
-    add = (
-        f'<Relationship Id="rId{rmaster}" Type="{OFF}slideMaster" '
-        f'Target="slideMasters/{master_new}.xml"/>'
-        f'<Relationship Id="rId{rslide}" Type="{OFF}slide" '
-        f'Target="slides/slide{cover_new}.xml"/>'
-    )
-    if has_ending:
-        rending = rslide + 1
-        ending_sldid = sldid + 1
-        pres = pres.replace(
-            "</p:sldIdLst>",
-            f'<p:sldId id="{ending_sldid}" r:id="rId{rending}"/></p:sldIdLst>',
-            1,
-        )
-        add += (
-            f'<Relationship Id="rId{rending}" Type="{OFF}slide" '
-            f'Target="slides/slide{ending_new}.xml"/>'
-        )
-    content["ppt/presentation.xml"] = pres.encode("utf-8")
-    pres_rels = pres_rels.replace("</Relationships>", add + "</Relationships>")
-    content["ppt/_rels/presentation.xml.rels"] = pres_rels.encode("utf-8")
+    layout_id_list = master_xml.find("p:sldLayoutIdLst", NS)
+    if layout_id_list is None:
+        raise MergeError("template master has no sldLayoutIdLst")
+    for node in list(layout_id_list):
+        if node.get(qn("r", "id")) not in layout_rel_map:
+            layout_id_list.remove(node)
+    registered = {node.get(qn("r", "id")) for node in layout_id_list}
+    if registered != set(layout_rel_map):
+        raise MergeError("master layout ID list does not match selected layout relationships")
+    content[master_part] = xml_bytes(master_xml)
+    content[rels_name(master_part)] = xml_bytes(master_rels)
 
-    # === 7. [Content_Types].xml ===
-    ct = must(content, "[Content_Types].xml").decode("utf-8")
-    if 'Extension="png"' not in ct:
-        ct = re.sub(
-            r"(<(?:\w+:)?Types\b[^>]*>)",
-            r'\1<Default Extension="png" ContentType="image/png"/>',
-            ct,
-            count=1,
-        )
-    ov = (
-        f'<Override PartName="/ppt/slideMasters/{master_new}.xml" '
-        f'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>'
-        f'<Override PartName="/ppt/slideLayouts/slideLayout{cover_layout_new}.xml" '
-        f'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>'
-        f'<Override PartName="/ppt/slideLayouts/slideLayout{content_layout_new}.xml" '
-        f'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>'
-        f'<Override PartName="/ppt/theme/{theme_new}.xml" '
-        f'ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>'
-        f'<Override PartName="/ppt/slides/slide{cover_new}.xml" '
-        f'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>'
-    )
-    if has_ending:
-        if ending_layout_new not in (cover_layout_new, content_layout_new):
-            ov += (
-                f'<Override PartName="/ppt/slideLayouts/slideLayout{ending_layout_new}.xml" '
-                f'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>'
-            )
-        ov += (
-            f'<Override PartName="/ppt/slides/slide{ending_new}.xml" '
-            f'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>'
-        )
-    # tags overrides for any tags parts we copied
-    for k in content:
-        m = re.match(r"ppt/tags/(.+\.xml)$", k)
-        if m and f"/ppt/tags/{m.group(1)}" not in ct:
-            ov += (
-                f'<Override PartName="/ppt/tags/{m.group(1)}" '
-                f'ContentType="application/vnd.openxmlformats-officedocument.presentationml.tags+xml"/>'
-            )
-    if "</ns0:Types>" in ct:
-        ct = ct.replace("</ns0:Types>", ov + "</ns0:Types>")
-    else:
-        ct = ct.replace("</Types>", ov + "</Types>")
-    content["[Content_Types].xml"] = ct.encode("utf-8")
+    def clone_slide(source_package: dict[str, bytes], source_slide: str, layout_part: str) -> tuple[str, set[str]]:
+        destination_slide = allocate_indexed_part(content, "ppt/slides", "slide")
+        content[destination_slide] = require(source_package, source_slide)
+        rels = parse_rels(source_package, source_slide)
+        slide_tags: set[str] = set()
+        for rel in list(rels):
+            kind = relation_type(rel)
+            if kind == "notesSlide":
+                rels.remove(rel)
+            elif kind == "slideLayout":
+                rel.set("Target", relative_target(destination_slide, layout_part))
+            elif kind == "image":
+                copy_media_relation(content, source_package, source_slide, destination_slide, rel)
+            elif kind == "tags":
+                slide_tags.add(copy_tag_relation(content, source_package, source_slide, destination_slide, rel))
+            elif rel.get("TargetMode") == "External":
+                continue
+            else:
+                raise MergeError(f"unsupported slide relationship {kind}: {source_slide}")
+        content[rels_name(destination_slide)] = xml_bytes(rels)
+        return destination_slide, slide_tags
 
-    # === 8. write ===
-    if os.path.exists(args.output):
-        os.remove(args.output)
-    with zipfile.ZipFile(args.output, "w", zipfile.ZIP_DEFLATED) as z:
-        for name, data in content.items():
-            z.writestr(name, data)
-    total = N + 1 + (1 if has_ending else 0)
-    print(f"[OK] -> {args.output}")
+    cover_slide, tags = clone_slide(cover, cover_source_slide, layout_map[cover_source_layout])
+    copied_tags.update(tags)
+    ending_slide: str | None = None
+    if ending_source_slide and ending_source_layout:
+        ending_slide, tags = clone_slide(template, ending_source_slide, layout_map[ending_source_layout])
+        copied_tags.update(tags)
+
+    # Repoint every original body slide to the injected content layout.
+    for body_slide in body_slides:
+        rels = parse_rels(content, body_slide)
+        layouts = [rel for rel in rels if relation_type(rel) == "slideLayout"]
+        if len(layouts) != 1:
+            raise MergeError(f"{body_slide}: expected one layout relationship")
+        layouts[0].set("Target", relative_target(body_slide, layout_map[template_content_layout]))
+        content[rels_name(body_slide)] = xml_bytes(rels)
+
+    # Add the master and cover/ending slides to the presentation graph.
+    pres = ET.fromstring(require(content, "ppt/presentation.xml"))
+    pres_rels = ET.fromstring(require(content, "ppt/_rels/presentation.xml.rels"))
+    master_list = pres.find("p:sldMasterIdLst", NS)
+    slide_list = pres.find("p:sldIdLst", NS)
+    if master_list is None or slide_list is None:
+        raise MergeError("content presentation is missing master or slide ID list")
+    master_ids = [int(node.get("id", "0")) for node in master_list]
+    slide_ids = [int(node.get("id", "0")) for node in slide_list]
+    master_rid = add_relationship(pres_rels, "slideMaster", relative_target("ppt/presentation.xml", master_part))
+    ET.SubElement(
+        master_list,
+        qn("p", "sldMasterId"),
+        {"id": str(max(master_ids, default=2147483647) + 1), qn("r", "id"): master_rid},
+    )
+    next_slide_id = max(slide_ids, default=255) + 1
+    cover_rid = add_relationship(pres_rels, "slide", relative_target("ppt/presentation.xml", cover_slide))
+    cover_id_node = ET.Element(qn("p", "sldId"), {"id": str(next_slide_id), qn("r", "id"): cover_rid})
+    slide_list.insert(0, cover_id_node)
+    if ending_slide:
+        ending_rid = add_relationship(pres_rels, "slide", relative_target("ppt/presentation.xml", ending_slide))
+        ET.SubElement(
+            slide_list,
+            qn("p", "sldId"),
+            {"id": str(next_slide_id + 1), qn("r", "id"): ending_rid},
+        )
+    content["ppt/presentation.xml"] = xml_bytes(pres)
+    content["ppt/_rels/presentation.xml.rels"] = xml_bytes(pres_rels)
+
+    ct = content_types_root(content)
+    add_override(ct, master_part, CONTENT_TYPES["master"])
+    add_override(ct, theme_part, CONTENT_TYPES["theme"])
+    for layout in layout_map.values():
+        add_override(ct, layout, CONTENT_TYPES["layout"])
+    add_override(ct, cover_slide, CONTENT_TYPES["slide"])
+    if ending_slide:
+        add_override(ct, ending_slide, CONTENT_TYPES["slide"])
+    for tag in copied_tags:
+        add_override(ct, tag, CONTENT_TYPES["tags"])
+    add_media_defaults(ct, content)
+    content["[Content_Types].xml"] = xml_bytes(ct)
+
+    verify_relationship_targets(content)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{output_path.name}.", suffix=".tmp", dir=output_path.parent)
+    os.close(fd)
+    temp_path = Path(temp_name)
+    try:
+        with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            for name, payload in content.items():
+                archive.writestr(name, payload)
+        with zipfile.ZipFile(temp_path) as archive:
+            bad = archive.testzip()
+            if bad:
+                raise MergeError(f"merged package contains corrupt member: {bad}")
+        os.replace(temp_path, output_path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+    return MergeResult(
+        output=output_path,
+        body_count=len(body_slides),
+        has_ending=ending_slide is not None,
+        master_part=master_part,
+        cover_layout_part=layout_map[cover_source_layout],
+        content_layout_part=layout_map[template_content_layout],
+        ending_layout_part=layout_map.get(ending_source_layout) if ending_source_layout else None,
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--content", type=Path, required=True)
+    parser.add_argument("--template", type=Path, required=True)
+    parser.add_argument("--cover", type=Path, required=True)
+    parser.add_argument("--content-layout", type=int, default=2)
+    parser.add_argument("--ending-slide", type=int)
+    parser.add_argument("--no-ending", action="store_true")
+    parser.add_argument("--output", type=Path, required=True)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        result = merge_pptx(
+            content_path=args.content,
+            template_path=args.template,
+            cover_path=args.cover,
+            output_path=args.output,
+            content_layout_index=args.content_layout,
+            ending_slide_index=args.ending_slide,
+            no_ending=args.no_ending,
+        )
+    except (OSError, ET.ParseError, MergeError) as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 1
+    print(f"[OK] -> {result.output}")
     print(
-        f"     slides: {total} (1 cover + {N} content"
-        f"{' + 1 ending' if has_ending else ''}) | all on template master"
+        f"     slides: {result.body_count + 1 + int(result.has_ending)} "
+        f"(1 cover + {result.body_count} content"
+        f"{' + 1 ending' if result.has_ending else ''}) | all on template master"
     )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
