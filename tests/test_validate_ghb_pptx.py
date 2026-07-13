@@ -125,6 +125,33 @@ class ValidateGhbPptxTest(unittest.TestCase):
             self.assertFalse(report.passed)
             self.assertTrue(any(issue.code == "full-slide-image-body" for issue in report.errors))
 
+    def test_missing_planned_body_item_is_rejected_even_when_title_exists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1)
+            plan = directory / "layout_plan.json"
+            plan.write_text(
+                json.dumps(
+                    [
+                        {
+                            "slide": 1,
+                            "key_message": "Body 1 可编辑正文",
+                            "items": ["必须出现的卡片标签"],
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=True,
+                layout_plan_path=plan,
+            )
+            self.assertFalse(report.passed)
+            self.assertTrue(any(issue.code == "missing-planned-item" for issue in report.errors))
+
     def test_cli_writes_json_and_markdown_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
@@ -143,6 +170,35 @@ class ValidateGhbPptxTest(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertTrue(json.loads(json_path.read_text(encoding="utf-8"))["passed"])
             self.assertIn("Per-slide object summary", markdown_path.read_text(encoding="utf-8"))
+
+    def test_readback_markdown_is_required_when_requested(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1)
+            missing = directory / "missing-readback.md"
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=True,
+                readback_markdown_path=missing,
+            )
+            self.assertFalse(report.passed)
+            self.assertTrue(any(issue.code == "missing-ppt-readback" for issue in report.errors))
+
+    def test_readback_markdown_page_count_is_verified(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1)
+            readback = directory / "readback.md"
+            readback.write_text("# final\n\n## Slide 1\n\ncover only\n", encoding="utf-8")
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=True,
+                readback_markdown_path=readback,
+            )
+            self.assertFalse(report.passed)
+            self.assertTrue(any(issue.code == "ppt-readback-page-count" for issue in report.errors))
 
 
 if __name__ == "__main__":

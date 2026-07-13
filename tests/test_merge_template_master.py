@@ -172,6 +172,11 @@ class MergeTemplateMasterTest(unittest.TestCase):
                 names = archive.namelist()
                 self.assertEqual(len(names), len(set(names)))
             parts = package(output)
+            self.assertIn(
+                b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+                parts["[Content_Types].xml"],
+            )
+            self.assertNotIn(b"ns0:Types", parts["[Content_Types].xml"])
             presentation = ET.fromstring(parts["ppt/presentation.xml"])
             slide_ids = [node.get("id") for node in presentation.findall(".//p:sldId", NS)]
             self.assertEqual(len(slide_ids), len(set(slide_ids)))

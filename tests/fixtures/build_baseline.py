@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import posixpath
 import re
 import shutil
@@ -16,6 +17,13 @@ from xml.etree import ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.ppt_master.svg_layouts import LayoutSpec, render_layout  # noqa: E402
+from scripts.validate_project_contract import confirmation_digest  # noqa: E402
+
+
 SCENARIOS = Path(__file__).with_name("scenarios.json")
 TEMPLATE = ROOT / "templates" / "GHB_PPT_模板.pptx"
 PM = ROOT / "scripts" / "ppt_master"
@@ -32,6 +40,7 @@ def run(command: list[str], log: list[dict[str, object]]) -> None:
     completed = subprocess.run(
         command,
         cwd=ROOT,
+        env={**os.environ, "GHB_PPT_TEST_FIXTURE": "1"},
         text=True,
         capture_output=True,
         encoding="utf-8",
@@ -69,12 +78,21 @@ def write_project(case_dir: Path, scenario: dict[str, object], slides: list[dict
     plan: list[dict[str, object]] = []
     notes: list[str] = []
     total = len(slides)
+    claims: list[dict[str, object]] = []
     for index, slide in enumerate(slides, 1):
         title = str(slide["key_message"])
         items = [str(item) for item in slide["items"]]
         source_lines.extend([f"## {index}. {title}", "", *[f"- {item}" for item in items], ""])
-        plan.append(
+        claim_id = f"claim-{index:02d}"
+        claims.append(
             {
+                "id": claim_id,
+                "statement": title,
+                "must_include": True,
+                "source_reference": f"source.md#{index}",
+            }
+        )
+        plan_row = {
                 "slide": index,
                 "slide_id": f"body-{index:02d}",
                 "purpose": slide["purpose"],
@@ -93,8 +111,20 @@ def write_project(case_dir: Path, scenario: dict[str, object], slides: list[dict
                 "items": items,
                 "reason": f"{slide['visual_encoding']} 与本页信息关系匹配",
                 "alternatives": ["timeline", "layered_arch"],
+                "claim_ids": [claim_id],
             }
-        )
+        layout_type = str(slide["layout_type"])
+        if layout_type == "timeline":
+            plan_row["order_signal"] = "fixture slide sequence"
+        elif layout_type == "matrix":
+            plan_row["axes"] = {"x": "value", "y": "complexity"}
+        elif layout_type == "swimlane":
+            plan_row["owners"] = items[:2] if len(items) >= 2 else ["owner-a", "owner-b"]
+        elif layout_type == "flywheel":
+            plan_row["loop_closure"] = "last step reinforces the first"
+        elif layout_type == "comparison":
+            plan_row["comparison_criteria"] = ["scope"]
+        plan.append(plan_row)
         notes.extend([f"# {index:02d}_{slide['layout_type']}", f"说明：{title}", "", "---", ""])
         write_svg(case_dir / "svg_output" / f"{index:02d}_{slide['layout_type']}.svg", index, total, slide)
 
@@ -107,40 +137,78 @@ def write_project(case_dir: Path, scenario: dict[str, object], slides: list[dict
         f"# Design Spec\n\nAudience: {scenario['audience']}\n\nOffline fixture: true\n",
         encoding="utf-8",
     )
+    (case_dir / "spec_lock.md").write_text(
+        "canvas: 1280x720\nmode: fixture\ncolors: GHB\ntypography: Office-safe\n",
+        encoding="utf-8",
+    )
+    (case_dir / "content_model.json").write_text(
+        json.dumps({"schema": "ghb.content-model.v1", "claims": claims}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    confirmation = {
+                "schema": "ghb.confirmation.v1",
+                "status": "confirmed",
+                "confirmation_source": "fixture",
+                "confirmed_at": "2026-07-13T00:00:00Z",
+                "decisions": {
+                    "audience": scenario["audience"],
+                    "page_range": f"{total} body slides",
+                    "mode": "instructional",
+                    "outline": [
+                        {"title": str(slide["key_message"]), "rhythm": str(slide["density"])}
+                        for slide in slides
+                    ],
+                    "content_tradeoffs": {"expand": [], "omit": [], "combine": []},
+                    "visual_assets": {"image_source": "none", "icon_set": "none"},
+                },
+            }
+    confirmation["decision_digest"] = confirmation_digest(confirmation["decisions"])
+    (case_dir / "confirmation.json").write_text(
+        json.dumps(
+            confirmation,
+            ensure_ascii=False,
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
     (case_dir / "notes" / "total.md").write_text("\n".join(notes), encoding="utf-8")
 
 
 def write_svg(path: Path, index: int, total: int, slide: dict[str, object]) -> None:
     title = xml_text(str(slide["key_message"]))
-    layout = xml_text(str(slide["layout_type"]))
     items = [str(item) for item in slide["items"]]
-    box_count = max(len(items), 1)
-    gap = 16
-    width = (1080 - gap * (box_count - 1)) / box_count
-    item_xml: list[str] = []
-    for item_index, item in enumerate(items):
-        x = 100 + item_index * (width + gap)
-        fill = "#AB1F29" if item_index == box_count - 1 else "#F6F6F7"
-        text_fill = "#FFFFFF" if item_index == box_count - 1 else "#2B2B2B"
-        item_xml.append(
-            f'<rect x="{x:.1f}" y="300" width="{width:.1f}" height="150" rx="10" '
-            f'fill="{fill}" stroke="#E0E0E0" stroke-width="1"/>'
-        )
+    content_xml = render_layout(
+        LayoutSpec(str(slide["layout_type"]), items, x=100, y=240, width=1080, height=390)
+    )
     if slide.get("use_icon"):
-        item_xml.append(
+        content_xml += (
             '<use id="fixture-icon" data-icon="tabler-outline/target" '
             'x="1110" y="220" width="40" height="40" fill="#AB1F29"/>'
         )
-        item_xml.append(
-            f'<text x="{x + width / 2:.1f}" y="382" text-anchor="middle" font-size="18" '
-            f'font-family="Microsoft YaHei, Arial, sans-serif" fill="{text_fill}">{xml_text(item)}</text>'
+    raw_title = str(slide["key_message"])
+    if len(raw_title) > 42:
+        target = len(raw_title) // 2
+        breakpoints = [position for position, char in enumerate(raw_title) if char in " ，、；|/"]
+        split_at = min(breakpoints, key=lambda position: abs(position - target)) if breakpoints else target
+        first_title = xml_text(raw_title[: split_at + 1].strip())
+        second_title = xml_text(raw_title[split_at + 1 :].strip())
+        header_text = (
+            f'<text x="108" y="148" font-size="22" font-weight="bold" '
+            f'font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">{first_title}</text>'
+            f'<text x="108" y="180" font-size="22" font-weight="bold" '
+            f'font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">{second_title}</text>'
+        )
+    else:
+        header_text = (
+            f'<text x="108" y="162" font-size="30" font-weight="bold" '
+            f'font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">{title}</text>'
         )
     path.write_text(
         f'''<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
   <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
   <g id="bg-surface"><rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0"/></g>
-  <g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/><text x="108" y="162" font-size="30" font-weight="bold" font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">{title}</text></g>
-  <g id="content" data-layout="{layout}">{''.join(item_xml)}</g>
+  <g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/>{header_text}</g>
+  {content_xml}
   <g id="footer"><text x="1192" y="696" text-anchor="end" font-size="13" font-family="Microsoft YaHei, Arial, sans-serif" fill="#999999">{index:02d} / {total:02d}</text></g>
 </svg>\n''',
         encoding="utf-8",
@@ -180,6 +248,32 @@ def make_cover(case_dir: Path, scenario: dict[str, object], log: list[dict[str, 
     shutil.move(candidates[-1], requested)
     run([sys.executable, str(ROOT / "scripts" / "fix_cover_font.py"), str(requested)], log)
     return requested
+
+
+def write_cover_plan_only(case_dir: Path, scenario: dict[str, object]) -> Path:
+    plan = case_dir / "analysis" / "cover_fill_plan.json"
+    plan.write_text(
+        json.dumps(
+            {
+                "schema": "template_fill_pptx_plan.v1",
+                "slides": [
+                    {
+                        "source_slide": 1,
+                        "purpose": "封面",
+                        "replacements": [
+                            {"slot_id": "s01_sh8", "text": scenario["title"]},
+                            {"slot_id": "s01_sh6", "text": scenario["subtitle"]},
+                            {"slot_id": "s01_sh4", "text": scenario["date"]},
+                        ],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
+    return plan
 
 
 def remove_backgrounds(case_dir: Path) -> None:
@@ -290,6 +384,45 @@ def build_case(output_root: Path, name: str, scenario: dict[str, object], slides
     )
 
 
+def build_case_unified(
+    output_root: Path,
+    name: str,
+    scenario: dict[str, object],
+    slides: list[dict[str, object]],
+    merge_args: list[str],
+    *,
+    no_render: bool = False,
+) -> None:
+    case_dir = output_root / name
+    if case_dir.exists():
+        raise FileExistsError(f"baseline output already exists: {case_dir}")
+    log: list[dict[str, object]] = []
+    write_project(case_dir, scenario, slides)
+    plan = write_cover_plan_only(case_dir, scenario)
+    shutil.copytree(case_dir / "svg_output", case_dir / "svg_output_original")
+    command = [
+        sys.executable,
+        str(ROOT / "scripts" / "ghb_ppt.py"),
+        "build",
+        "--project", str(case_dir),
+        "--cover-plan", str(plan),
+        "--output", str(case_dir / "exports" / "final.pptx"),
+        "--render-dpi", "96",
+        *(["--no-render"] if no_render else []),
+        *merge_args,
+    ]
+    run(command, log)
+    summary = summarize_pptx(case_dir / "exports" / "final.pptx")
+    (case_dir / "ooxml-summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (case_dir / "commands.json").write_text(
+        json.dumps(log, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -301,6 +434,23 @@ def main() -> int:
         "--append-icon-case",
         action="store_true",
         help="Append only the D icon/media regression case to an existing baseline root.",
+    )
+    parser.add_argument(
+        "--pipeline",
+        choices=("existing", "unified"),
+        default="existing",
+        help="Use the original manual sequence or the optimized unified CLI.",
+    )
+    parser.add_argument(
+        "--case",
+        action="append",
+        dest="cases",
+        help="Build only the named case (repeatable); default builds all nine cases.",
+    )
+    parser.add_argument(
+        "--no-render",
+        action="store_true",
+        help="Skip LibreOffice rendering when using the unified pipeline (for headless CI).",
     )
     args = parser.parse_args()
     if args.append_icon_case:
@@ -317,20 +467,45 @@ def main() -> int:
         return 2
     args.output.mkdir(parents=True)
     scenarios = json.loads(SCENARIOS.read_text(encoding="utf-8"))
-    build_case(args.output, "A_technical_sharing", scenarios["technical_sharing"], scenarios["technical_sharing"]["slides"], [])
-    build_case(args.output, "B_management_plan", scenarios["management_plan"], scenarios["management_plan"]["slides"], [])
-    build_case(args.output, "C_layout_stress", scenarios["layout_stress"], scenarios["layout_stress"]["slides"], [])
-
     d_source = scenarios["technical_sharing"]
     d_slides = d_source["slides"]
+    cases: list[tuple[str, dict[str, object], list[dict[str, object]], list[str]]] = [
+        ("A_technical_sharing", scenarios["technical_sharing"], scenarios["technical_sharing"]["slides"], []),
+        ("B_management_plan", scenarios["management_plan"], scenarios["management_plan"]["slides"], []),
+        ("C_layout_stress", scenarios["layout_stress"], scenarios["layout_stress"]["slides"], []),
+    ]
     for count in (1, 3, 10):
         expanded = [dict(d_slides[index % len(d_slides)]) for index in range(count)]
-        build_case(args.output, f"D_{count:02d}_body_default_ending", d_source, expanded, [])
-    build_case(args.output, "D_03_body_no_ending", d_source, d_slides[:3], ["--no-ending"])
-    build_case(args.output, "D_03_body_explicit_ending", d_source, d_slides[:3], ["--ending-slide", "4"])
+        cases.append((f"D_{count:02d}_body_default_ending", d_source, expanded, []))
+    cases.extend(
+        [
+            ("D_03_body_no_ending", d_source, d_slides[:3], ["--no-ending"]),
+            ("D_03_body_explicit_ending", d_source, d_slides[:3], ["--ending-slide", "4"]),
+        ]
+    )
     icon_slides = [dict(slide) for slide in d_slides[:3]]
     icon_slides[0]["use_icon"] = True
-    build_case(args.output, "D_03_body_with_icon", d_source, icon_slides, [])
+    cases.append(("D_03_body_with_icon", d_source, icon_slides, []))
+
+    known_cases = {name for name, _scenario, _slides, _merge_args in cases}
+    requested_cases = set(args.cases or known_cases)
+    unknown = sorted(requested_cases - known_cases)
+    if unknown:
+        parser.error(f"unknown case(s): {', '.join(unknown)}")
+    for name, scenario, slides, merge_args in cases:
+        if name not in requested_cases:
+            continue
+        if args.pipeline == "unified":
+            build_case_unified(
+                args.output,
+                name,
+                scenario,
+                slides,
+                merge_args,
+                no_render=args.no_render,
+            )
+        else:
+            build_case(args.output, name, scenario, slides, merge_args)
 
     print(f"Baseline written to {args.output}")
     return 0
