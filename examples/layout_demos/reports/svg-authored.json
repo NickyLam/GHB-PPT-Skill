@@ -1,0 +1,57 @@
+{
+  "passed": true,
+  "stage": "authored",
+  "svg_dir": "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/layout_demos/svg_output",
+  "files": [
+    {
+      "file": "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/layout_demos/svg_output/01_funnel.svg",
+      "layout": "funnel",
+      "text_chars": 26,
+      "text_elements": 4,
+      "svg_quality_errors": [],
+      "svg_quality_warnings": [],
+      "visual_errors": [],
+      "visual_warnings": []
+    },
+    {
+      "file": "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/layout_demos/svg_output/02_flywheel.svg",
+      "layout": "flywheel",
+      "text_chars": 31,
+      "text_elements": 5,
+      "svg_quality_errors": [],
+      "svg_quality_warnings": [],
+      "visual_errors": [],
+      "visual_warnings": []
+    },
+    {
+      "file": "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/layout_demos/svg_output/03_swimlane.svg",
+      "layout": "swimlane",
+      "text_chars": 54,
+      "text_elements": 12,
+      "svg_quality_errors": [],
+      "svg_quality_warnings": [],
+      "visual_errors": [],
+      "visual_warnings": []
+    },
+    {
+      "file": "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/layout_demos/svg_output/04_iceberg.svg",
+      "layout": "iceberg",
+      "text_chars": 53,
+      "text_elements": 6,
+      "svg_quality_errors": [],
+      "svg_quality_warnings": [],
+      "visual_errors": [],
+      "visual_warnings": []
+    }
+  ],
+  "layouts": [
+    "funnel",
+    "flywheel",
+    "swimlane",
+    "iceberg"
+  ],
+  "layout_issues": [],
+  "project_errors": [],
+  "error_count": 0,
+  "warning_count": 0
+}

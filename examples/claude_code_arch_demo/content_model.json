@@ -1,0 +1,41 @@
+{
+  "schema": "ghb.content-model.v1",
+  "claims": [
+    {
+      "id": "claim-01",
+      "statement": "Claude Code 的输出不是单次回答，而是由规划、工具、工作区和验证共同构成的执行栈。",
+      "must_include": true,
+      "source_reference": "sources/source.md#1"
+    },
+    {
+      "id": "claim-02",
+      "statement": "从模糊需求到最终补丁，Claude Code 会把任务逐步收敛成可执行的局部动作。",
+      "must_include": true,
+      "source_reference": "sources/source.md#2"
+    },
+    {
+      "id": "claim-03",
+      "statement": "Claude Code 的效率来自角色分工：用户定目标，Agent 决策，工具提供真实环境反馈。",
+      "must_include": true,
+      "source_reference": "sources/source.md#3"
+    },
+    {
+      "id": "claim-04",
+      "statement": "高质量结果来自持续反馈：每一轮验证都会反过来塑造下一轮修改。",
+      "must_include": true,
+      "source_reference": "sources/source.md#4"
+    },
+    {
+      "id": "claim-05",
+      "statement": "表面上看是快速改文件，水面以下其实是权限、状态和风险控制的系统成本。",
+      "must_include": true,
+      "source_reference": "sources/source.md#5"
+    },
+    {
+      "id": "claim-06",
+      "statement": "完整交付通常遵循固定节奏：读、想、改、测、交付，每一步都留下可核对痕迹。",
+      "must_include": true,
+      "source_reference": "sources/source.md#6"
+    }
+  ]
+}

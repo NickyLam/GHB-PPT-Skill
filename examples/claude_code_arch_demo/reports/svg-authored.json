@@ -1,0 +1,79 @@
+{
+  "passed": true,
+  "stage": "authored",
+  "svg_dir": "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/claude_code_arch_demo/svg_output",
+  "files": [
+    {
+      "file": "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/claude_code_arch_demo/svg_output/01_stack-overview.svg",
+      "layout": "layered_arch",
+      "text_chars": 23,
+      "text_elements": 5,
+      "svg_quality_errors": [],
+      "svg_quality_warnings": [],
+      "visual_errors": [],
+      "visual_warnings": []
+    },
+    {
+      "file": "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/claude_code_arch_demo/svg_output/02_request-waterfall.svg",
+      "layout": "waterfall",
+      "text_chars": 21,
+      "text_elements": 5,
+      "svg_quality_errors": [],
+      "svg_quality_warnings": [],
+      "visual_errors": [],
+      "visual_warnings": []
+    },
+    {
+      "file": "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/claude_code_arch_demo/svg_output/03_collaboration-swimlane.svg",
+      "layout": "swimlane",
+      "text_chars": 44,
+      "text_elements": 12,
+      "svg_quality_errors": [],
+      "svg_quality_warnings": [],
+      "visual_errors": [],
+      "visual_warnings": []
+    },
+    {
+      "file": "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/claude_code_arch_demo/svg_output/04_feedback-flywheel.svg",
+      "layout": "flywheel",
+      "text_chars": 24,
+      "text_elements": 6,
+      "svg_quality_errors": [],
+      "svg_quality_warnings": [],
+      "visual_errors": [],
+      "visual_warnings": []
+    },
+    {
+      "file": "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/claude_code_arch_demo/svg_output/05_hidden-cost-iceberg.svg",
+      "layout": "iceberg",
+      "text_chars": 25,
+      "text_elements": 6,
+      "svg_quality_errors": [],
+      "svg_quality_warnings": [],
+      "visual_errors": [],
+      "visual_warnings": []
+    },
+    {
+      "file": "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/claude_code_arch_demo/svg_output/06_delivery-timeline.svg",
+      "layout": "timeline",
+      "text_chars": 25,
+      "text_elements": 10,
+      "svg_quality_errors": [],
+      "svg_quality_warnings": [],
+      "visual_errors": [],
+      "visual_warnings": []
+    }
+  ],
+  "layouts": [
+    "layered_arch",
+    "waterfall",
+    "swimlane",
+    "flywheel",
+    "iceberg",
+    "timeline"
+  ],
+  "layout_issues": [],
+  "project_errors": [],
+  "error_count": 0,
+  "warning_count": 0
+}

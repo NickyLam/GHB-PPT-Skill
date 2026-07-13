@@ -1,0 +1,151 @@
+[
+  {
+    "slide": 1,
+    "slide_id": "body-01",
+    "purpose": "Conversion Funnel",
+    "key_message": "Show narrowing movement from reach to repeat purchase.",
+    "message": "Show narrowing movement from reach to repeat purchase.",
+    "audience": "layout-component maintainers",
+    "content_density": "anchor",
+    "rhythm": "anchor",
+    "layout_type": "funnel",
+    "layout_archetype": "funnel",
+    "density": "anchor",
+    "visual_encoding": "The message is about staged narrowing, so a funnel is the clearest structure.",
+    "editable_elements": [
+      "title",
+      "labels",
+      "shapes"
+    ],
+    "image_requirement": "none",
+    "source_reference": "sources/source.md#1",
+    "speaker_note": "Show narrowing movement from reach to repeat purchase.",
+    "items": [
+      "Reach",
+      "Activate",
+      "Convert",
+      "Repeat"
+    ],
+    "reason": "The message is about staged narrowing, so a funnel is the clearest structure.",
+    "alternatives": [
+      "waterfall",
+      "pyramid"
+    ],
+    "claim_ids": [
+      "claim-01"
+    ]
+  },
+  {
+    "slide": 2,
+    "slide_id": "body-02",
+    "purpose": "Growth Flywheel",
+    "key_message": "Show a reinforcing loop where each stage strengthens the next.",
+    "message": "Show a reinforcing loop where each stage strengthens the next.",
+    "audience": "layout-component maintainers",
+    "content_density": "breathing",
+    "rhythm": "breathing",
+    "layout_type": "flywheel",
+    "layout_archetype": "flywheel",
+    "density": "breathing",
+    "visual_encoding": "The page describes a loop, so the structure must read as circular instead of linear.",
+    "editable_elements": [
+      "title",
+      "labels",
+      "shapes"
+    ],
+    "image_requirement": "none",
+    "source_reference": "sources/source.md#2",
+    "speaker_note": "Show a reinforcing loop where each stage strengthens the next.",
+    "items": [
+      "Acquire",
+      "Activate",
+      "Deliver",
+      "Refer"
+    ],
+    "reason": "The page describes a loop, so the structure must read as circular instead of linear.",
+    "alternatives": [
+      "timeline",
+      "waterfall"
+    ],
+    "claim_ids": [
+      "claim-02"
+    ],
+    "loop_closure": "Refer strengthens Acquire"
+  },
+  {
+    "slide": 3,
+    "slide_id": "body-03",
+    "purpose": "Cross-Team Swimlane",
+    "key_message": "Show business, platform, and engineering coordination across shared stages.",
+    "message": "Show business, platform, and engineering coordination across shared stages.",
+    "audience": "layout-component maintainers",
+    "content_density": "dense",
+    "rhythm": "dense",
+    "layout_type": "swimlane",
+    "layout_archetype": "swimlane",
+    "density": "dense",
+    "visual_encoding": "The content is role by process, so a swimlane grid is more faithful than cards.",
+    "editable_elements": [
+      "title",
+      "labels",
+      "shapes"
+    ],
+    "image_requirement": "none",
+    "source_reference": "sources/source.md#3",
+    "speaker_note": "Show business, platform, and engineering coordination across shared stages.",
+    "items": [
+      "Business",
+      "Platform",
+      "Engineering"
+    ],
+    "reason": "The content is role by process, so a swimlane grid is more faithful than cards.",
+    "alternatives": [
+      "matrix",
+      "waterfall"
+    ],
+    "claim_ids": [
+      "claim-03"
+    ],
+    "owners": [
+      "Business",
+      "Platform",
+      "Engineering"
+    ]
+  },
+  {
+    "slide": 4,
+    "slide_id": "body-04",
+    "purpose": "Issue Iceberg",
+    "key_message": "Separate visible symptoms from deeper structural constraints.",
+    "message": "Separate visible symptoms from deeper structural constraints.",
+    "audience": "layout-component maintainers",
+    "content_density": "anchor",
+    "rhythm": "anchor",
+    "layout_type": "iceberg",
+    "layout_archetype": "iceberg",
+    "density": "anchor",
+    "visual_encoding": "The slide contrasts surface issues with hidden causes, which is the core iceberg pattern.",
+    "editable_elements": [
+      "title",
+      "labels",
+      "shapes"
+    ],
+    "image_requirement": "none",
+    "source_reference": "sources/source.md#4",
+    "speaker_note": "Separate visible symptoms from deeper structural constraints.",
+    "items": [
+      "Visible Delay",
+      "Missed SLA",
+      "Manual Routing",
+      "Legacy Rules"
+    ],
+    "reason": "The slide contrasts surface issues with hidden causes, which is the core iceberg pattern.",
+    "alternatives": [
+      "layered_arch",
+      "pyramid"
+    ],
+    "claim_ids": [
+      "claim-04"
+    ]
+  }
+]

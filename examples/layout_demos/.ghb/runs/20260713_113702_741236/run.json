@@ -1,0 +1,40 @@
+{
+  "command": "check-svg",
+  "started_at": "2026-07-13T03:37:02.741533+00:00",
+  "keep_intermediate": false,
+  "status": "succeeded",
+  "stages": [
+    {
+      "stage": "project-contract",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/scripts/validate_project_contract.py",
+        "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/layout_demos"
+      ],
+      "returncode": 0,
+      "stdout": "PASS\n",
+      "stderr": "",
+      "duration_seconds": 0.046
+    },
+    {
+      "stage": "svg-authored",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/scripts/ghb_svg_quality.py",
+        "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/layout_demos",
+        "--stage",
+        "authored",
+        "--output",
+        "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/layout_demos/reports/svg-authored.json"
+      ],
+      "returncode": 0,
+      "stdout": "[PASS] SVG authored: files=4 errors=0 warnings=0\n",
+      "stderr": "",
+      "duration_seconds": 0.188
+    }
+  ],
+  "outputs": [
+    "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/layout_demos/reports/svg-authored.json"
+  ],
+  "error": null
+}
