@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface">
+    <rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0" stroke-width="1"/>
+  </g>
+  <g id="header">
+    <rect x="88" y="132" width="6" height="40" fill="#AB1F29"/>
+    <text x="108" y="162" font-size="30" font-weight="bold" fill="#2B2B2B" font-family="'Arial Black', 'Microsoft YaHei', Arial, sans-serif">Extended Layout Demo</text>
+    <line x1="88" y1="190" x2="1192" y2="190" stroke="#E0E0E0" stroke-width="1"/>
+    <text x="1192" y="162" text-anchor="end" font-size="14" fill="#AB1F29" font-family="'Microsoft YaHei', Arial, sans-serif">Demo 03</text>
+  </g>
+  <g id="content-lead">
+    <text x="140" y="228" font-size="24" font-weight="bold" fill="#2B2B2B" font-family="'Microsoft YaHei', Arial, sans-serif">Cross-Team Swimlane</text>
+    <text x="140" y="255" font-size="18" fill="#6E6E73" font-family="'Microsoft YaHei', Arial, sans-serif">Show business, platform, and engineering coordination across shared stages.</text>
+  </g>
+  <g id="layout-swimlane" data-layout="swimlane" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <rect x="140.0" y="280.0" width="172" height="96.7" rx="12" fill="#44546A" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="226.0" y="334.1" text-anchor="middle" font-size="17" font-weight="bold" fill="#FFFFFF">Business</text>
+  <rect x="324.0" y="280.0" width="264.0" height="96.7" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="342.0" y="308.0" font-size="13" fill="#6E6E73">阶段1</text>
+  <line x1="340.0" y1="318.0" x2="572.0" y2="318.0" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="600.0" y="280.0" width="264.0" height="96.7" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="618.0" y="308.0" font-size="13" fill="#6E6E73">阶段2</text>
+  <line x1="616.0" y1="318.0" x2="848.0" y2="318.0" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="876.0" y="280.0" width="264.0" height="96.7" rx="12" fill="#AB1F29" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="894.0" y="308.0" font-size="13" fill="#FFFFFF">阶段3</text>
+  <line x1="892.0" y1="318.0" x2="1124.0" y2="318.0" stroke="#FFFFFF" stroke-width="1"/>
+  <rect x="140.0" y="386.7" width="172" height="96.7" rx="12" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="226.0" y="440.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">Platform</text>
+  <rect x="324.0" y="386.7" width="264.0" height="96.7" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="342.0" y="414.7" font-size="13" fill="#6E6E73">阶段1</text>
+  <line x1="340.0" y1="424.7" x2="572.0" y2="424.7" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="600.0" y="386.7" width="264.0" height="96.7" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="618.0" y="414.7" font-size="13" fill="#6E6E73">阶段2</text>
+  <line x1="616.0" y1="424.7" x2="848.0" y2="424.7" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="876.0" y="386.7" width="264.0" height="96.7" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="894.0" y="414.7" font-size="13" fill="#6E6E73">阶段3</text>
+  <line x1="892.0" y1="424.7" x2="1124.0" y2="424.7" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="140.0" y="493.3" width="172" height="96.7" rx="12" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="226.0" y="547.4" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">Engineering</text>
+  <rect x="324.0" y="493.3" width="264.0" height="96.7" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="342.0" y="521.3" font-size="13" fill="#6E6E73">阶段1</text>
+  <line x1="340.0" y1="531.3" x2="572.0" y2="531.3" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="600.0" y="493.3" width="264.0" height="96.7" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="618.0" y="521.3" font-size="13" fill="#6E6E73">阶段2</text>
+  <line x1="616.0" y1="531.3" x2="848.0" y2="531.3" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="876.0" y="493.3" width="264.0" height="96.7" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="894.0" y="521.3" font-size="13" fill="#6E6E73">阶段3</text>
+  <line x1="892.0" y1="531.3" x2="1124.0" y2="531.3" stroke="#E0E0E0" stroke-width="1"/>
+</g>
+  <g id="footer">
+    <text x="1192" y="696" text-anchor="end" font-size="13" fill="#999999" font-family="'Microsoft YaHei', Arial, sans-serif">03 / 04</text>
+  </g>
+</svg>

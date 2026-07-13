@@ -1,0 +1,29 @@
+{
+  "schema": "ghb.content-model.v1",
+  "claims": [
+    {
+      "id": "claim-01",
+      "statement": "Show narrowing movement from reach to repeat purchase.",
+      "must_include": true,
+      "source_reference": "sources/source.md#1"
+    },
+    {
+      "id": "claim-02",
+      "statement": "Show a reinforcing loop where each stage strengthens the next.",
+      "must_include": true,
+      "source_reference": "sources/source.md#2"
+    },
+    {
+      "id": "claim-03",
+      "statement": "Show business, platform, and engineering coordination across shared stages.",
+      "must_include": true,
+      "source_reference": "sources/source.md#3"
+    },
+    {
+      "id": "claim-04",
+      "statement": "Separate visible symptoms from deeper structural constraints.",
+      "must_include": true,
+      "source_reference": "sources/source.md#4"
+    }
+  ]
+}

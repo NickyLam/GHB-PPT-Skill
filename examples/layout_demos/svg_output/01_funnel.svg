@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface">
+    <rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0" stroke-width="1"/>
+  </g>
+  <g id="header">
+    <rect x="88" y="132" width="6" height="40" fill="#AB1F29"/>
+    <text x="108" y="162" font-size="30" font-weight="bold" fill="#2B2B2B" font-family="'Arial Black', 'Microsoft YaHei', Arial, sans-serif">Extended Layout Demo</text>
+    <line x1="88" y1="190" x2="1192" y2="190" stroke="#E0E0E0" stroke-width="1"/>
+    <text x="1192" y="162" text-anchor="end" font-size="14" fill="#AB1F29" font-family="'Microsoft YaHei', Arial, sans-serif">Demo 01</text>
+  </g>
+  <g id="content-lead">
+    <text x="140" y="228" font-size="24" font-weight="bold" fill="#2B2B2B" font-family="'Microsoft YaHei', Arial, sans-serif">Conversion Funnel</text>
+    <text x="140" y="255" font-size="18" fill="#6E6E73" font-family="'Microsoft YaHei', Arial, sans-serif">Show narrowing movement from reach to repeat purchase.</text>
+  </g>
+  <g id="layout-funnel" data-layout="funnel" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <polygon points="140.0,280.0 1140.0,280.0 1057.5,350.0 222.5,350.0" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="640.0" y="321.1" text-anchor="middle" font-size="18" font-weight="bold" fill="#2B2B2B">Reach</text>
+  <polygon points="222.5,360.0 1057.5,360.0 975.0,430.0 305.0,430.0" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="640.0" y="401.1" text-anchor="middle" font-size="18" font-weight="bold" fill="#2B2B2B">Activate</text>
+  <polygon points="305.0,440.0 975.0,440.0 892.5,510.0 387.5,510.0" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="640.0" y="481.1" text-anchor="middle" font-size="18" font-weight="bold" fill="#2B2B2B">Convert</text>
+  <polygon points="387.5,520.0 892.5,520.0 810.0,590.0 470.0,590.0" fill="#AB1F29" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="640.0" y="561.1" text-anchor="middle" font-size="18" font-weight="bold" fill="#FFFFFF">Repeat</text>
+</g>
+  <g id="footer">
+    <text x="1192" y="696" text-anchor="end" font-size="13" fill="#999999" font-family="'Microsoft YaHei', Arial, sans-serif">01 / 04</text>
+  </g>
+</svg>

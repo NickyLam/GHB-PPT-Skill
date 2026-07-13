@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface">
+    <rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0" stroke-width="1"/>
+  </g>
+  <g id="header">
+    <rect x="88" y="132" width="6" height="40" fill="#AB1F29"/>
+    <text x="108" y="162" font-size="30" font-weight="bold" fill="#2B2B2B" font-family="'Arial Black', 'Microsoft YaHei', Arial, sans-serif">Extended Layout Demo</text>
+    <line x1="88" y1="190" x2="1192" y2="190" stroke="#E0E0E0" stroke-width="1"/>
+    <text x="1192" y="162" text-anchor="end" font-size="14" fill="#AB1F29" font-family="'Microsoft YaHei', Arial, sans-serif">Demo 02</text>
+  </g>
+  <g id="content-lead">
+    <text x="140" y="228" font-size="24" font-weight="bold" fill="#2B2B2B" font-family="'Microsoft YaHei', Arial, sans-serif">Growth Flywheel</text>
+    <text x="140" y="255" font-size="18" fill="#6E6E73" font-family="'Microsoft YaHei', Arial, sans-serif">Show a reinforcing loop where each stage strengthens the next.</text>
+  </g>
+  <g id="layout-flywheel" data-layout="flywheel" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <rect x="558.0" y="401.0" width="164" height="68" rx="34" fill="#AB1F29" stroke="#AB1F29" stroke-width="1"/>
+  <text x="640.0" y="442.0" text-anchor="middle" font-size="18" font-weight="bold" fill="#FFFFFF">正向循环</text>
+  <rect x="555.0" y="306.8" width="170.0" height="58" rx="18" fill="#F6F6F7" stroke="#AB1F29" stroke-width="2"/>
+  <text x="640.0" y="341.6" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">Acquire</text>
+  <line x1="718.8" y1="358.8" x2="901.2" y2="412.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="901.2,412.0 890.5,414.6 893.6,404.1" fill="#44546A"/>
+  <rect x="895.0" y="406.0" width="170.0" height="58" rx="18" fill="#F6F6F7" stroke="#AB1F29" stroke-width="2"/>
+  <text x="980.0" y="440.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">Activate</text>
+  <line x1="901.2" y1="458.0" x2="718.8" y2="511.2" stroke="#44546A" stroke-width="2"/>
+  <polygon points="718.8,511.2 726.4,503.3 729.5,513.8" fill="#44546A"/>
+  <rect x="555.0" y="505.2" width="170.0" height="58" rx="18" fill="#F6F6F7" stroke="#AB1F29" stroke-width="2"/>
+  <text x="640.0" y="540.0" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">Deliver</text>
+  <line x1="561.2" y1="511.2" x2="378.8" y2="458.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="378.8,458.0 389.5,455.4 386.4,465.9" fill="#44546A"/>
+  <rect x="215.0" y="406.0" width="170.0" height="58" rx="18" fill="#FFFFFF" stroke="#AB1F29" stroke-width="2"/>
+  <text x="300.0" y="440.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">Refer</text>
+  <line x1="378.8" y1="412.0" x2="561.2" y2="358.8" stroke="#44546A" stroke-width="2"/>
+  <polygon points="561.2,358.8 553.6,366.7 550.5,356.2" fill="#44546A"/>
+</g>
+  <g id="footer">
+    <text x="1192" y="696" text-anchor="end" font-size="13" fill="#999999" font-family="'Microsoft YaHei', Arial, sans-serif">02 / 04</text>
+  </g>
+</svg>

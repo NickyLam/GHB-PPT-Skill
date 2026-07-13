@@ -1,0 +1,49 @@
+{
+  "schema": "ghb.confirmation.v1",
+  "status": "confirmed",
+  "confirmation_source": "fixture",
+  "confirmed_at": "2026-07-13T00:00:00Z",
+  "decisions": {
+    "audience": "技术负责人、工程师、Agent 工具链内部分享听众",
+    "page_range": "6 body slides",
+    "mode": "instructional",
+    "outline": [
+      {
+        "title": "Claude Code 的输出不是单次回答，而是由规划、工具、工作区和验证共同构成的执行栈。",
+        "rhythm": "anchor"
+      },
+      {
+        "title": "从模糊需求到最终补丁，Claude Code 会把任务逐步收敛成可执行的局部动作。",
+        "rhythm": "dense"
+      },
+      {
+        "title": "Claude Code 的效率来自角色分工：用户定目标，Agent 决策，工具提供真实环境反馈。",
+        "rhythm": "dense"
+      },
+      {
+        "title": "高质量结果来自持续反馈：每一轮验证都会反过来塑造下一轮修改。",
+        "rhythm": "breathing"
+      },
+      {
+        "title": "表面上看是快速改文件，水面以下其实是权限、状态和风险控制的系统成本。",
+        "rhythm": "anchor"
+      },
+      {
+        "title": "完整交付通常遵循固定节奏：读、想、改、测、交付，每一步都留下可核对痕迹。",
+        "rhythm": "breathing"
+      }
+    ],
+    "content_tradeoffs": {
+      "expand": [
+        "工具反馈闭环"
+      ],
+      "omit": [],
+      "combine": []
+    },
+    "visual_assets": {
+      "image_source": "none",
+      "icon_set": "none"
+    }
+  },
+  "decision_digest": "8899716e0b7a3cb2aab43f23f9326d83e06f7c095cb19e1964b19e85658684a0"
+}

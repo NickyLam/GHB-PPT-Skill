@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface">
+    <rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0" stroke-width="1"/>
+  </g>
+  <g id="header">
+    <rect x="88" y="132" width="6" height="40" fill="#AB1F29"/>
+    <text x="108" y="162" font-size="30" font-weight="bold" fill="#2B2B2B" font-family="'Arial Black', 'Microsoft YaHei', Arial, sans-serif">Claude Code 架构解析</text>
+    <line x1="88" y1="190" x2="1192" y2="190" stroke="#E0E0E0" stroke-width="1"/>
+    <text x="1192" y="162" text-anchor="end" font-size="14" fill="#AB1F29" font-family="'Microsoft YaHei', Arial, sans-serif">Part 2 · Flow</text>
+  </g>
+  <g id="content-lead">
+    <text x="120" y="228" font-size="24" font-weight="bold" fill="#2B2B2B" font-family="'Microsoft YaHei', Arial, sans-serif">请求如何收敛成改动</text>
+    <text x="120" y="254" font-size="17" fill="#6E6E73" font-family="'Microsoft YaHei', Arial, sans-serif">从模糊需求到最终补丁，Claude Code 会把任务逐步收敛成可执行的局部动作。</text>
+  </g>
+  <g id="layout-waterfall" data-layout="waterfall" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <rect x="120.0" y="498.0" width="144.8" height="92" rx="10" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="192.4" y="549.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">理解需求</text>
+  <line x1="270.8" y1="544.0" x2="280.8" y2="524.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="280.8,524.0 269.8,530.0 276.8,540.0" fill="#44546A"/>
+  <rect x="288.8" y="464.0" width="144.8" height="92" rx="10" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="361.2" y="515.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">检查上下文</text>
+  <line x1="439.6" y1="510.0" x2="449.6" y2="490.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="449.6,490.0 438.6,496.0 445.6,506.0" fill="#44546A"/>
+  <rect x="457.6" y="430.0" width="144.8" height="92" rx="10" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="530.0" y="481.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">定位改动</text>
+  <line x1="608.4" y1="476.0" x2="618.4" y2="456.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="618.4,456.0 607.4,462.0 614.4,472.0" fill="#44546A"/>
+  <rect x="626.4" y="396.0" width="144.8" height="92" rx="10" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="698.8" y="447.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">实施验证</text>
+  <line x1="777.2" y1="442.0" x2="787.2" y2="422.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="787.2,422.0 776.2,428.0 783.2,438.0" fill="#44546A"/>
+  <rect x="795.2" y="362.0" width="144.8" height="92" rx="10" fill="#AB1F29" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="867.6" y="413.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#FFFFFF">形成交付</text>
+</g>
+  <g id="content-overlay">
+  
+  </g>
+  <g id="side-notes">
+  <rect x="978" y="292" width="190" height="86" rx="14" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="996" y="320" font-size="15" font-weight="bold" fill="#AB1F29" font-family="'Microsoft YaHei', Arial, sans-serif">关键判断</text>
+  <text x="996" y="346" font-size="14" fill="#2B2B2B" font-family="'Microsoft YaHei', Arial, sans-serif">何时搜索、何时测试、何时必须</text>
+  <text x="996" y="365" font-size="14" fill="#2B2B2B" font-family="'Microsoft YaHei', Arial, sans-serif">停下确认</text>
+  <rect x="978" y="420" width="190" height="86" rx="14" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="996" y="448" font-size="15" font-weight="bold" fill="#AB1F29" font-family="'Microsoft YaHei', Arial, sans-serif">风险点</text>
+  <text x="996" y="474" font-size="14" fill="#2B2B2B" font-family="'Microsoft YaHei', Arial, sans-serif">过早动手通常直接放大返工成本</text>
+  </g>
+  <g id="footer">
+    <text x="1192" y="696" text-anchor="end" font-size="13" fill="#999999" font-family="'Microsoft YaHei', Arial, sans-serif">02 / 06</text>
+  </g>
+</svg>

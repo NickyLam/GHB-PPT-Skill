@@ -1,0 +1,39 @@
+{
+  "schema": "ghb.confirmation.v1",
+  "status": "confirmed",
+  "confirmation_source": "fixture",
+  "confirmed_at": "2026-07-13T00:00:00Z",
+  "decisions": {
+    "audience": "layout-component maintainers",
+    "page_range": "4 body slides",
+    "mode": "instructional",
+    "outline": [
+      {
+        "title": "Show narrowing movement from reach to repeat purchase.",
+        "rhythm": "anchor"
+      },
+      {
+        "title": "Show a reinforcing loop where each stage strengthens the next.",
+        "rhythm": "breathing"
+      },
+      {
+        "title": "Show business, platform, and engineering coordination across shared stages.",
+        "rhythm": "dense"
+      },
+      {
+        "title": "Separate visible symptoms from deeper structural constraints.",
+        "rhythm": "anchor"
+      }
+    ],
+    "content_tradeoffs": {
+      "expand": [],
+      "omit": [],
+      "combine": []
+    },
+    "visual_assets": {
+      "image_source": "none",
+      "icon_set": "none"
+    }
+  },
+  "decision_digest": "29ba8bc17332051f164a93b9dffb30c939550d3baf16a529c1e8d23c15384558"
+}

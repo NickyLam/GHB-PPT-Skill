@@ -132,7 +132,9 @@ def finalize_project(
     """
     svg_output = project_dir / 'svg_output'
     svg_final = project_dir / 'svg_final'
-    icons_dir = Path(__file__).parent.parent / 'templates' / 'icons'
+    # Skill root is 3 levels up from this script (scripts/ppt_master/finalize_svg.py);
+    # icons live at <skill_root>/templates/icons (NOT scripts/templates/icons).
+    icons_dir = Path(__file__).parent.parent.parent / 'templates' / 'icons'
 
     # Check if svg_output exists
     if not svg_output.exists():

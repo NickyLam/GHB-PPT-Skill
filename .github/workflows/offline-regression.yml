@@ -1,0 +1,55 @@
+name: Offline regression
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install minimal dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Run deterministic offline tests
+        run: python -m pytest -q
+      - name: Build one editable GHB PPTX without GUI rendering
+        run: >-
+          python tests/fixtures/build_baseline.py
+          --output "$RUNNER_TEMP/ghb-smoke"
+          --pipeline unified
+          --case D_01_body_default_ending
+          --no-render
+      - name: Revalidate the smoke artifact
+        run: >-
+          python scripts/validate_ghb_pptx.py
+          "$RUNNER_TEMP/ghb-smoke/D_01_body_default_ending/exports/final.pptx"
+          --body-count 1
+          --expect-ending
+          --source-svg-dir "$RUNNER_TEMP/ghb-smoke/D_01_body_default_ending/svg_output"
+          --layout-plan "$RUNNER_TEMP/ghb-smoke/D_01_body_default_ending/layout_plan.json"
+          --expect-body-notes
+          --json-output "$RUNNER_TEMP/ghb-smoke/ci-validation.json"
+          --markdown-output "$RUNNER_TEMP/ghb-smoke/ci-validation.md"
+      - name: Upload structural smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghb-offline-smoke
+          path: |
+            ${{ runner.temp }}/ghb-smoke/D_01_body_default_ending/exports/final.pptx
+            ${{ runner.temp }}/ghb-smoke/D_01_body_default_ending/reports/*.json
+            ${{ runner.temp }}/ghb-smoke/D_01_body_default_ending/reports/*.md
+            ${{ runner.temp }}/ghb-smoke/ci-validation.json
+            ${{ runner.temp }}/ghb-smoke/ci-validation.md
+          if-no-files-found: error

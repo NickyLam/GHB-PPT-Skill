@@ -1,0 +1,22 @@
+{
+  "command": "check-project",
+  "started_at": "2026-07-13T03:40:29.722853+00:00",
+  "keep_intermediate": false,
+  "status": "succeeded",
+  "stages": [
+    {
+      "stage": "project-contract",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/scripts/validate_project_contract.py",
+        "/Users/linmaogui/VSCodeProjects/VSCodeProjects/LLM/Pi/GHB-PPT-SKILL/examples/layout_demos"
+      ],
+      "returncode": 0,
+      "stdout": "PASS\n",
+      "stderr": "",
+      "duration_seconds": 0.05
+    }
+  ],
+  "outputs": [],
+  "error": null
+}

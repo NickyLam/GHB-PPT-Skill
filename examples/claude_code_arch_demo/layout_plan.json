@@ -1,0 +1,228 @@
+[
+  {
+    "slide": 1,
+    "slide_id": "body-01",
+    "purpose": "Claude Code 工作栈",
+    "key_message": "Claude Code 的输出不是单次回答，而是由规划、工具、工作区和验证共同构成的执行栈。",
+    "message": "Claude Code 的输出不是单次回答，而是由规划、工具、工作区和验证共同构成的执行栈。",
+    "audience": "技术负责人、工程师、Agent 工具链内部分享听众",
+    "content_density": "anchor",
+    "rhythm": "anchor",
+    "layout_type": "layered_arch",
+    "layout_archetype": "layered_arch",
+    "density": "anchor",
+    "visual_encoding": "主题是稳定的能力分层，用 layered_arch 最直观。",
+    "editable_elements": [
+      "title",
+      "labels",
+      "shapes"
+    ],
+    "image_requirement": "none",
+    "source_reference": "sources/source.md#1",
+    "speaker_note": "先建立总图：用户看到的是对话，真正的运行结构是一个带约束的执行栈。",
+    "items": [
+      "用户目标",
+      "计划与推理",
+      "工具调用",
+      "工作区改动",
+      "验证与交付"
+    ],
+    "reason": "主题是稳定的能力分层，用 layered_arch 最直观。",
+    "alternatives": [
+      "pyramid",
+      "staircase"
+    ],
+    "claim_ids": [
+      "claim-01"
+    ]
+  },
+  {
+    "slide": 2,
+    "slide_id": "body-02",
+    "purpose": "请求如何收敛成改动",
+    "key_message": "从模糊需求到最终补丁，Claude Code 会把任务逐步收敛成可执行的局部动作。",
+    "message": "从模糊需求到最终补丁，Claude Code 会把任务逐步收敛成可执行的局部动作。",
+    "audience": "技术负责人、工程师、Agent 工具链内部分享听众",
+    "content_density": "dense",
+    "rhythm": "dense",
+    "layout_type": "waterfall",
+    "layout_archetype": "waterfall",
+    "density": "dense",
+    "visual_encoding": "主题是单向收敛流程，用 waterfall 表达阶段推进最贴切。",
+    "editable_elements": [
+      "title",
+      "labels",
+      "shapes"
+    ],
+    "image_requirement": "none",
+    "source_reference": "sources/source.md#2",
+    "speaker_note": "强调不是直接写代码，而是逐步缩小问题空间，直到能安全编辑和验证。",
+    "items": [
+      "理解需求",
+      "检查上下文",
+      "定位改动",
+      "实施验证",
+      "形成交付"
+    ],
+    "reason": "主题是单向收敛流程，用 waterfall 表达阶段推进最贴切。",
+    "alternatives": [
+      "funnel",
+      "timeline"
+    ],
+    "claim_ids": [
+      "claim-02"
+    ]
+  },
+  {
+    "slide": 3,
+    "slide_id": "body-03",
+    "purpose": "用户 / Agent / 工具 协同",
+    "key_message": "Claude Code 的效率来自角色分工：用户定目标，Agent 决策，工具提供真实环境反馈。",
+    "message": "Claude Code 的效率来自角色分工：用户定目标，Agent 决策，工具提供真实环境反馈。",
+    "audience": "技术负责人、工程师、Agent 工具链内部分享听众",
+    "content_density": "dense",
+    "rhythm": "dense",
+    "layout_type": "swimlane",
+    "layout_archetype": "swimlane",
+    "density": "dense",
+    "visual_encoding": "这是典型的角色 × 流程关系，swimlane 是正确结构。",
+    "editable_elements": [
+      "title",
+      "labels",
+      "shapes"
+    ],
+    "image_requirement": "none",
+    "source_reference": "sources/source.md#3",
+    "speaker_note": "这一页帮助理解为什么工具输出不是附属品，而是决策闭环的一部分。",
+    "items": [
+      "用户",
+      "主 Agent",
+      "Shell / Git"
+    ],
+    "reason": "这是典型的角色 × 流程关系，swimlane 是正确结构。",
+    "alternatives": [
+      "matrix",
+      "waterfall"
+    ],
+    "claim_ids": [
+      "claim-03"
+    ],
+    "owners": [
+      "用户",
+      "主 Agent",
+      "Shell / Git"
+    ]
+  },
+  {
+    "slide": 4,
+    "slide_id": "body-04",
+    "purpose": "观察 - 改动 - 验证 飞轮",
+    "key_message": "高质量结果来自持续反馈：每一轮验证都会反过来塑造下一轮修改。",
+    "message": "高质量结果来自持续反馈：每一轮验证都会反过来塑造下一轮修改。",
+    "audience": "技术负责人、工程师、Agent 工具链内部分享听众",
+    "content_density": "breathing",
+    "rhythm": "breathing",
+    "layout_type": "flywheel",
+    "layout_archetype": "flywheel",
+    "density": "breathing",
+    "visual_encoding": "主题强调正反馈闭环，flywheel 比线性流程更准确。",
+    "editable_elements": [
+      "title",
+      "labels",
+      "shapes"
+    ],
+    "image_requirement": "none",
+    "source_reference": "sources/source.md#4",
+    "speaker_note": "这页解释为什么验证不是结尾动作，而是驱动下一轮更准修改的核心机制。",
+    "items": [
+      "读取现状",
+      "形成假设",
+      "实施改动",
+      "运行验证",
+      "修正结论"
+    ],
+    "reason": "主题强调正反馈闭环，flywheel 比线性流程更准确。",
+    "alternatives": [
+      "timeline",
+      "waterfall"
+    ],
+    "claim_ids": [
+      "claim-04"
+    ],
+    "loop_closure": "修正结论回到读取现状，驱动下一轮"
+  },
+  {
+    "slide": 5,
+    "slide_id": "body-05",
+    "purpose": "表层效率 vs 深层成本",
+    "key_message": "表面上看是快速改文件，水面以下其实是权限、状态和风险控制的系统成本。",
+    "message": "表面上看是快速改文件，水面以下其实是权限、状态和风险控制的系统成本。",
+    "audience": "技术负责人、工程师、Agent 工具链内部分享听众",
+    "content_density": "anchor",
+    "rhythm": "anchor",
+    "layout_type": "iceberg",
+    "layout_archetype": "iceberg",
+    "density": "anchor",
+    "visual_encoding": "主题明确区分表层感知与深层约束，iceberg 最合适。",
+    "editable_elements": [
+      "title",
+      "labels",
+      "shapes"
+    ],
+    "image_requirement": "none",
+    "source_reference": "sources/source.md#5",
+    "speaker_note": "这一页解释 Claude Code 为什么必须看 git 状态、看真实文件、跑验证，而不是凭空回答。",
+    "items": [
+      "快速响应",
+      "上下文构建",
+      "状态核对",
+      "安全验证"
+    ],
+    "reason": "主题明确区分表层感知与深层约束，iceberg 最合适。",
+    "alternatives": [
+      "layered_arch",
+      "pyramid"
+    ],
+    "claim_ids": [
+      "claim-05"
+    ]
+  },
+  {
+    "slide": 6,
+    "slide_id": "body-06",
+    "purpose": "一次交付的时间序列",
+    "key_message": "完整交付通常遵循固定节奏：读、想、改、测、交付，每一步都留下可核对痕迹。",
+    "message": "完整交付通常遵循固定节奏：读、想、改、测、交付，每一步都留下可核对痕迹。",
+    "audience": "技术负责人、工程师、Agent 工具链内部分享听众",
+    "content_density": "breathing",
+    "rhythm": "breathing",
+    "layout_type": "timeline",
+    "layout_archetype": "timeline",
+    "density": "breathing",
+    "visual_encoding": "主题本质是时间序列，timeline 最直接。",
+    "editable_elements": [
+      "title",
+      "labels",
+      "shapes"
+    ],
+    "image_requirement": "none",
+    "source_reference": "sources/source.md#6",
+    "speaker_note": "最后一页把前面拆开的结构重新拉回到用户最关心的结果视角：一次可靠交付是怎样形成的。",
+    "items": [
+      "读取代码",
+      "制定计划",
+      "编辑实现",
+      "测试验证",
+      "总结交付"
+    ],
+    "reason": "主题本质是时间序列，timeline 最直接。",
+    "alternatives": [
+      "waterfall",
+      "staircase"
+    ],
+    "claim_ids": [
+      "claim-06"
+    ],
+    "order_signal": "读、想、改、测、交付的固定先后顺序"
+  }
+]

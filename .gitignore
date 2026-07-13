@@ -18,3 +18,6 @@ __pycache__/
 *.tmp
 *.bak
 .pi-subagents/
+
+# Reproducible goal evidence (large PPTX/PDF/PNG files; generator is tracked)
+artifacts/

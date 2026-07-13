@@ -51,7 +51,9 @@ from xml.etree import ElementTree as ET
 
 # Default icon directory
 from typing import Dict, List, Union
-DEFAULT_ICONS_DIR = Path(__file__).parent.parent.parent / 'templates' / 'icons'
+# Skill root is 4 levels up (scripts/ppt_master/svg_finalize/embed_icons.py);
+# icons live at <skill_root>/templates/icons (NOT scripts/templates/icons).
+DEFAULT_ICONS_DIR = Path(__file__).parent.parent.parent.parent / 'templates' / 'icons'
 
 # Icon base size per library
 ICON_BASE_SIZES = {
