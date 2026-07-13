@@ -65,6 +65,10 @@ class SlideSummary:
     out_of_bounds_objects: int = 0
     full_white_rectangles: int = 0
     notes_chars: int = 0
+    empty_text_boxes: int = 0
+    text_boxes_too_small: int = 0
+    possible_text_overlaps: int = 0
+    page_number_found: bool = False
 
 
 @dataclass
@@ -159,8 +163,17 @@ def _check_content_types(parts: dict[str, bytes], issues: list[Issue]) -> dict[s
     if name not in parts:
         _issue(issues, "error", "missing-content-types", f"missing {name}")
         return {}
+    raw = parts[name]
+    if b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' not in raw:
+        _issue(
+            issues,
+            "error",
+            "noncanonical-content-types-namespace",
+            "[Content_Types].xml must use the OPC namespace as the default; "
+            "LibreOffice rejects the equivalent ns0-prefixed wire form",
+        )
     try:
-        root = ET.fromstring(parts[name])
+        root = ET.fromstring(raw)
     except ET.ParseError as exc:
         _issue(issues, "error", "invalid-content-types", str(exc))
         return {}
@@ -241,6 +254,7 @@ def _summarize_slide(
 ) -> SlideSummary:
     summary = SlideSummary(index, role, layout_part, master_part)
     positioned_text: list[tuple[int, int, str]] = []
+    text_boxes: list[tuple[int, int, int, int, str]] = []
     font_sizes: list[float] = []
     slide_area = max(slide_width * slide_height, 1)
     for shape in _iter_shapes(slide.shapes):
@@ -249,6 +263,14 @@ def _summarize_slide(
         else:
             summary.shape_objects += 1
         text = _shape_text(shape)
+        has_text_frame = bool(getattr(shape, "has_text_frame", False))
+        if (
+            has_text_frame
+            and shape.shape_type == MSO_SHAPE_TYPE.TEXT_BOX
+            and not text
+            and not bool(getattr(shape, "is_placeholder", False))
+        ):
+            summary.empty_text_boxes += 1
         if text:
             summary.text_objects += 1
             summary.text_chars += len(re.sub(r"\s+", "", text))
@@ -271,6 +293,11 @@ def _summarize_slide(
         top = int(getattr(shape, "top", 0) or 0)
         width = int(getattr(shape, "width", 0) or 0)
         height = int(getattr(shape, "height", 0) or 0)
+        if text:
+            text_boxes.append((left, top, width, height, text))
+            explicit_sizes = _font_sizes(shape)
+            if explicit_sizes and height / 12700 < min(explicit_sizes) * 1.05:
+                summary.text_boxes_too_small += 1
         if left < -1 or top < -1 or left + width > slide_width + 1 or top + height > slide_height + 1:
             summary.out_of_bounds_objects += 1
         area_ratio = max(width, 0) * max(height, 0) / slide_area
@@ -280,6 +307,24 @@ def _summarize_slide(
             summary.full_white_rectangles += 1
     if positioned_text:
         summary.title = sorted(positioned_text)[0][2].splitlines()[0].strip()
+    summary.page_number_found = any(
+        re.search(r"\b\d{1,2}\s*/\s*\d{1,2}\b", text)
+        for _left, _top, _width, _height, text in text_boxes
+    )
+    for left_index, left_box in enumerate(text_boxes):
+        lx, ly, lw, lh, _lt = left_box
+        left_area = max(lw, 0) * max(lh, 0)
+        if not left_area:
+            continue
+        for right_box in text_boxes[left_index + 1 :]:
+            rx, ry, rw, rh, _rt = right_box
+            right_area = max(rw, 0) * max(rh, 0)
+            if not right_area:
+                continue
+            intersection_w = max(0, min(lx + lw, rx + rw) - max(lx, rx))
+            intersection_h = max(0, min(ly + lh, ry + rh) - max(ly, ry))
+            if intersection_w * intersection_h / min(left_area, right_area) >= 0.60:
+                summary.possible_text_overlaps += 1
     if font_sizes:
         summary.min_font_pt = min(font_sizes)
     summary.notes_chars = len(re.sub(r"\s+", "", _notes_text(slide)))
@@ -302,6 +347,20 @@ def _summarize_slide(
         _issue(issues, "error", "full-white-rectangle", "body slide contains a near-full-slide white rectangle", index)
     if summary.min_font_pt is not None and summary.min_font_pt < 9:
         _issue(issues, "warning", "small-font", f"minimum explicit font size is {summary.min_font_pt:g} pt", index)
+    if role == "body" and summary.empty_text_boxes:
+        _issue(issues, "warning", "empty-text-box", f"{summary.empty_text_boxes} empty text box(es)", index)
+    if role == "body" and summary.text_boxes_too_small:
+        _issue(issues, "warning", "text-box-too-small", f"{summary.text_boxes_too_small} text box(es) are shorter than their explicit font size", index)
+    if role == "body" and summary.possible_text_overlaps:
+        _issue(issues, "warning", "possible-text-overlap", f"{summary.possible_text_overlaps} pair(s) of text boxes overlap by at least 60%", index)
+    if role == "body" and not summary.page_number_found:
+        _issue(issues, "warning", "missing-page-number", "no NN / total page-number text was detected", index)
+    if role == "body" and summary.text_chars > 600:
+        _issue(issues, "warning", "high-text-density", f"body slide has {summary.text_chars} non-whitespace text characters", index)
+    if role == "body" and summary.shape_objects + summary.group_objects > 120:
+        _issue(issues, "warning", "high-object-density", f"body slide has {summary.shape_objects + summary.group_objects} objects/groups", index)
+    if summary.title and len(summary.title) > 80:
+        _issue(issues, "warning", "long-title", f"title has {len(summary.title)} characters", index)
     return summary
 
 
@@ -385,6 +444,9 @@ def validate_pptx(
     layout_plan_path: Path | None = None,
     cover_text: list[str] | None = None,
     render_dir: Path | None = None,
+    expect_body_notes: bool = False,
+    svg_report_paths: list[Path] | None = None,
+    readback_markdown_path: Path | None = None,
 ) -> ValidationReport:
     issues: list[Issue] = []
     if not path.is_file():
@@ -445,6 +507,7 @@ def validate_pptx(
         package_info.update(mount_info)
 
     slides: list[SlideSummary] = []
+    slide_full_texts: list[str] = []
     slide_size: dict[str, Any] = {}
     try:
         presentation = Presentation(path)
@@ -471,6 +534,9 @@ def validate_pptx(
                     issues=issues,
                 )
             )
+            slide_full_texts.append(
+                "\n".join(filter(None, (_shape_text(shape) for shape in _iter_shapes(slide.shapes))))
+            )
     except Exception as exc:
         _issue(issues, "error", "python-pptx-open", f"python-pptx could not open deck: {exc}")
 
@@ -490,8 +556,27 @@ def validate_pptx(
         if offset - 1 >= len(slides):
             break
         message = str(entry.get("key_message") or entry.get("message") or "").strip()
-        if message and message not in all_text:
+        slide_text = slide_full_texts[offset - 1] if offset - 1 < len(slide_full_texts) else ""
+        normalized_slide_text = re.sub(r"\s+", "", slide_text)
+        if message and re.sub(r"\s+", "", message) not in normalized_slide_text:
             _issue(issues, "error", "missing-planned-text", f"planned key message was not preserved: {message!r}", offset)
+        for item in entry.get("items", []):
+            if not isinstance(item, (str, int, float)):
+                continue
+            item_text = str(item).strip()
+            if item_text and re.sub(r"\s+", "", item_text) not in normalized_slide_text:
+                _issue(
+                    issues,
+                    "error",
+                    "missing-planned-item",
+                    f"planned body item was not preserved: {item_text!r}",
+                    offset,
+                )
+
+    if expect_body_notes:
+        for summary in slides:
+            if summary.role == "body" and summary.notes_chars == 0:
+                _issue(issues, "error", "missing-speaker-notes", "expected body speaker notes are missing", summary.slide)
 
     slide_xml = b"\n".join(payload for name, payload in parts.items() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name))
     decoded_slide_xml = slide_xml.decode("utf-8", errors="replace")
@@ -499,6 +584,18 @@ def validate_pptx(
         _issue(issues, "error", "cover-font", "KaiTi/楷体 remains in slide text runs")
     if "AB1F29" not in decoded_slide_xml.upper():
         _issue(issues, "warning", "brand-color", "GHB primary color #AB1F29 was not found in slide XML")
+    for index, slide_part in enumerate(ordered_slides, 1):
+        xml = parts.get(slide_part, b"").decode("utf-8", errors="replace")
+        run_properties = re.findall(
+            r"<a:rPr\b[^>]*(?:/>|>.*?</a:rPr>)",
+            xml,
+            re.DOTALL,
+        )
+        if any(
+            "<a:noFill" in block or re.search(r'<a:alpha\s+val="0"', block)
+            for block in run_properties
+        ):
+            _issue(issues, "warning", "possibly-invisible-text", "text run may have no fill or zero alpha", index)
 
     for left, right in zip(slides, slides[1:]):
         if left.title and left.title == right.title:
@@ -516,6 +613,73 @@ def validate_pptx(
         if len(pngs) != len(slides):
             _issue(issues, "warning", "render-count", f"render directory contains {len(pngs)} page PNGs for {len(slides)} slides")
         package_info["rendered_pages"] = len(pngs)
+        render_report_path = render_dir / "render-report.json"
+        if render_report_path.is_file():
+            try:
+                render_payload = json.loads(render_report_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                _issue(issues, "warning", "invalid-render-report", str(exc))
+            else:
+                package_info["render"] = {
+                    "renderer": render_payload.get("renderer"),
+                    "page_count": render_payload.get("page_count"),
+                    "passed": render_payload.get("passed"),
+                }
+                for warning in render_payload.get("warnings", []):
+                    known_limitations.append(str(warning))
+                    _issue(issues, "warning", "render-warning", str(warning))
+
+    svg_quality: list[dict[str, Any]] = []
+    for svg_report_path in svg_report_paths or []:
+        try:
+            svg_payload = json.loads(svg_report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            _issue(issues, "error", "invalid-svg-report", f"{svg_report_path}: {exc}")
+            continue
+        summary = {
+            "stage": svg_payload.get("stage"),
+            "passed": svg_payload.get("passed"),
+            "file_count": len(svg_payload.get("files", [])),
+            "error_count": svg_payload.get("error_count", 0),
+            "warning_count": svg_payload.get("warning_count", 0),
+            "path": str(svg_report_path),
+        }
+        svg_quality.append(summary)
+        if not svg_payload.get("passed"):
+            _issue(issues, "error", "svg-quality-gate", f"SVG {summary['stage']} report failed with {summary['error_count']} errors")
+    if svg_quality:
+        package_info["svg_quality"] = svg_quality
+
+    if readback_markdown_path is not None:
+        if not readback_markdown_path.is_file():
+            _issue(
+                issues,
+                "error",
+                "missing-ppt-readback",
+                f"ppt_to_md readback was not produced: {readback_markdown_path}",
+            )
+        else:
+            try:
+                readback = readback_markdown_path.read_text(encoding="utf-8")
+            except OSError as exc:
+                _issue(issues, "error", "invalid-ppt-readback", str(exc))
+            else:
+                readback_chars = len(re.sub(r"\s+", "", readback))
+                readback_slides = len(re.findall(r"^## Slide \d+\s*$", readback, re.MULTILINE))
+                package_info["ppt_readback"] = {
+                    "path": str(readback_markdown_path),
+                    "chars": readback_chars,
+                    "slide_sections": readback_slides,
+                }
+                if readback_chars < 20:
+                    _issue(issues, "error", "empty-ppt-readback", "ppt_to_md readback is empty")
+                if readback_slides != len(slides):
+                    _issue(
+                        issues,
+                        "error",
+                        "ppt-readback-page-count",
+                        f"ppt_to_md readback contains {readback_slides} slide sections for {len(slides)} pages",
+                    )
 
     report = ValidationReport(
         pptx=str(path.resolve()),
@@ -565,16 +729,28 @@ def markdown_report(report: ValidationReport) -> str:
         "",
         "## Per-slide object summary",
         "",
-        "| Slide | Role | Text | Shapes | Groups | Pictures | Tables | Charts | Min font | OOB | Full image |",
-        "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Slide | Role | Text | Shapes | Groups | Pictures | Tables | Charts | Min font | OOB | Full image | Empty text | Overlaps | Page no. |",
+        "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ])
+    svg_quality = report.package.get("svg_quality", [])
+    if svg_quality:
+        insertion = ["", "## SVG quality gates", ""]
+        for item in svg_quality:
+            insertion.append(
+                f"- `{item['stage']}`: {'PASS' if item['passed'] else 'FAIL'}; "
+                f"files={item['file_count']}, errors={item['error_count']}, warnings={item['warning_count']}"
+            )
+        # Keep the object table immediately after its heading; prepend this section.
+        table_heading = lines.index("## Per-slide object summary")
+        lines[table_heading:table_heading] = insertion
     for slide in report.slides:
         min_font = "" if slide.min_font_pt is None else f"{slide.min_font_pt:g}"
         lines.append(
             f"| {slide.slide} | {slide.role} | {slide.text_objects} | {slide.shape_objects} | "
             f"{slide.group_objects} | {slide.picture_objects} | {slide.table_objects} | "
             f"{slide.chart_objects} | {min_font} | {slide.out_of_bounds_objects} | "
-            f"{slide.full_slide_pictures} |"
+            f"{slide.full_slide_pictures} | {slide.empty_text_boxes} | "
+            f"{slide.possible_text_overlaps} | {'yes' if slide.page_number_found else 'no'} |"
         )
     lines.extend(["", "## Known limitations", ""])
     lines.extend(f"- {item}" for item in report.known_limitations)
@@ -594,6 +770,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--layout-plan", type=Path)
     parser.add_argument("--cover-text", action="append", default=[])
     parser.add_argument("--render-dir", type=Path)
+    parser.add_argument("--expect-body-notes", action="store_true")
+    parser.add_argument("--svg-report", type=Path, action="append", default=[])
+    parser.add_argument("--readback-markdown", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--json-output", type=Path)
     parser.add_argument("--markdown-output", type=Path)
@@ -611,6 +790,9 @@ def main(argv: list[str] | None = None) -> int:
         layout_plan_path=args.layout_plan,
         cover_text=args.cover_text,
         render_dir=args.render_dir,
+        expect_body_notes=args.expect_body_notes,
+        svg_report_paths=args.svg_report,
+        readback_markdown_path=args.readback_markdown,
     )
     payload = report_dict(report)
     if args.json_output:

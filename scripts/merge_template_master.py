@@ -76,6 +76,26 @@ def xml_bytes(root: ET.Element) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
+def content_types_bytes(root: ET.Element) -> bytes:
+    """Serialize OPC Content Types with the namespace as the default.
+
+    The XML namespace is semantically identical when ElementTree emits an
+    ``ns0:`` prefix, but LibreOffice rejects such packages with a generic
+    "source file could not be loaded" error.  OPC producers conventionally use
+    the Content Types namespace as the default, so preserve that wire format.
+    """
+    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    text = payload.decode("utf-8")
+    text = text.replace(
+        '<ns0:Types xmlns:ns0="http://schemas.openxmlformats.org/package/2006/content-types">',
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+        1,
+    )
+    text = text.replace("</ns0:Types>", "</Types>")
+    text = text.replace("<ns0:", "<").replace("</ns0:", "</")
+    return text.encode("utf-8")
+
+
 def load_package(path: Path) -> dict[str, bytes]:
     if not path.is_file():
         raise MergeError(f"PPTX not found: {path}")
@@ -489,7 +509,7 @@ def merge_pptx(
     for tag in copied_tags:
         add_override(ct, tag, CONTENT_TYPES["tags"])
     add_media_defaults(ct, content)
-    content["[Content_Types].xml"] = xml_bytes(ct)
+    content["[Content_Types].xml"] = content_types_bytes(ct)
 
     verify_relationship_targets(content)
     output_path.parent.mkdir(parents=True, exist_ok=True)

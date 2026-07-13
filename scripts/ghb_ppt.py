@@ -6,15 +6,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,6 +46,7 @@ class CommandResult:
 class RunRecord:
     command: str
     started_at: str
+    keep_intermediate: bool = False
     status: str = "running"
     stages: list[dict[str, Any]] = field(default_factory=list)
     outputs: list[str] = field(default_factory=list)
@@ -53,7 +54,14 @@ class RunRecord:
 
 
 class RunContext:
-    def __init__(self, project: Path, command: str, *, dry_run: bool = False) -> None:
+    def __init__(
+        self,
+        project: Path,
+        command: str,
+        *,
+        dry_run: bool = False,
+        keep_intermediate: bool = False,
+    ) -> None:
         self.project = project.resolve()
         self.dry_run = dry_run
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -61,6 +69,7 @@ class RunContext:
         self.record = RunRecord(
             command=command,
             started_at=datetime.now(timezone.utc).isoformat(),
+            keep_intermediate=keep_intermediate,
         )
         if not dry_run:
             self.run_dir.mkdir(parents=True, exist_ok=False)
@@ -148,6 +157,37 @@ def ensure_project(project: Path, *, create: bool = False, dry_run: bool = False
             project.mkdir(parents=True, exist_ok=True)
             for name in REQUIRED_DIRS:
                 (project / name).mkdir(exist_ok=True)
+            confirmation = project / "confirmation.json"
+            if not confirmation.exists():
+                confirmation.write_text(
+                    json.dumps(
+                        {
+                            "schema": "ghb.confirmation.v1",
+                            "status": "pending",
+                            "confirmation_source": None,
+                            "confirmed_at": None,
+                            "decision_digest": None,
+                            "decisions": {
+                                "audience": None,
+                                "page_range": None,
+                                "mode": None,
+                                "outline": [],
+                                "content_tradeoffs": {
+                                    "expand": [],
+                                    "omit": [],
+                                    "combine": [],
+                                },
+                                "visual_assets": {
+                                    "image_source": None,
+                                    "icon_set": None,
+                                },
+                            },
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ) + "\n",
+                    encoding="utf-8",
+                )
         return
     if not project.is_dir():
         raise PipelineError(f"project directory not found: {project}")
@@ -238,12 +278,36 @@ def build_cover(
     return output
 
 
+def run_svg_gate(run: RunContext, *, stage: str) -> Path:
+    report = run.project / "reports" / f"svg-{stage}.json"
+    run.run(
+        f"svg-{stage}",
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "ghb_svg_quality.py"),
+            str(run.project),
+            "--stage", stage,
+            "--output", str(report),
+        ],
+    )
+    run.output(report)
+    return report
+
+
+def check_project_contract(run: RunContext) -> None:
+    run.run(
+        "project-contract",
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "validate_project_contract.py"),
+            str(run.project),
+        ],
+    )
+
+
 def check_svg(run: RunContext) -> None:
-    run.run("svg-quality", [sys.executable, str(PM / "svg_quality_checker.py"), str(run.project), "--format", "ppt169"])
-    layout_plan = run.project / "layout_plan.json"
-    if layout_plan.exists() or run.dry_run:
-        run.run("layout-diversity", [sys.executable, str(PM / "check_layout_diversity.py"), str(run.project)])
-    run.run("visual-authored", [sys.executable, str(PM / "visual_asset_checker.py"), str(run.project), "--stage", "authored"])
+    check_project_contract(run)
+    run_svg_gate(run, stage="authored")
 
 
 def build_content(run: RunContext, *, output: Path) -> Path:
@@ -265,7 +329,7 @@ def build_content(run: RunContext, *, output: Path) -> Path:
     if total_notes.exists() or run.dry_run:
         run.run("split-notes", [sys.executable, str(PM / "total_md_split.py"), str(run.project)])
     run.run("finalize-svg", [sys.executable, str(PM / "finalize_svg.py"), str(run.project)])
-    run.run("visual-finalized", [sys.executable, str(PM / "visual_asset_checker.py"), str(run.project), "--stage", "finalized"])
+    run_svg_gate(run, stage="finalized")
     run.run(
         "svg-to-pptx",
         [sys.executable, str(PM / "svg_to_pptx.py"), str(run.project), "-o", str(output), "--animation", "none", "--transition", "none"],
@@ -322,6 +386,17 @@ def validate_deck(
         raise PipelineError(f"final PPTX not found: {pptx}")
     if body_count is None:
         body_count = len(list((run.project / "svg_output").glob("*.svg")))
+    readback_output = markdown_output.parent / "ppt-readback.md"
+    run.run(
+        "ppt-readback",
+        [
+            sys.executable,
+            str(PM / "source_to_md" / "ppt_to_md.py"),
+            str(pptx),
+            "--output", str(readback_output),
+        ],
+    )
+    run.output(readback_output)
     command = [
         sys.executable,
         str(ROOT / "scripts" / "validate_ghb_pptx.py"),
@@ -330,6 +405,7 @@ def validate_deck(
         "--source-svg-dir", str(run.project / "svg_output"),
         "--json-output", str(json_output),
         "--markdown-output", str(markdown_output),
+        "--readback-markdown", str(readback_output),
     ]
     layout_plan = run.project / "layout_plan.json"
     if layout_plan.exists() or run.dry_run:
@@ -337,11 +413,60 @@ def validate_deck(
     command.append("--expect-ending" if expect_ending else "--no-ending")
     if render_dir is not None:
         command.extend(["--render-dir", str(render_dir)])
+    for svg_report in (
+        run.project / "reports" / "svg-authored.json",
+        run.project / "reports" / "svg-finalized.json",
+    ):
+        if svg_report.is_file() or run.dry_run:
+            command.extend(["--svg-report", str(svg_report)])
+    notes_dir = run.project / "notes"
+    if any(path.name != "total.md" for path in notes_dir.glob("*.md")):
+        command.append("--expect-body-notes")
     run.run("validate", command)
     run.output(json_output)
     run.output(markdown_output)
-    run.checkpoint("validate", [pptx, json_output, markdown_output])
+    run.checkpoint("validate", [pptx, readback_output, json_output, markdown_output])
     return json_output, markdown_output
+
+
+def render_deck(
+    run: RunContext,
+    *,
+    pptx: Path,
+    output_dir: Path,
+    dpi: int = 144,
+) -> Path:
+    if not pptx.is_file() and not run.dry_run:
+        raise PipelineError(f"PPTX not found: {pptx}")
+    run.run(
+        "render",
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "render_ghb_pptx.py"),
+            str(pptx),
+            "--output-dir", str(output_dir),
+            "--dpi", str(dpi),
+        ],
+    )
+    run.output(output_dir / "render-report.json")
+    run.output(output_dir / "contact-sheet.png")
+    run.checkpoint(
+        "render",
+        [pptx, output_dir / "render-report.json", output_dir / "contact-sheet.png"],
+    )
+    return output_dir
+
+
+def validation_error_codes(report_path: Path) -> set[str]:
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PipelineError(f"cannot read failed validation report {report_path}: {exc}") from exc
+    return {
+        str(issue.get("code"))
+        for issue in payload.get("issues", [])
+        if issue.get("severity") == "error" and issue.get("code")
+    }
 
 
 def doctor_payload(template: Path) -> dict[str, Any]:
@@ -367,8 +492,22 @@ def doctor_payload(template: Path) -> dict[str, Any]:
     renderers = {
         "soffice": shutil.which("soffice"),
         "libreoffice": shutil.which("libreoffice"),
+        "pdftoppm": shutil.which("pdftoppm"),
         "keynote": str(Path("/Applications/Keynote.app")) if Path("/Applications/Keynote.app").exists() else None,
         "powerpoint": str(Path("/Applications/Microsoft PowerPoint.app")) if Path("/Applications/Microsoft PowerPoint.app").exists() else None,
+    }
+    permission_paths = {
+        "skill_root": ROOT,
+        "system_temp": Path(tempfile.gettempdir()),
+    }
+    permissions = {
+        name: {
+            "path": str(path.resolve()),
+            "exists": path.exists(),
+            "readable": os.access(path, os.R_OK),
+            "writable": os.access(path, os.W_OK),
+        }
+        for name, path in permission_paths.items()
     }
     errors: list[str] = []
     warnings: list[str] = []
@@ -379,8 +518,15 @@ def doctor_payload(template: Path) -> dict[str, Any]:
             errors.append(f"Python dependency missing: {module}")
     if not fonts["Microsoft YaHei"]:
         warnings.append("Microsoft YaHei is not installed; LibreOffice/Keynote CJK rendering may substitute or lose glyphs")
-    if not any(renderers.values()):
+    for name, permission in permissions.items():
+        if not permission["exists"] or not permission["readable"]:
+            errors.append(f"required directory is unavailable: {name} ({permission['path']})")
+        if name == "system_temp" and not permission["writable"]:
+            errors.append(f"temporary directory is not writable: {permission['path']}")
+    if not any(renderers[name] for name in ("soffice", "libreoffice", "keynote", "powerpoint")):
         warnings.append("no PPT renderer detected; visual validation will use SVG/OOXML fallback only")
+    elif (renderers["soffice"] or renderers["libreoffice"]) and not renderers["pdftoppm"]:
+        warnings.append("LibreOffice is available but pdftoppm is missing; per-page PNG rendering is unavailable")
     return {
         "passed": not errors,
         "python": sys.version.split()[0],
@@ -389,6 +535,7 @@ def doctor_payload(template: Path) -> dict[str, Any]:
         "dependencies": imports,
         "fonts": fonts,
         "renderers": renderers,
+        "permissions": permissions,
         "errors": errors,
         "warnings": warnings,
     }
@@ -412,12 +559,18 @@ def parser() -> argparse.ArgumentParser:
 
     analyze = sub.add_parser("analyze-template", help="Analyze a PPTX template")
     analyze.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
-    analyze.add_argument("--output", type=Path, required=True)
+    analyze.add_argument("--project", type=Path)
+    analyze.add_argument("--output", type=Path)
     analyze.add_argument("--dry-run", action="store_true")
 
     def add_project(command: argparse.ArgumentParser) -> None:
         command.add_argument("--project", type=Path, required=True)
         command.add_argument("--dry-run", action="store_true")
+        command.add_argument(
+            "--keep-intermediate",
+            action="store_true",
+            help="Explicitly retain intermediates and failed evidence (already the safe default)",
+        )
 
     cover = sub.add_parser("build-cover", help="Build and font-normalize the GHB cover")
     add_project(cover)
@@ -430,6 +583,12 @@ def parser() -> argparse.ArgumentParser:
 
     check = sub.add_parser("check-svg", help="Run authored SVG quality gates")
     add_project(check)
+
+    contract = sub.add_parser(
+        "check-project",
+        help="Enforce confirmation, content-model, layout-plan, and authored-file contracts",
+    )
+    add_project(contract)
 
     content = sub.add_parser("build-content", help="Finalize SVG and export editable content PPTX")
     add_project(content)
@@ -459,6 +618,12 @@ def parser() -> argparse.ArgumentParser:
         validate.add_argument("--render-dir", type=Path)
         validate.add_argument("--no-ending", action="store_true")
 
+    render = sub.add_parser("render", help="Render final PPTX to PDF, page PNGs, and contact sheet")
+    add_project(render)
+    render.add_argument("--pptx", type=Path)
+    render.add_argument("--output-dir", type=Path)
+    render.add_argument("--dpi", type=int, default=144)
+
     build = sub.add_parser("build", help="Run cover, SVG gates/content export, and master merge")
     add_project(build)
     build.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
@@ -468,6 +633,14 @@ def parser() -> argparse.ArgumentParser:
     build.add_argument("--subtitle")
     build.add_argument("--date")
     build.add_argument("--content-layout", type=int, default=2)
+    build.add_argument("--no-render", action="store_true")
+    build.add_argument("--render-dpi", type=int, default=144)
+    build.add_argument(
+        "--repair-attempts",
+        type=int,
+        default=1,
+        help="Maximum deterministic repair retries after structural validation (0-3; default 1)",
+    )
     build_ending = build.add_mutually_exclusive_group()
     build_ending.add_argument("--no-ending", action="store_true")
     build_ending.add_argument("--ending-slide", type=int)
@@ -501,11 +674,26 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "analyze-template":
+        if args.project:
+            try:
+                ensure_project(args.project)
+            except PipelineError as exc:
+                print(f"[ERROR] {exc}", file=sys.stderr)
+                return 1
+        output = args.output or (
+            args.project / "analysis" / "slide_library.json"
+            if args.project
+            else None
+        )
+        if output is None:
+            print("[ERROR] analyze-template needs --project or --output", file=sys.stderr)
+            return 1
         if args.dry_run:
-            print(f"[DRY-RUN] analyze {args.template} -> {args.output}")
+            print(f"[DRY-RUN] analyze {args.template} -> {output}")
             return 0
+        output.parent.mkdir(parents=True, exist_ok=True)
         completed = subprocess.run(
-            [sys.executable, str(PM / "template_fill_pptx.py"), "analyze", str(args.template), "-o", str(args.output)],
+            [sys.executable, str(PM / "template_fill_pptx.py"), "analyze", str(args.template), "-o", str(output)],
             cwd=ROOT,
         )
         return completed.returncode
@@ -513,7 +701,12 @@ def main(argv: list[str] | None = None) -> int:
     project = args.project.resolve()
     try:
         ensure_project(project)
-        run = RunContext(project, args.command, dry_run=args.dry_run)
+        run = RunContext(
+            project,
+            args.command,
+            dry_run=args.dry_run,
+            keep_intermediate=args.keep_intermediate,
+        )
         try:
             if args.command == "build-cover":
                 build_cover(
@@ -528,9 +721,13 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "check-svg":
                 check_svg(run)
                 run.checkpoint("check-svg", [])
+            elif args.command == "check-project":
+                check_project_contract(run)
+                run.checkpoint("check-project", [])
             elif args.command == "build-content":
                 build_content(run, output=_project_output(project, args.output, "content.pptx"))
             elif args.command == "merge":
+                check_project_contract(run)
                 merge_deck(
                     run,
                     content=_project_output(project, args.content, "content.pptx"),
@@ -552,10 +749,20 @@ def main(argv: list[str] | None = None) -> int:
                     markdown_output=(args.markdown_output.resolve() if args.markdown_output else report_dir / "quality-report.md"),
                     render_dir=args.render_dir.resolve() if args.render_dir else None,
                 )
+            elif args.command == "render":
+                render_deck(
+                    run,
+                    pptx=_project_output(project, args.pptx, "final.pptx"),
+                    output_dir=(args.output_dir.resolve() if args.output_dir else project / "render"),
+                    dpi=args.dpi,
+                )
             elif args.command == "build":
+                if args.repair_attempts < 0 or args.repair_attempts > 3:
+                    raise PipelineError("--repair-attempts must be between 0 and 3")
                 cover_path = _project_output(project, None, "cover.pptx")
                 content_path = _project_output(project, None, "content.pptx")
                 final_path = _project_output(project, args.output, "final.pptx")
+                check_project_contract(run)
                 build_cover(
                     run,
                     template=args.template.resolve(),
@@ -577,6 +784,69 @@ def main(argv: list[str] | None = None) -> int:
                     ending_slide=args.ending_slide,
                 )
                 report_dir = project / "reports"
+                pre_json = report_dir / "quality-pre-render.json"
+                pre_markdown = report_dir / "quality-pre-render.md"
+                fixable_merge_codes = {
+                    "unregistered-used-layout",
+                    "master-layout-list-mismatch",
+                    "noncanonical-content-types-namespace",
+                    "missing-content-override",
+                    "missing-media-default",
+                }
+                for attempt in range(args.repair_attempts + 1):
+                    try:
+                        validate_deck(
+                            run,
+                            pptx=final_path,
+                            body_count=None,
+                            expect_ending=not args.no_ending,
+                            json_output=pre_json,
+                            markdown_output=pre_markdown,
+                        )
+                        break
+                    except PipelineError:
+                        codes = validation_error_codes(pre_json)
+                        if attempt >= args.repair_attempts:
+                            raise
+                        if codes == {"cover-font"}:
+                            run.run(
+                                f"repair-cover-font-{attempt + 1}",
+                                [sys.executable, str(ROOT / "scripts" / "fix_cover_font.py"), str(cover_path)],
+                            )
+                        elif codes and codes.issubset(fixable_merge_codes):
+                            print(
+                                f"[REPAIR {attempt + 1}/{args.repair_attempts}] "
+                                f"rebuilding OOXML merge for {sorted(codes)}"
+                            )
+                        else:
+                            raise
+                        merge_deck(
+                            run,
+                            content=content_path,
+                            template=args.template.resolve(),
+                            cover=cover_path,
+                            output=final_path,
+                            content_layout=args.content_layout,
+                            no_ending=args.no_ending,
+                            ending_slide=args.ending_slide,
+                        )
+                render_dir = None
+                if not args.no_render:
+                    if shutil.which("soffice") or shutil.which("libreoffice"):
+                        render_dir = render_deck(
+                            run,
+                            pptx=final_path,
+                            output_dir=project / "render",
+                            dpi=args.render_dpi,
+                        )
+                    else:
+                        message = "no renderer detected; skipped final PPTX rendering"
+                        print(f"[WARN] {message}")
+                        if not run.dry_run:
+                            run.record.stages.append(
+                                {"stage": "render", "status": "skipped", "warning": message}
+                            )
+                            run._write_record()
                 validate_deck(
                     run,
                     pptx=final_path,
@@ -584,6 +854,7 @@ def main(argv: list[str] | None = None) -> int:
                     expect_ending=not args.no_ending,
                     json_output=report_dir / "quality-report.json",
                     markdown_output=report_dir / "quality-report.md",
+                    render_dir=render_dir,
                 )
                 run.checkpoint("build", [final_path, report_dir / "quality-report.json", report_dir / "quality-report.md"])
             run.finish()
