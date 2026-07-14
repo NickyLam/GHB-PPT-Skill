@@ -188,6 +188,14 @@ def ensure_project(project: Path, *, create: bool = False, dry_run: bool = False
                     ) + "\n",
                     encoding="utf-8",
                 )
+            visual_profile = project / "visual_profile.json"
+            if not visual_profile.exists():
+                from scripts.validate_project_contract import default_visual_profile
+
+                visual_profile.write_text(
+                    json.dumps(default_visual_profile(), ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
         return
     if not project.is_dir():
         raise PipelineError(f"project directory not found: {project}")
@@ -294,14 +302,17 @@ def run_svg_gate(run: RunContext, *, stage: str) -> Path:
     return report
 
 
-def check_project_contract(run: RunContext) -> None:
+def check_project_contract(run: RunContext, *, require_visual_contract: bool = False) -> None:
+    command = [
+        sys.executable,
+        str(ROOT / "scripts" / "validate_project_contract.py"),
+        str(run.project),
+    ]
+    if require_visual_contract:
+        command.append("--require-visual-contract")
     run.run(
         "project-contract",
-        [
-            sys.executable,
-            str(ROOT / "scripts" / "validate_project_contract.py"),
-            str(run.project),
-        ],
+        command,
     )
 
 
@@ -589,6 +600,11 @@ def parser() -> argparse.ArgumentParser:
         help="Enforce confirmation, content-model, layout-plan, and authored-file contracts",
     )
     add_project(contract)
+    contract.add_argument(
+        "--require-visual-contract",
+        action="store_true",
+        help="Opt into the v1 visual profile and per-page schema gate before the U11 rollout",
+    )
 
     content = sub.add_parser("build-content", help="Finalize SVG and export editable content PPTX")
     add_project(content)
@@ -722,7 +738,9 @@ def main(argv: list[str] | None = None) -> int:
                 check_svg(run)
                 run.checkpoint("check-svg", [])
             elif args.command == "check-project":
-                check_project_contract(run)
+                check_project_contract(
+                    run, require_visual_contract=args.require_visual_contract
+                )
                 run.checkpoint("check-project", [])
             elif args.command == "build-content":
                 build_content(run, output=_project_output(project, args.output, "content.pptx"))

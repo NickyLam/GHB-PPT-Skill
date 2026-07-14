@@ -34,7 +34,21 @@
     ],
     "claim_ids": [
       "claim-01"
-    ]
+    ],
+    "page_schema": {
+      "schema": "ghb.page-schema.v1",
+      "slide_id": "body-01",
+      "page_purpose": "architecture",
+      "layout_variant": "layered_arch/default",
+      "density": "balanced",
+      "rhythm_role": "anchor",
+      "emphasis": "single-focal",
+      "budgets": {
+        "max_text_chars": 123,
+        "max_nodes": 5
+      },
+      "focal_target": "primary-structure"
+    }
   },
   {
     "slide": 2,
@@ -71,7 +85,20 @@
     ],
     "claim_ids": [
       "claim-02"
-    ]
+    ],
+    "page_schema": {
+      "schema": "ghb.page-schema.v1",
+      "slide_id": "body-02",
+      "page_purpose": "process",
+      "layout_variant": "waterfall/default",
+      "density": "dense",
+      "rhythm_role": "continuity",
+      "emphasis": "distributed",
+      "budgets": {
+        "max_text_chars": 121,
+        "max_nodes": 5
+      }
+    }
   },
   {
     "slide": 3,
@@ -107,6 +134,19 @@
     "claim_ids": [
       "claim-03"
     ],
+    "page_schema": {
+      "schema": "ghb.page-schema.v1",
+      "slide_id": "body-03",
+      "page_purpose": "process",
+      "layout_variant": "swimlane/default",
+      "density": "dense",
+      "rhythm_role": "continuity",
+      "emphasis": "distributed",
+      "budgets": {
+        "max_text_chars": 120,
+        "max_nodes": 3
+      }
+    },
     "owners": [
       "用户",
       "主 Agent",
@@ -149,6 +189,19 @@
     "claim_ids": [
       "claim-04"
     ],
+    "page_schema": {
+      "schema": "ghb.page-schema.v1",
+      "slide_id": "body-04",
+      "page_purpose": "process",
+      "layout_variant": "flywheel/default",
+      "density": "breathing",
+      "rhythm_role": "transition",
+      "emphasis": "ranked",
+      "budgets": {
+        "max_text_chars": 120,
+        "max_nodes": 5
+      }
+    },
     "loop_closure": "修正结论回到读取现状，驱动下一轮"
   },
   {
@@ -185,7 +238,21 @@
     ],
     "claim_ids": [
       "claim-05"
-    ]
+    ],
+    "page_schema": {
+      "schema": "ghb.page-schema.v1",
+      "slide_id": "body-05",
+      "page_purpose": "summary",
+      "layout_variant": "iceberg/default",
+      "density": "balanced",
+      "rhythm_role": "anchor",
+      "emphasis": "single-focal",
+      "budgets": {
+        "max_text_chars": 117,
+        "max_nodes": 4
+      },
+      "focal_target": "primary-structure"
+    }
   },
   {
     "slide": 6,
@@ -223,6 +290,19 @@
     "claim_ids": [
       "claim-06"
     ],
+    "page_schema": {
+      "schema": "ghb.page-schema.v1",
+      "slide_id": "body-06",
+      "page_purpose": "summary",
+      "layout_variant": "timeline/default",
+      "density": "breathing",
+      "rhythm_role": "transition",
+      "emphasis": "ranked",
+      "budgets": {
+        "max_text_chars": 120,
+        "max_nodes": 5
+      }
+    },
     "order_signal": "读、想、改、测、交付的固定先后顺序"
   }
 ]

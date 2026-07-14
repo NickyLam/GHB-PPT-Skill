@@ -13,7 +13,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.ppt_master.svg_layouts import LayoutSpec, render_layout  # noqa: E402
-from scripts.validate_project_contract import confirmation_digest  # noqa: E402
+from scripts.validate_project_contract import confirmation_digest, default_visual_profile  # noqa: E402
 
 
 CANVAS_W = 1280
@@ -21,6 +21,36 @@ CANVAS_H = 720
 OUTPUT_DIR = Path(__file__).resolve().parent
 SVG_DIR = OUTPUT_DIR / "svg_output"
 NOTES_DIR = OUTPUT_DIR / "notes"
+
+
+def page_schema(slide: dict[str, object], slide_id: str) -> dict[str, object]:
+    legacy = str(slide["density"])
+    density = {"anchor": "balanced", "dense": "dense", "breathing": "breathing"}[legacy]
+    rhythm_role = {"anchor": "anchor", "dense": "continuity", "breathing": "transition"}[legacy]
+    archetype = str(slide["layout_archetype"])
+    purpose = {
+        "layered_arch": "architecture",
+        "waterfall": "process",
+        "swimlane": "process",
+        "flywheel": "process",
+        "iceberg": "summary",
+        "pyramid": "summary",
+    }.get(archetype, "summary")
+    emphasis = "single-focal" if legacy == "anchor" else "distributed" if legacy == "dense" else "ranked"
+    items = [str(item) for item in slide["items"]]
+    result: dict[str, object] = {
+        "schema": "ghb.page-schema.v1",
+        "slide_id": slide_id,
+        "page_purpose": purpose,
+        "layout_variant": f"{archetype}/default",
+        "density": density,
+        "rhythm_role": rhythm_role,
+        "emphasis": emphasis,
+        "budgets": {"max_text_chars": min(240, 100 + sum(map(len, items))), "max_nodes": len(items)},
+    }
+    if emphasis == "single-focal":
+        result["focal_target"] = "primary-structure"
+    return result
 
 
 SLIDES = [
@@ -344,6 +374,7 @@ def main() -> int:
                 "reason": slide["reason"],
                 "alternatives": slide["alternatives"],
                 "claim_ids": [claim_id],
+                "page_schema": page_schema(slide, f"body-{index:02d}"),
             }
         if slide["layout_archetype"] == "swimlane":
             row["owners"] = slide["items"]
@@ -354,6 +385,10 @@ def main() -> int:
         layout_plan.append(row)
     (OUTPUT_DIR / "layout_plan.json").write_text(
         json.dumps(layout_plan, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    (OUTPUT_DIR / "visual_profile.json").write_text(
+        json.dumps(default_visual_profile(), indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     (OUTPUT_DIR / "content_model.json").write_text(

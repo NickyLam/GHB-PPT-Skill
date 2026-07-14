@@ -1,0 +1,43 @@
+{
+  "schema": "ghb.visual-profile.v1",
+  "brand": {
+    "primary": "#AB1F29",
+    "text": "#2B2B2B",
+    "surface": "#FFFFFF"
+  },
+  "typography": {
+    "min_title_pt": 28,
+    "min_body_pt": 18,
+    "min_title_body_ratio": 1.5
+  },
+  "spacing": {
+    "base_unit": 8,
+    "min_component_gap": 16
+  },
+  "occupancy": {
+    "body": {
+      "min": 0.42,
+      "max": 0.78
+    }
+  },
+  "composition": {
+    "default_density": "balanced",
+    "default_emphasis": "ranked"
+  },
+  "focal": {
+    "allowed_zones": [
+      "left",
+      "center",
+      "right",
+      "full"
+    ]
+  },
+  "deck_rhythm": {
+    "default_role": "continuity",
+    "max_same_role_streak": 3
+  },
+  "budgets": {
+    "max_text_chars": 240,
+    "max_nodes": 8
+  }
+}

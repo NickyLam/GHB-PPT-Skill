@@ -68,6 +68,90 @@ Write `<project>/content_model.json` before `layout_plan.json`:
 Every layout-plan row uses `claim_ids` to map the page back to claims. Every
 `must_include` claim needs a source reference and must appear in the plan.
 
+## Visual profile v1
+
+`visual_profile.json` owns project-wide visual direction. `ghb_ppt.py init`
+creates the valid neutral GHB scaffold below; it does not invent a page purpose,
+focal target, or layout coordinates.
+
+```json
+{
+  "schema": "ghb.visual-profile.v1",
+  "brand": {"primary": "#AB1F29", "text": "#2B2B2B", "surface": "#FFFFFF"},
+  "typography": {"min_title_pt": 28, "min_body_pt": 18, "min_title_body_ratio": 1.5},
+  "spacing": {"base_unit": 8, "min_component_gap": 16},
+  "occupancy": {"body": {"min": 0.42, "max": 0.78}},
+  "composition": {"default_density": "balanced", "default_emphasis": "ranked"},
+  "focal": {"allowed_zones": ["left", "center", "right", "full"]},
+  "deck_rhythm": {"default_role": "continuity", "max_same_role_streak": 3},
+  "budgets": {"max_text_chars": 240, "max_nodes": 8}
+}
+```
+
+The validator rejects an unknown schema major, inverted occupancy bands,
+non-positive typography/spacing values, invalid defaults, empty focal-zone
+policy, and non-positive budgets. Unknown additive fields are retained and
+tolerated. Page budgets may tighten but never exceed the project maxima.
+
+## Nested page schema v1
+
+Every newly authored layout row declares its intent in `page_schema`; concrete
+component boxes remain renderer-derived. A valid architecture anchor page is:
+
+```json
+{
+  "slide_id": "body-01",
+  "layout_archetype": "layered_arch",
+  "page_schema": {
+    "schema": "ghb.page-schema.v1",
+    "slide_id": "body-01",
+    "page_purpose": "architecture",
+    "layout_variant": "layered_arch/default",
+    "density": "balanced",
+    "rhythm_role": "anchor",
+    "emphasis": "single-focal",
+    "focal_target": "platform-core",
+    "budgets": {"max_text_chars": 180, "max_nodes": 7}
+  }
+}
+```
+
+V1 vocabulary and precedence:
+
+| Concern | Allowed values / boundary |
+|---|---|
+| `page_purpose` | exactly one primary value: `architecture`, `process`, `comparison`, `timeline`, `metrics`, or `summary`; optional additive secondary tags do not change the primary purpose |
+| `density` | `breathing`, `balanced`, or `dense`; page value overrides the profile default but cannot exceed profile budgets or typography floors |
+| `rhythm_role` | `anchor`, `continuity`, or `transition`; this is independent of density |
+| `emphasis` | `single-focal`, `ranked`, or `distributed`; `single-focal` requires a non-empty `focal_target` |
+| `layout_variant` | `<existing-archetype>/<catalogued-variant>`; `comparison` is accepted as the semantic alias of the existing `matrix` family |
+| `budgets` | positive integer `max_text_chars` and `max_nodes`, each no greater than the profile maximum |
+| `bounds_override` | optional `{x,y,width,height}` inside the 1280×720 canvas; omit it unless an authored override is genuinely required |
+
+The nested `slide_id` must exactly match the containing layout row. The variant
+family must match `layout_archetype`; the only v1 alias is `comparison` for
+`matrix`. Unknown additive fields are tolerated, but missing required intent is
+never inferred.
+
+The legacy confirmation/layout rhythm vocabulary remains unchanged:
+`anchor`, `dense`, and `breathing`. It is evidence of the confirmed outline,
+not the new page density or rhythm role. During explicit migration, a legacy
+`anchor` may seed `page_schema.density: balanced`; `dense` and `breathing` map
+to the same-named densities. The author must still choose `rhythm_role`,
+purpose, emphasis, focal target, and variant. Validators never silently create
+a missing `page_schema`.
+
+Before the U11 rollout gate, use the explicit contract check on migrated/pilot
+projects:
+
+```bash
+python3 scripts/ghb_ppt.py check-project --project projects/<name> --require-visual-contract
+```
+
+Normal legacy checks remain available during this rollout window. New projects
+already receive `visual_profile.json`, but page schemas are written only during
+layout planning after user confirmation.
+
 ## Layout semantic fields
 
 Add these fields when the matching layout is selected:

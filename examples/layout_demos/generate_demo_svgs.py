@@ -13,11 +13,39 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.ppt_master.svg_layouts import LayoutSpec, render_layout  # noqa: E402
-from scripts.validate_project_contract import confirmation_digest  # noqa: E402
+from scripts.validate_project_contract import confirmation_digest, default_visual_profile  # noqa: E402
 
 
 CANVAS_W = 1280
 CANVAS_H = 720
+
+
+def page_schema(demo: dict[str, object], slide_id: str) -> dict[str, object]:
+    legacy = str(demo["density"])
+    density = {"anchor": "balanced", "dense": "dense", "breathing": "breathing"}[legacy]
+    rhythm_role = {"anchor": "anchor", "dense": "continuity", "breathing": "transition"}[legacy]
+    archetype = str(demo["layout_archetype"])
+    purpose = {
+        "funnel": "process",
+        "flywheel": "process",
+        "swimlane": "process",
+        "iceberg": "summary",
+    }[archetype]
+    emphasis = "single-focal" if legacy == "anchor" else "distributed" if legacy == "dense" else "ranked"
+    items = [str(item) for item in demo["items"]]
+    result: dict[str, object] = {
+        "schema": "ghb.page-schema.v1",
+        "slide_id": slide_id,
+        "page_purpose": purpose,
+        "layout_variant": f"{archetype}/default",
+        "density": density,
+        "rhythm_role": rhythm_role,
+        "emphasis": emphasis,
+        "budgets": {"max_text_chars": min(240, 80 + sum(map(len, items))), "max_nodes": len(items)},
+    }
+    if emphasis == "single-focal":
+        result["focal_target"] = "primary-structure"
+    return result
 
 
 DEMOS = [
@@ -143,6 +171,7 @@ def main() -> int:
                 "reason": demo["reason"],
                 "alternatives": demo["alternatives"],
                 "claim_ids": [claim_id],
+                "page_schema": page_schema(demo, f"body-{index:02d}"),
             }
         if demo["layout_archetype"] == "flywheel":
             row["loop_closure"] = "Refer strengthens Acquire"
@@ -152,6 +181,10 @@ def main() -> int:
 
     (output_dir / "layout_plan.json").write_text(
         json.dumps(layout_plan, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    (output_dir / "visual_profile.json").write_text(
+        json.dumps(default_visual_profile(), indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     sources_dir = output_dir / "sources"

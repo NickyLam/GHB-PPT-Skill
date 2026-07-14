@@ -166,6 +166,9 @@ class GhbPptCliTest(unittest.TestCase):
                 self.assertTrue((project / name).is_dir())
             confirmation = json.loads((project / "confirmation.json").read_text(encoding="utf-8"))
             self.assertEqual(confirmation["status"], "pending")
+            profile = json.loads((project / "visual_profile.json").read_text(encoding="utf-8"))
+            self.assertEqual(profile["schema"], "ghb.visual-profile.v1")
+            self.assertEqual(profile["composition"]["default_density"], "balanced")
 
     def test_init_dry_run_does_not_write(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -173,6 +176,18 @@ class GhbPptCliTest(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(main(["init", "--project", str(project), "--dry-run"]), 0)
             self.assertFalse(project.exists())
+
+    def test_check_project_can_explicitly_require_visual_contract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            stderr = io.StringIO()
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = main([
+                    "check-project", "--project", str(project), "--require-visual-contract"
+                ])
+            self.assertEqual(code, 1)
+            self.assertIn("missing-visual-profile", stdout.getvalue())
 
     def test_locates_exact_new_timestamped_output(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.ppt_master.svg_layouts import LayoutSpec, render_layout  # noqa: E402
-from scripts.validate_project_contract import confirmation_digest  # noqa: E402
+from scripts.validate_project_contract import confirmation_digest, default_visual_profile  # noqa: E402
 
 
 SCENARIOS = Path(__file__).with_name("scenarios.json")
@@ -70,6 +70,39 @@ def xml_text(value: str) -> str:
     )
 
 
+def page_schema(slide: dict[str, object], slide_id: str, items: list[str]) -> dict[str, object]:
+    legacy = str(slide["density"])
+    density = {"anchor": "balanced", "dense": "dense", "breathing": "breathing"}[legacy]
+    rhythm_role = {"anchor": "anchor", "dense": "continuity", "breathing": "transition"}[legacy]
+    layout = str(slide["layout_type"])
+    purpose = {
+        "layered_arch": "architecture",
+        "timeline": "timeline",
+        "matrix": "comparison",
+        "comparison": "comparison",
+        "waterfall": "process",
+        "swimlane": "process",
+        "flywheel": "process",
+        "funnel": "process",
+        "metric": "metrics",
+    }.get(layout, "summary")
+    emphasis = "single-focal" if legacy == "anchor" else "distributed" if legacy == "dense" else "ranked"
+    variant_family = "comparison" if layout == "matrix" else layout
+    result: dict[str, object] = {
+        "schema": "ghb.page-schema.v1",
+        "slide_id": slide_id,
+        "page_purpose": purpose,
+        "layout_variant": f"{variant_family}/default",
+        "density": density,
+        "rhythm_role": rhythm_role,
+        "emphasis": emphasis,
+        "budgets": {"max_text_chars": min(240, 100 + sum(map(len, items))), "max_nodes": len(items)},
+    }
+    if emphasis == "single-focal":
+        result["focal_target"] = "primary-structure"
+    return result
+
+
 def write_project(case_dir: Path, scenario: dict[str, object], slides: list[dict[str, object]]) -> None:
     for name in ("sources", "analysis", "svg_output", "svg_final", "notes", "exports"):
         (case_dir / name).mkdir(parents=True, exist_ok=True)
@@ -112,6 +145,7 @@ def write_project(case_dir: Path, scenario: dict[str, object], slides: list[dict
                 "reason": f"{slide['visual_encoding']} 与本页信息关系匹配",
                 "alternatives": ["timeline", "layered_arch"],
                 "claim_ids": [claim_id],
+                "page_schema": page_schema(slide, f"body-{index:02d}", items),
             }
         layout_type = str(slide["layout_type"])
         if layout_type == "timeline":
@@ -131,6 +165,10 @@ def write_project(case_dir: Path, scenario: dict[str, object], slides: list[dict
     (case_dir / "sources" / "source.md").write_text("\n".join(source_lines), encoding="utf-8")
     (case_dir / "layout_plan.json").write_text(
         json.dumps(plan, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (case_dir / "visual_profile.json").write_text(
+        json.dumps(default_visual_profile(), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     (case_dir / "design_spec.md").write_text(
