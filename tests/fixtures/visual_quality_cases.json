@@ -1,0 +1,938 @@
+{
+  "schema": "ghb.visual-quality-corpus.v1",
+  "frozen_at": "2026-07-14",
+  "source_policy": "unique-semantic-source-per-partition",
+  "partition_assignment_sha256": "c2cee1463f18278d510d5da060be47f683ba01933dc1d802532e0a3faeb24d92",
+  "cases": [
+    {
+      "case_id": "architecture-01",
+      "page_purpose": "architecture",
+      "partition": "calibration",
+      "density": "anchor",
+      "content_length_band": "medium",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "technical_sharing",
+        "body_slide_index": 2
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/architecture-01.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/architecture-01-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "40e7cee126815a3e161b691efc6728dedac8ebe571df231617da40f9c13ff79b",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "architecture-02",
+      "page_purpose": "architecture",
+      "partition": "calibration",
+      "density": "anchor",
+      "content_length_band": "medium",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "technical_sharing",
+        "body_slide_index": 5
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/architecture-02.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/architecture-02-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "958efaac822005ff7ad05e71b65758a87308cd013ae8db2b7c20a4ac3901f3cf",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "architecture-03",
+      "page_purpose": "architecture",
+      "partition": "pilot-holdout",
+      "density": "anchor",
+      "content_length_band": "medium",
+      "item_count_band": "few",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "technical_sharing",
+        "body_slide_index": 8
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/architecture-03.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/architecture-03-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "d47abd1ac00b0317be954b2348d78ebd04e5fb39f46253cab5a976e2b594d4a2",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "architecture-04",
+      "page_purpose": "architecture",
+      "partition": "final-holdout",
+      "density": "anchor",
+      "content_length_band": "medium",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "management_plan",
+        "body_slide_index": 1
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/architecture-04.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/architecture-04-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "c3723615b775e6230d49057561e5ea0106def5bd655bd3d2c5c97c9bb36716be",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "architecture-05",
+      "page_purpose": "architecture",
+      "partition": "final-holdout",
+      "density": "anchor",
+      "content_length_band": "medium",
+      "item_count_band": "few",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "management_plan",
+        "body_slide_index": 3
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/architecture-05.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/architecture-05-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "68dbbbc113f44b5e9dce1f42f38ebe2b238e2121279e8cbbd8752ee902bef7cb",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "process-01",
+      "page_purpose": "process",
+      "partition": "calibration",
+      "density": "anchor",
+      "content_length_band": "medium",
+      "item_count_band": "many",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "technical_sharing",
+        "body_slide_index": 3
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/process-01.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/process-01-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "9f92d1fa34421c583b0ba8b96fbfe00657c14042bb12617ac6c2bc93679c0acf",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "process-02",
+      "page_purpose": "process",
+      "partition": "calibration",
+      "density": "dense",
+      "content_length_band": "medium",
+      "item_count_band": "few",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "technical_sharing",
+        "body_slide_index": 6
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/process-02.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/process-02-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "f4b2dff4553d29596a49d9e5fddfe65c75509c7d81350bef7ba69ccd2a71aba2",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "process-03",
+      "page_purpose": "process",
+      "partition": "pilot-holdout",
+      "density": "breathing",
+      "content_length_band": "medium",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "management_plan",
+        "body_slide_index": 6
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/process-03.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/process-03-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "dda79ddeca4f6150d77dbd70345c64e78b05225b0b5ddf7bd09e6d1fcadc544c",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "process-04",
+      "page_purpose": "process",
+      "partition": "final-holdout",
+      "density": "dense",
+      "content_length_band": "long",
+      "item_count_band": "many",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "layout_stress",
+        "body_slide_index": 1
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/process-04.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/process-04-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "5443dd09a258c0144619fffb07e97a4f26c3b6831927ab89aed7dfe12b94df6a",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "process-05",
+      "page_purpose": "process",
+      "partition": "final-holdout",
+      "density": "dense",
+      "content_length_band": "medium",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "layout_stress",
+        "body_slide_index": 3
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/process-05.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/process-05-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "bd8ad168f32757813febc6955878b4c34aa9b83c7e3b56e8994469c9e3e1d1e6",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "comparison-01",
+      "page_purpose": "comparison",
+      "partition": "calibration",
+      "density": "dense",
+      "content_length_band": "medium",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "technical_sharing",
+        "body_slide_index": 4
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/comparison-01.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/comparison-01-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "59545b341b2e3e310c785254f4eb096f0c38569c9e01a8f287c033408ad4f752",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "comparison-02",
+      "page_purpose": "comparison",
+      "partition": "calibration",
+      "density": "dense",
+      "content_length_band": "short",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "technical_sharing",
+        "body_slide_index": 9
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/comparison-02.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/comparison-02-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "28619c801c60d4eaf32bc308970a4b37aca2105f2a79221935a529b75ade39e4",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "comparison-03",
+      "page_purpose": "comparison",
+      "partition": "pilot-holdout",
+      "density": "dense",
+      "content_length_band": "short",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "management_plan",
+        "body_slide_index": 7
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/comparison-03.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/comparison-03-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "67303ebe6724ee0e6066830d49d73834d4300abbcf06362c067602fc392dd6dd",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "comparison-04",
+      "page_purpose": "comparison",
+      "partition": "final-holdout",
+      "density": "dense",
+      "content_length_band": "long",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "layout_stress",
+        "body_slide_index": 2
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/comparison-04.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/comparison-04-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "e48532ca64718477ece704a15d46dfaacdb195ee5e15cef20a93d99e43ab7adf",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "comparison-05",
+      "page_purpose": "comparison",
+      "partition": "final-holdout",
+      "density": "dense",
+      "content_length_band": "medium",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "layout_stress",
+        "body_slide_index": 5
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/comparison-05.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/comparison-05-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "eb78fef19d1d602a9d338559732e1fc179a7f4559c8a0f4ab18df0846f2baee9",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "timeline-01",
+      "page_purpose": "timeline",
+      "partition": "calibration",
+      "density": "breathing",
+      "content_length_band": "medium",
+      "item_count_band": "few",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "technical_sharing",
+        "body_slide_index": 1
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/timeline-01.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/timeline-01-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "ea973c6cc61e72b01f843bbd4b588e722e57faee26f8e26fc0c2d48a35896b15",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "timeline-02",
+      "page_purpose": "timeline",
+      "partition": "calibration",
+      "density": "breathing",
+      "content_length_band": "short",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "technical_sharing",
+        "body_slide_index": 10
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/timeline-02.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/timeline-02-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "2c6e572279f8107ac8bbc99d9a419c50ab02aaae151e778a9e5eb294a8a8306c",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "timeline-03",
+      "page_purpose": "timeline",
+      "partition": "pilot-holdout",
+      "density": "anchor",
+      "content_length_band": "medium",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "management_plan",
+        "body_slide_index": 4
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/timeline-03.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/timeline-03-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "8c6ea8aa506eaf28448c64eb82e3b52714e30e9c598bfe8f25c0b2af95769597",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "timeline-04",
+      "page_purpose": "timeline",
+      "partition": "final-holdout",
+      "density": "anchor",
+      "content_length_band": "short",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "management_plan",
+        "body_slide_index": 8
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/timeline-04.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/timeline-04-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "366f024a3733b7052f14578e826a46a0337c984413e20135bad95858b5547b50",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "timeline-05",
+      "page_purpose": "timeline",
+      "partition": "final-holdout",
+      "density": "dense",
+      "content_length_band": "medium",
+      "item_count_band": "many",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "layout_stress",
+        "body_slide_index": 6
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/timeline-05.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/timeline-05-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "a5d036b8a052ab3b9ba101c4e7ecf06e2c6ac1cf267c6a545a26e25ac736ccf4",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "metrics-01",
+      "page_purpose": "metrics",
+      "partition": "calibration",
+      "density": "dense",
+      "content_length_band": "short",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "technical_sharing",
+        "body_slide_index": 11
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/metrics-01.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/metrics-01-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "8e4155c73b09172c24ea9f10274f986a08746e2ad474b2ba223be2cb85e4a8a0",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "metrics-02",
+      "page_purpose": "metrics",
+      "partition": "calibration",
+      "density": "breathing",
+      "content_length_band": "short",
+      "item_count_band": "few",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "management_plan",
+        "body_slide_index": 2
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/metrics-02.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/metrics-02-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "0c3cd54e4dbadbdf31d75685eb65c358130c2ba9b379fbddd130d39e1c743f82",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "metrics-03",
+      "page_purpose": "metrics",
+      "partition": "pilot-holdout",
+      "density": "dense",
+      "content_length_band": "short",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "management_plan",
+        "body_slide_index": 5
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/metrics-03.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/metrics-03-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "a9127f4f573da8ff50b3d0001e2c23b6387d65b97703ec936cadd0b5149c83e2",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "metrics-04",
+      "page_purpose": "metrics",
+      "partition": "final-holdout",
+      "density": "dense",
+      "content_length_band": "medium",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "management_plan",
+        "body_slide_index": 9
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/metrics-04.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/metrics-04-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "0347902ed61790986d31e2a50ecb0813883706b9a4338a07871c79d296813d5d",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "metrics-05",
+      "page_purpose": "metrics",
+      "partition": "final-holdout",
+      "density": "dense",
+      "content_length_band": "medium",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "layout_stress",
+        "body_slide_index": 7
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/metrics-05.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/metrics-05-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "bdee71343b85d4ffc59fa4e9e789c41c65ae9b827fa84de673a0085de10b3353",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "summary-01",
+      "page_purpose": "summary",
+      "partition": "calibration",
+      "density": "breathing",
+      "content_length_band": "short",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "technical_sharing",
+        "body_slide_index": 7
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/summary-01.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/summary-01-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "bab7755f6c1a59accf08ab0406eefffc507f0a6f5e2e690353e73a3d03e18799",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "summary-02",
+      "page_purpose": "summary",
+      "partition": "calibration",
+      "density": "breathing",
+      "content_length_band": "medium",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "technical_sharing",
+        "body_slide_index": 12
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/summary-02.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/summary-02-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "e0e2710beb1ce5206c0f86d9682427cb36d4d8df9826b530a000b76bf492cf66",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "summary-03",
+      "page_purpose": "summary",
+      "partition": "pilot-holdout",
+      "density": "breathing",
+      "content_length_band": "medium",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "management_plan",
+        "body_slide_index": 10
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/summary-03.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/summary-03-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "26bf97192f290c5a1b0a0c39d5306298e688b68d0bb7907b6d2bbdb97f0cbaa4",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "summary-04",
+      "page_purpose": "summary",
+      "partition": "final-holdout",
+      "density": "anchor",
+      "content_length_band": "medium",
+      "item_count_band": "many",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "layout_stress",
+        "body_slide_index": 4
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/summary-04.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/summary-04-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "d06679586151d5c25d1fbfa47ccb0cfb8a2e4e4bd9a762913e59f3fe30da2ec3",
+        "render_status": "unavailable-without-render"
+      }
+    },
+    {
+      "case_id": "summary-05",
+      "page_purpose": "summary",
+      "partition": "final-holdout",
+      "density": "anchor",
+      "content_length_band": "long",
+      "item_count_band": "standard",
+      "source": {
+        "scenario_file": "tests/fixtures/scenarios.json",
+        "scenario_id": "layout_stress",
+        "body_slide_index": 8
+      },
+      "pre_change_evidence": {
+        "categorical_status": "approved-current",
+        "artifact_status": "rebuildable-not-committed",
+        "authored_svg": "artifacts/visual-benchmark/pre-change/summary-05.svg",
+        "finalized_svg": "artifacts/visual-benchmark/pre-change/summary-05-final.svg",
+        "rendered_png": null,
+        "provenance": {
+          "renderer": "scripts/ppt_master/svg_layouts.py",
+          "dpi": 96,
+          "fonts": [
+            "Arial",
+            "Microsoft YaHei"
+          ],
+          "rendered_png_status": "requires-configured-office-renderer"
+        },
+        "authored_svg_sha256": "02513d798aa31553586c4a2c2d65b7e9124ec59ef93ea9ea20cfbae71558baeb",
+        "render_status": "unavailable-without-render"
+      }
+    }
+  ]
+}

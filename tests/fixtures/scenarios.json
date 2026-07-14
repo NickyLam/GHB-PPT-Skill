@@ -5,13 +5,18 @@
     "date": "2026年7月",
     "audience": "技术负责人和核心开发团队",
     "slides": [
-      {"purpose": "目录与章节", "key_message": "稳定交付需要流程、工程和治理三条线同时闭环", "density": "breathing", "layout_type": "timeline", "visual_encoding": "阶段时间轴", "items": ["能力认知", "工程实现", "质量治理"]},
-      {"purpose": "核心概念", "key_message": "Agent 不是单一模型调用，而是一组可观察、可恢复的执行模块", "density": "anchor", "layout_type": "layered_arch", "visual_encoding": "分层架构", "items": ["交互与目标", "规划与编排", "工具与执行", "状态与审计"]},
-      {"purpose": "流程", "key_message": "每次交付都应经过确认、构建、验证和复盘", "density": "anchor", "layout_type": "waterfall", "visual_encoding": "递进流程", "items": ["确认", "规划", "构建", "验证", "复盘"]},
-      {"purpose": "方案对比", "key_message": "脚本化质量门比人工命令更可重复、更容易恢复", "density": "dense", "layout_type": "matrix", "visual_encoding": "二维对比", "items": ["手工且脆弱", "脚本且可复现", "自动但不可解释", "自动且可审计"]},
-      {"purpose": "架构图", "key_message": "统一入口负责串联，而核心转换仍由稳定模块承担", "density": "anchor", "layout_type": "pyramid", "visual_encoding": "能力金字塔", "items": ["模板与品牌", "SVG 与可编辑对象", "OOXML 合并", "验证与渲染"]},
-      {"purpose": "风险与对策", "key_message": "关系图完整性、输出可恢复性和视觉复核是三类首要风险", "density": "dense", "layout_type": "swimlane", "visual_encoding": "责任泳道", "items": ["生成侧", "合并侧", "验证侧"]},
-      {"purpose": "总结", "key_message": "企业级质量必须由代码、测试、产物和报告共同证明", "density": "breathing", "layout_type": "flywheel", "visual_encoding": "质量飞轮", "items": ["生成", "检查", "修复", "沉淀"]}
+      {"page_purpose": "timeline", "purpose": "目录与章节", "key_message": "稳定交付需要流程、工程和治理三条线同时闭环", "density": "breathing", "layout_type": "timeline", "visual_encoding": "阶段时间轴", "items": ["能力认知", "工程实现", "质量治理"]},
+      {"page_purpose": "architecture", "purpose": "核心概念", "key_message": "Agent 不是单一模型调用，而是一组可观察、可恢复的执行模块", "density": "anchor", "layout_type": "layered_arch", "visual_encoding": "分层架构", "items": ["交互与目标", "规划与编排", "工具与执行", "状态与审计"]},
+      {"page_purpose": "process", "purpose": "流程", "key_message": "每次交付都应经过确认、构建、验证和复盘", "density": "anchor", "layout_type": "waterfall", "visual_encoding": "递进流程", "items": ["确认", "规划", "构建", "验证", "复盘"]},
+      {"page_purpose": "comparison", "purpose": "方案对比", "key_message": "脚本化质量门比人工命令更可重复、更容易恢复", "density": "dense", "layout_type": "matrix", "visual_encoding": "二维对比", "items": ["手工且脆弱", "脚本且可复现", "自动但不可解释", "自动且可审计"]},
+      {"page_purpose": "architecture", "purpose": "架构图", "key_message": "统一入口负责串联，而核心转换仍由稳定模块承担", "density": "anchor", "layout_type": "pyramid", "visual_encoding": "能力金字塔", "items": ["模板与品牌", "SVG 与可编辑对象", "OOXML 合并", "验证与渲染"]},
+      {"page_purpose": "process", "purpose": "风险与对策", "key_message": "关系图完整性、输出可恢复性和视觉复核是三类首要风险", "density": "dense", "layout_type": "swimlane", "visual_encoding": "责任泳道", "items": ["生成侧", "合并侧", "验证侧"]},
+      {"page_purpose": "summary", "purpose": "总结", "key_message": "企业级质量必须由代码、测试、产物和报告共同证明", "density": "breathing", "layout_type": "flywheel", "visual_encoding": "质量飞轮", "items": ["生成", "检查", "修复", "沉淀"]},
+      {"page_purpose": "architecture", "purpose": "运行时边界", "key_message": "控制面、执行面和证据面必须通过稳定契约解耦", "density": "anchor", "layout_type": "layered_arch", "visual_encoding": "三层运行架构", "items": ["控制面", "执行面", "证据面"]},
+      {"page_purpose": "comparison", "purpose": "实施路径对比", "key_message": "渐进迁移在可恢复性上优于一次性替换", "density": "dense", "layout_type": "matrix", "visual_encoding": "路径对比矩阵", "items": ["一次性替换", "双轨迁移", "渐进切换", "维持现状"]},
+      {"page_purpose": "timeline", "purpose": "验证节奏", "key_message": "先冻结基线，再试点两类版式，最后扩展全量", "density": "breathing", "layout_type": "timeline", "visual_encoding": "验证里程碑", "items": ["冻结", "试点", "复核", "扩展"]},
+      {"page_purpose": "metrics", "purpose": "质量信号", "key_message": "结构错误必须为零，建议项误报率必须受控", "density": "dense", "layout_type": "matrix", "visual_encoding": "质量指标矩阵", "items": ["阻断误报 0", "建议误报 ≤10%", "覆盖率可解释", "证据可重建"]},
+      {"page_purpose": "summary", "purpose": "技术结论", "key_message": "稳定审美来自契约、几何、证据和人工判断的共同约束", "density": "breathing", "layout_type": "flywheel", "visual_encoding": "结论闭环", "items": ["契约", "几何", "证据", "判断"]}
     ]
   },
   "management_plan": {
@@ -20,12 +25,16 @@
     "date": "2026年7月",
     "audience": "管理委员会与业务负责人",
     "slides": [
-      {"purpose": "现状问题", "key_message": "当前瓶颈不是缺少工具，而是标准、数据和责任链断裂", "density": "anchor", "layout_type": "iceberg", "visual_encoding": "问题冰山", "items": ["交付周期波动", "标准不统一", "质量证据缺失", "职责边界模糊"]},
-      {"purpose": "目标", "key_message": "一年内形成可规模复制的智能化交付体系", "density": "breathing", "layout_type": "pyramid", "visual_encoding": "目标金字塔", "items": ["统一入口", "稳定流程", "量化质量"]},
-      {"purpose": "三项重点举措", "key_message": "平台、机制、人才三项举措必须同步推进", "density": "anchor", "layout_type": "layered_arch", "visual_encoding": "三层能力", "items": ["平台工具", "治理机制", "组织与人才"]},
-      {"purpose": "路线图", "key_message": "先打通 P0 可靠性，再建立质量闭环，最后规模推广", "density": "anchor", "layout_type": "timeline", "visual_encoding": "季度路线图", "items": ["Q3 可靠性", "Q4 质量闭环", "Q1 试点", "Q2 推广"]},
-      {"purpose": "价值与指标", "key_message": "价值用周期、一次通过率和复用率三项指标衡量", "density": "dense", "layout_type": "matrix", "visual_encoding": "价值指标矩阵", "items": ["周期 -30%", "一次通过率 ≥95%", "复用率 ≥70%", "严重缺陷 0"]},
-      {"purpose": "下一步计划", "key_message": "未来四周完成基线、入口、验证器和首轮试点", "density": "breathing", "layout_type": "staircase", "visual_encoding": "四步计划", "items": ["锁定基线", "统一入口", "结构验证", "试点复盘"]}
+      {"page_purpose": "architecture", "purpose": "现状问题", "key_message": "当前瓶颈不是缺少工具，而是标准、数据和责任链断裂", "density": "anchor", "layout_type": "iceberg", "visual_encoding": "问题冰山", "items": ["交付周期波动", "标准不统一", "质量证据缺失", "职责边界模糊"]},
+      {"page_purpose": "metrics", "purpose": "目标", "key_message": "一年内形成可规模复制的智能化交付体系", "density": "breathing", "layout_type": "pyramid", "visual_encoding": "目标金字塔", "items": ["统一入口", "稳定流程", "量化质量"]},
+      {"page_purpose": "architecture", "purpose": "三项重点举措", "key_message": "平台、机制、人才三项举措必须同步推进", "density": "anchor", "layout_type": "layered_arch", "visual_encoding": "三层能力", "items": ["平台工具", "治理机制", "组织与人才"]},
+      {"page_purpose": "timeline", "purpose": "路线图", "key_message": "先打通 P0 可靠性，再建立质量闭环，最后规模推广", "density": "anchor", "layout_type": "timeline", "visual_encoding": "季度路线图", "items": ["Q3 可靠性", "Q4 质量闭环", "Q1 试点", "Q2 推广"]},
+      {"page_purpose": "metrics", "purpose": "价值与指标", "key_message": "价值用周期、一次通过率和复用率三项指标衡量", "density": "dense", "layout_type": "matrix", "visual_encoding": "价值指标矩阵", "items": ["周期 -30%", "一次通过率 ≥95%", "复用率 ≥70%", "严重缺陷 0"]},
+      {"page_purpose": "process", "purpose": "下一步计划", "key_message": "未来四周完成基线、入口、验证器和首轮试点", "density": "breathing", "layout_type": "staircase", "visual_encoding": "四步计划", "items": ["锁定基线", "统一入口", "结构验证", "试点复盘"]},
+      {"page_purpose": "comparison", "purpose": "投入方案", "key_message": "共享能力建设比各团队重复采购更可控", "density": "dense", "layout_type": "matrix", "visual_encoding": "投入产出对比", "items": ["分散采购", "共享平台", "外包交付", "混合建设"]},
+      {"page_purpose": "timeline", "purpose": "推广窗口", "key_message": "推广必须经过准备、试点、复盘和规模化四个窗口", "density": "anchor", "layout_type": "timeline", "visual_encoding": "推广时间轴", "items": ["准备", "试点", "复盘", "规模化"]},
+      {"page_purpose": "metrics", "purpose": "经营护栏", "key_message": "规模扩张不能牺牲一次通过率与严重缺陷底线", "density": "dense", "layout_type": "matrix", "visual_encoding": "经营护栏卡片", "items": ["覆盖团队 ≥6", "周期 ≤14天", "一次通过率 ≥95%", "严重缺陷 0"]},
+      {"page_purpose": "summary", "purpose": "管理决策", "key_message": "批准两类版式试点，并以盲评和误报门决定是否扩展", "density": "breathing", "layout_type": "flywheel", "visual_encoding": "决策闭环", "items": ["批准试点", "冻结口径", "盲评复核", "扩展决策"]}
     ]
   },
   "layout_stress": {
@@ -34,10 +43,14 @@
     "date": "2026-07-10",
     "audience": "架构委员会、管理层、研发与运维负责人",
     "slides": [
-      {"purpose": "长文本结论", "key_message": "在不牺牲 Reliability、Security 与 Compliance 的前提下，将跨区域交付 Lead Time 从 21 天压缩到 7 天", "density": "dense", "layout_type": "waterfall", "visual_encoding": "多节点流程图", "items": ["需求澄清与依赖识别", "Architecture Review / ADR", "自动化构建与集成验证", "灰度发布与可观测性检查", "审计证据归档与复盘"]},
-      {"purpose": "复杂表格", "key_message": "优先级由业务价值、技术风险、合规影响和迁移复杂度共同决定", "density": "dense", "layout_type": "matrix", "visual_encoding": "复杂四象限", "items": ["高价值 / 低复杂度：Quick Win", "高价值 / 高复杂度：Strategic Bet", "低价值 / 低复杂度：Maintain", "低价值 / 高复杂度：Defer"]},
-      {"purpose": "多卡片", "key_message": "治理覆盖 API、Data、Identity、Observability、Resilience 与 Cost 六个域", "density": "dense", "layout_type": "swimlane", "visual_encoding": "多泳道卡片", "items": ["业务与产品", "平台工程", "安全合规", "SRE 运维"]},
-      {"purpose": "来源与总结", "key_message": "所有指标都必须能追溯到 Source of Truth，并在 QBR 前完成 owner 复核", "density": "anchor", "layout_type": "flywheel", "visual_encoding": "数据治理闭环", "items": ["采集 Collect", "校验 Validate", "解释 Explain", "行动 Act", "复盘 Learn"]}
+      {"page_purpose": "process", "purpose": "长文本结论", "key_message": "在不牺牲 Reliability、Security 与 Compliance 的前提下，将跨区域交付 Lead Time 从 21 天压缩到 7 天", "density": "dense", "layout_type": "waterfall", "visual_encoding": "多节点流程图", "items": ["需求澄清与依赖识别", "Architecture Review / ADR", "自动化构建与集成验证", "灰度发布与可观测性检查", "审计证据归档与复盘"]},
+      {"page_purpose": "comparison", "purpose": "复杂表格", "key_message": "优先级由业务价值、技术风险、合规影响和迁移复杂度共同决定", "density": "dense", "layout_type": "matrix", "visual_encoding": "复杂四象限", "items": ["高价值 / 低复杂度：Quick Win", "高价值 / 高复杂度：Strategic Bet", "低价值 / 低复杂度：Maintain", "低价值 / 高复杂度：Defer"]},
+      {"page_purpose": "process", "purpose": "多卡片", "key_message": "治理覆盖 API、Data、Identity、Observability、Resilience 与 Cost 六个域", "density": "dense", "layout_type": "swimlane", "visual_encoding": "多泳道卡片", "items": ["业务与产品", "平台工程", "安全合规", "SRE 运维"]},
+      {"page_purpose": "summary", "purpose": "来源与总结", "key_message": "所有指标都必须能追溯到 Source of Truth，并在 QBR 前完成 owner 复核", "density": "anchor", "layout_type": "flywheel", "visual_encoding": "数据治理闭环", "items": ["采集 Collect", "校验 Validate", "解释 Explain", "行动 Act", "复盘 Learn"]},
+      {"page_purpose": "comparison", "purpose": "极端密度对比", "key_message": "同一信息在拥挤、均衡和留白三种节奏下必须保持层级可辨", "density": "dense", "layout_type": "matrix", "visual_encoding": "密度对比矩阵", "items": ["拥挤：信息完整但难扫描", "均衡：层级稳定且可编辑", "留白：重点突出但容量有限", "失衡：装饰挤压正文"]},
+      {"page_purpose": "timeline", "purpose": "跨区迁移时序", "key_message": "双写、校验、切流、观察和回退窗口必须按顺序执行", "density": "dense", "layout_type": "timeline", "visual_encoding": "迁移时序", "items": ["双写", "校验", "切流", "观察", "回退窗口"]},
+      {"page_purpose": "metrics", "purpose": "压力指标", "key_message": "长文本、六节点和双语标签共同构成版式压力边界", "density": "dense", "layout_type": "matrix", "visual_encoding": "压力指标矩阵", "items": ["标题 34 字", "节点 6 个", "双语标签 4 组", "最小字号 18pt"]},
+      {"page_purpose": "summary", "purpose": "压力测试结论", "key_message": "超出预算时应先减项、再改结构、最后请求作者裁决，而不是全局缩字", "density": "anchor", "layout_type": "flywheel", "visual_encoding": "恢复顺序闭环", "items": ["减项", "改结构", "拆页", "作者裁决"]}
     ]
   }
 }

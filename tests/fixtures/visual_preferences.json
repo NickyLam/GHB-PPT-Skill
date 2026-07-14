@@ -1,0 +1,65 @@
+{
+  "schema": "ghb.visual-preferences.v1",
+  "frozen_at": "2026-07-14",
+  "blind_review_protocol": {
+    "reviewer_eligibility": "independent reviewer who did not author or tune the evaluated variant",
+    "minimum_independent_eligible_reviewers_per_page": 3,
+    "pair_order_randomized": true,
+    "identity_anonymized": true,
+    "rubric_dimensions": [
+      "hierarchy",
+      "balance",
+      "readability",
+      "semantic-fit"
+    ],
+    "tie_handling": "exclude-from-preference-denominator",
+    "abstention_handling": "exclude-from-preference-denominator",
+    "minimum_eligible_non_tie_judgments_per_page": 2,
+    "aggregation_order": [
+      "per-page",
+      "across-pages"
+    ],
+    "disagreement_handling": "majority-of-eligible-non-tie-judgments-per-page",
+    "structural_regression": "page-level-veto",
+    "reject_duplicate_reviewer_page_judgments": true,
+    "audit_fields": [
+      "reviewer_id_hash",
+      "page_case_id",
+      "masked_left_id",
+      "masked_right_id",
+      "presented_order",
+      "judgment",
+      "rubric",
+      "structural_veto",
+      "recorded_at"
+    ]
+  },
+  "deterministic_pilot_false_positive_gate": {
+    "blocking_false_positive_maximum": 0,
+    "advisory_false_positive_rate_maximum": 0.1,
+    "advisory_denominator_count": 18,
+    "advisory_rule_case_pairs": [
+      "architecture-03::occupancy",
+      "architecture-03::focal-dominance",
+      "architecture-03::spacing-consistency",
+      "process-03::occupancy",
+      "process-03::focal-dominance",
+      "process-03::spacing-consistency",
+      "comparison-03::occupancy",
+      "comparison-03::focal-dominance",
+      "comparison-03::spacing-consistency",
+      "timeline-03::occupancy",
+      "timeline-03::focal-dominance",
+      "timeline-03::spacing-consistency",
+      "metrics-03::occupancy",
+      "metrics-03::focal-dominance",
+      "metrics-03::spacing-consistency",
+      "summary-03::occupancy",
+      "summary-03::focal-dominance",
+      "summary-03::spacing-consistency"
+    ],
+    "advisory_denominator_sha256": "b0f771f47f5a0c38da994173d165d98b7d46e2532944177bf51c9db538ed8b92"
+  },
+  "pilot_holdout_judgments": [],
+  "final_holdout_judgments": []
+}
