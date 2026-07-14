@@ -35,6 +35,11 @@ class LayoutSpec:
     y: int = 220
     width: int = 1040
     height: int = 400
+    density: str | None = None
+    variant: str | None = None
+    emphasis: str | None = None
+    focal_index: int | None = None
+    focal_target: str | None = None
 
 
 def render_layout(spec: LayoutSpec) -> str:
@@ -63,7 +68,14 @@ def _normalized(spec: LayoutSpec) -> LayoutSpec:
     items = [str(item).strip() for item in spec.items if str(item).strip()]
     if not items:
         items = ["核心要点"]
-    return LayoutSpec(
+    focal_target = spec.focal_target.strip() if spec.focal_target else None
+    focal_index = spec.focal_index
+    if focal_index is None and focal_target is not None:
+        try:
+            focal_index = items.index(focal_target)
+        except ValueError as exc:
+            raise ValueError("invalid-layout-focal-target: focal target must match a visible item") from exc
+    normalized = LayoutSpec(
         archetype=spec.archetype,
         items=items,
         title=spec.title.strip(),
@@ -71,14 +83,65 @@ def _normalized(spec: LayoutSpec) -> LayoutSpec:
         y=spec.y,
         width=spec.width,
         height=spec.height,
+        density=spec.density,
+        variant=spec.variant,
+        emphasis=spec.emphasis,
+        focal_index=focal_index,
+        focal_target=focal_target,
     )
+    _validate_pilot_intent(normalized)
+    return normalized
+
+
+def _pilot_enabled(spec: LayoutSpec) -> bool:
+    return any(
+        value is not None
+        for value in (spec.density, spec.variant, spec.emphasis, spec.focal_index, spec.focal_target)
+    )
+
+
+def _validate_pilot_intent(spec: LayoutSpec) -> None:
+    if not _pilot_enabled(spec):
+        return
+    if spec.archetype not in {"timeline", "matrix"}:
+        raise ValueError("pilot-layout-family-unsupported: only timeline and matrix accept visual intent")
+    if spec.density not in {None, "breathing", "balanced", "dense"}:
+        raise ValueError("invalid-layout-density: expected breathing, balanced, or dense")
+    variants = {
+        "timeline": {None, "timeline/default", "timeline/editorial", "timeline/phased"},
+        "matrix": {None, "matrix/default", "matrix/comparison", "matrix/spotlight"},
+    }
+    if spec.variant not in variants[spec.archetype]:
+        raise ValueError(f"invalid-layout-variant: {spec.variant!r} does not belong to {spec.archetype}")
+    if spec.emphasis not in {None, "single-focal", "ranked", "distributed"}:
+        raise ValueError("invalid-layout-emphasis: unsupported emphasis intent")
+    max_items = 6 if spec.archetype == "timeline" else 4
+    if len(spec.items) > max_items:
+        raise ValueError(
+            f"layout-budget-items-exceeded: {spec.archetype} supports at most {max_items} pilot items"
+        )
+    if any(len(item) > 80 for item in spec.items):
+        raise ValueError("layout-budget-text-exceeded: a pilot item exceeds 80 characters")
+    if spec.focal_index is not None and not 0 <= spec.focal_index < len(spec.items):
+        raise ValueError("invalid-layout-focal-index: focal index must identify a visible item")
+    if spec.emphasis == "single-focal" and spec.focal_index is None and not spec.focal_target:
+        raise ValueError("missing-layout-focal-target: single-focal requires focal intent")
 
 
 def _group(spec: LayoutSpec, body: list[str]) -> str:
     title = _title(spec)
     content = "\n  ".join([title, *body] if title else body)
+    intent = ""
+    if _pilot_enabled(spec):
+        density = spec.density or "balanced"
+        variant = spec.variant or f"{spec.archetype}/default"
+        emphasis = spec.emphasis or "ranked"
+        intent = (
+            f' data-density="{density}" data-variant="{variant}" '
+            f'data-emphasis="{emphasis}"'
+        )
     return (
-        f'<g id="layout-{spec.archetype}" data-layout="{spec.archetype}" '
+        f'<g id="layout-{spec.archetype}" data-layout="{spec.archetype}"{intent} '
         f'font-family="{FONT}">\n  {content}\n</g>'
     )
 
@@ -202,6 +265,8 @@ def _render_layered_arch(spec: LayoutSpec) -> str:
 
 
 def _render_matrix(spec: LayoutSpec) -> str:
+    if _pilot_enabled(spec):
+        return _render_matrix_pilot(spec)
     labels = spec.items[:4]
     while len(labels) < 4:
         labels.append("")
@@ -231,7 +296,51 @@ def _render_matrix(spec: LayoutSpec) -> str:
     return _group(spec, body)
 
 
+def _render_matrix_pilot(spec: LayoutSpec) -> str:
+    labels = list(spec.items)
+    while len(labels) < 4:
+        labels.append("")
+    focal = spec.focal_index if spec.focal_index is not None else 1
+    focal_col = focal % 2
+    focal_row = focal // 2
+    density = spec.density or "balanced"
+    gap = {"breathing": 22.0, "balanced": 14.0, "dense": 8.0}[density]
+    if spec.variant in {"matrix/comparison", "matrix/spotlight"} or spec.emphasis == "single-focal":
+        focal_share = 0.60
+    else:
+        focal_share = 0.52
+    usable_w = spec.width - gap
+    focal_w = usable_w * focal_share
+    other_w = usable_w - focal_w
+    col_widths = [other_w, focal_w] if focal_col == 1 else [focal_w, other_w]
+    usable_h = spec.height - gap
+    focal_h = usable_h * (0.56 if spec.emphasis == "single-focal" else 0.50)
+    other_h = usable_h - focal_h
+    row_heights = [other_h, focal_h] if focal_row == 1 else [focal_h, other_h]
+    xs = [spec.x, spec.x + col_widths[0] + gap]
+    ys = [spec.y, spec.y + row_heights[0] + gap]
+    body: list[str] = []
+    for idx, label in enumerate(labels):
+        col, row = idx % 2, idx // 2
+        x, y = xs[col], ys[row]
+        w, h = col_widths[col], row_heights[row]
+        is_focal = idx == focal
+        fill = PRIMARY if is_focal else SURFACE
+        text_fill = WHITE if is_focal else TEXT
+        focal_attr = ' data-focal="true"' if is_focal else ""
+        body.append(
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="12"'
+            f'{focal_attr} fill="{fill}" stroke="{PRIMARY if is_focal else BORDER}" stroke-width="{2 if is_focal else 1}"/>'
+        )
+        if label:
+            size = 21 if is_focal else 17
+            body.extend(_wrapped_text(label, x + w / 2, y + h / 2, w - 40, size, text_fill))
+    return _group(spec, body)
+
+
 def _render_timeline(spec: LayoutSpec) -> str:
+    if _pilot_enabled(spec):
+        return _render_timeline_pilot(spec)
     count = len(spec.items)
     step = spec.width / max(count - 1, 1)
     y_line = spec.y + spec.height / 2
@@ -255,6 +364,42 @@ def _render_timeline(spec: LayoutSpec) -> str:
         body.extend(
             _wrapped_text(label, x, label_y, min(190, step * 0.86), 16, TEXT)
         )
+    return _group(spec, body)
+
+
+def _render_timeline_pilot(spec: LayoutSpec) -> str:
+    count = len(spec.items)
+    density = spec.density or "balanced"
+    side_pad = {"breathing": 70.0, "balanced": 42.0, "dense": 20.0}[density]
+    usable_w = spec.width - 2 * side_pad
+    step = usable_w / max(count - 1, 1)
+    y_line = spec.y + spec.height * ({"breathing": 0.46, "balanced": 0.50, "dense": 0.56}[density])
+    focal = spec.focal_index if spec.focal_index is not None else count - 1
+    body = [
+        f'<line x1="{spec.x + side_pad:.1f}" y1="{y_line:.1f}" '
+        f'x2="{spec.x + spec.width - side_pad:.1f}" y2="{y_line:.1f}" '
+        f'stroke="{SECONDARY}" stroke-width="3"/>'
+    ]
+    base_size = {"breathing": 56.0, "balanced": 48.0, "dense": 40.0}[density]
+    for idx, label in enumerate(spec.items):
+        x = spec.x + side_pad + (idx * step if count > 1 else usable_w / 2)
+        is_focal = idx == focal and spec.emphasis == "single-focal"
+        size = base_size * (1.36 if is_focal else 1.0)
+        fill = PRIMARY if is_focal else WHITE
+        text_fill = WHITE if is_focal else PRIMARY
+        focal_attr = ' data-focal="true"' if is_focal else ""
+        body.append(
+            f'<rect x="{x - size / 2:.1f}" y="{y_line - size / 2:.1f}" '
+            f'width="{size:.1f}" height="{size:.1f}" rx="{size / 2:.1f}"{focal_attr} '
+            f'fill="{fill}" stroke="{PRIMARY}" stroke-width="{3 if is_focal else 2}"/>'
+        )
+        body.append(
+            f'<text x="{x:.1f}" y="{y_line + 6:.1f}" text-anchor="middle" font-size="16" '
+            f'font-weight="bold" fill="{text_fill}">{idx + 1}</text>'
+        )
+        alternating = spec.variant != "timeline/phased"
+        label_y = y_line + size / 2 + 42 if not alternating or idx % 2 == 0 else y_line - size / 2 - 26
+        body.extend(_wrapped_text(label, x, label_y, min(210, max(120, step * 0.82)), 17 if is_focal else 16, TEXT))
     return _group(spec, body)
 
 
