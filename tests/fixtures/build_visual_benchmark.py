@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.util
 import json
 import shutil
 from collections import Counter, defaultdict
@@ -17,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CASES_PATH = Path(__file__).with_name("visual_quality_cases.json")
 PREFERENCES_PATH = Path(__file__).with_name("visual_preferences.json")
 SCENARIOS_PATH = Path(__file__).with_name("scenarios.json")
+PRECHANGE_SVG_DIR = Path(__file__).with_name("visual_prechange_svg")
 PURPOSES = {"architecture", "process", "comparison", "timeline", "metrics", "summary"}
 PARTITIONS = {"calibration", "pilot-holdout", "final-holdout"}
 CONSUMER_PARTITION = {
@@ -132,21 +132,16 @@ def build(output: Path, corpus: dict[str, Any], preferences: dict[str, Any]) -> 
     output.mkdir(parents=True)
     svg_dir = output / "authored-svg"
     svg_dir.mkdir()
-    spec = importlib.util.spec_from_file_location("ghb_build_baseline_fixture", Path(__file__).with_name("build_baseline.py"))
-    if not spec or not spec.loader:
-        raise RuntimeError("cannot load baseline SVG builder")
-    baseline = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(baseline)
-    scenarios = json.loads(SCENARIOS_PATH.read_text(encoding="utf-8"))
     generated: list[dict[str, str]] = []
-    for index, case in enumerate(corpus["cases"], start=1):
-        source = case["source"]
-        slide = scenarios[source["scenario_id"]]["slides"][source["body_slide_index"] - 1]
-        svg_path = svg_dir / f"{case['case_id']}.svg"
-        baseline.write_svg(svg_path, index, len(corpus["cases"]), slide)
-        digest = hashlib.sha256(svg_path.read_bytes()).hexdigest()
+    for case in corpus["cases"]:
+        frozen_svg = PRECHANGE_SVG_DIR / f"{case['case_id']}.svg"
+        if not frozen_svg.is_file() or frozen_svg.is_symlink():
+            raise ValueError(f"{case['case_id']}: frozen pre-change SVG is missing or unsafe")
+        digest = hashlib.sha256(frozen_svg.read_bytes()).hexdigest()
         if digest != case["pre_change_evidence"]["authored_svg_sha256"]:
             raise ValueError(f"{case['case_id']}: pre-change SVG digest changed")
+        svg_path = svg_dir / frozen_svg.name
+        shutil.copy2(frozen_svg, svg_path)
         generated.append({"case_id": case["case_id"], "authored_svg_sha256": digest})
     shutil.copy2(CASES_PATH, output / CASES_PATH.name)
     shutil.copy2(PREFERENCES_PATH, output / PREFERENCES_PATH.name)
@@ -159,7 +154,7 @@ def build(output: Path, corpus: dict[str, Any], preferences: dict[str, Any]) -> 
         "network": "disabled-not-required",
         "model_adapter": "not-used",
         "credentials": "not-used",
-        "binary_evidence": "rebuild-from-existing-offline-baseline",
+        "binary_evidence": "copied-from-versioned-pre-change-svg-fixtures",
         "generated_authored_svg": generated,
     }
     (output / "benchmark-manifest.json").write_text(

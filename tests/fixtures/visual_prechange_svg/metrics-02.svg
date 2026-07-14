@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface"><rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0"/></g>
+  <g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/><text x="108" y="162" font-size="30" font-weight="bold" font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">一年内形成可规模复制的智能化交付体系</text></g>
+  <g id="layout-pyramid" data-layout="pyramid" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <polygon points="488.8,240.0 791.2,240.0 920.8,364.0 359.2,364.0" fill="#AB1F29" stroke="#AB1F29" stroke-width="1"/>
+  <text x="640.0" y="308.1" text-anchor="middle" font-size="18" font-weight="bold" fill="#FFFFFF">量化质量</text>
+  <polygon points="359.2,370.0 920.8,370.0 1050.4,494.0 229.6,494.0" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="640.0" y="438.1" text-anchor="middle" font-size="18" font-weight="bold" fill="#2B2B2B">稳定流程</text>
+  <polygon points="229.6,500.0 1050.4,500.0 1180.0,624.0 100.0,624.0" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="640.0" y="568.1" text-anchor="middle" font-size="18" font-weight="bold" fill="#2B2B2B">统一入口</text>
+</g>
+  <g id="footer"><text x="1192" y="696" text-anchor="end" font-size="13" font-family="Microsoft YaHei, Arial, sans-serif" fill="#999999">22 / 30</text></g>
+</svg>

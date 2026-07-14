@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface"><rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0"/></g>
+  <g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/><text x="108" y="162" font-size="30" font-weight="bold" font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">长文本、六节点和双语标签共同构成版式压力边界</text></g>
+  <g id="layout-matrix" data-layout="matrix" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <line x1="640.0" y1="240" x2="640.0" y2="630" stroke="#E0E0E0" stroke-width="2"/>
+  <line x1="100" y1="435.0" x2="1180" y2="435.0" stroke="#E0E0E0" stroke-width="2"/>
+  <rect x="100.0" y="240.0" width="540.0" height="195.0" rx="10" fill="#F6F6F7" fill-opacity="0.92" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="370.0" y="343.6" text-anchor="middle" font-size="18" font-weight="bold" fill="#2B2B2B">标题 34 字</text>
+  <rect x="640.0" y="240.0" width="540.0" height="195.0" rx="10" fill="#AB1F29" fill-opacity="0.92" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="910.0" y="343.6" text-anchor="middle" font-size="18" font-weight="bold" fill="#FFFFFF">节点 6 个</text>
+  <rect x="100.0" y="435.0" width="540.0" height="195.0" rx="10" fill="#F6F6F7" fill-opacity="0.92" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="370.0" y="538.6" text-anchor="middle" font-size="18" font-weight="bold" fill="#2B2B2B">双语标签 4 组</text>
+  <rect x="640.0" y="435.0" width="540.0" height="195.0" rx="10" fill="#F6F6F7" fill-opacity="0.92" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="910.0" y="538.6" text-anchor="middle" font-size="18" font-weight="bold" fill="#2B2B2B">最小字号 18pt</text>
+</g>
+  <g id="footer"><text x="1192" y="696" text-anchor="end" font-size="13" font-family="Microsoft YaHei, Arial, sans-serif" fill="#999999">25 / 30</text></g>
+</svg>

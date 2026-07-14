@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface"><rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0"/></g>
+  <g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/><text x="108" y="162" font-size="30" font-weight="bold" font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">关系图完整性、输出可恢复性和视觉复核是三类首要风险</text></g>
+  <g id="layout-swimlane" data-layout="swimlane" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <rect x="100.0" y="240.0" width="172" height="123.3" rx="12" fill="#44546A" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="186.0" y="307.4" text-anchor="middle" font-size="17" font-weight="bold" fill="#FFFFFF">生成侧</text>
+  <rect x="284.0" y="240.0" width="290.7" height="123.3" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="302.0" y="268.0" font-size="13" fill="#6E6E73">阶段1</text>
+  <line x1="300.0" y1="278.0" x2="558.7" y2="278.0" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="586.7" y="240.0" width="290.7" height="123.3" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="604.7" y="268.0" font-size="13" fill="#6E6E73">阶段2</text>
+  <line x1="602.7" y1="278.0" x2="861.3" y2="278.0" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="889.3" y="240.0" width="290.7" height="123.3" rx="12" fill="#AB1F29" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="907.3" y="268.0" font-size="13" fill="#FFFFFF">阶段3</text>
+  <line x1="905.3" y1="278.0" x2="1164.0" y2="278.0" stroke="#FFFFFF" stroke-width="1"/>
+  <rect x="100.0" y="373.3" width="172" height="123.3" rx="12" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="186.0" y="440.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">合并侧</text>
+  <rect x="284.0" y="373.3" width="290.7" height="123.3" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="302.0" y="401.3" font-size="13" fill="#6E6E73">阶段1</text>
+  <line x1="300.0" y1="411.3" x2="558.7" y2="411.3" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="586.7" y="373.3" width="290.7" height="123.3" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="604.7" y="401.3" font-size="13" fill="#6E6E73">阶段2</text>
+  <line x1="602.7" y1="411.3" x2="861.3" y2="411.3" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="889.3" y="373.3" width="290.7" height="123.3" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="907.3" y="401.3" font-size="13" fill="#6E6E73">阶段3</text>
+  <line x1="905.3" y1="411.3" x2="1164.0" y2="411.3" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="100.0" y="506.7" width="172" height="123.3" rx="12" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="186.0" y="574.1" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">验证侧</text>
+  <rect x="284.0" y="506.7" width="290.7" height="123.3" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="302.0" y="534.7" font-size="13" fill="#6E6E73">阶段1</text>
+  <line x1="300.0" y1="544.7" x2="558.7" y2="544.7" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="586.7" y="506.7" width="290.7" height="123.3" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="604.7" y="534.7" font-size="13" fill="#6E6E73">阶段2</text>
+  <line x1="602.7" y1="544.7" x2="861.3" y2="544.7" stroke="#E0E0E0" stroke-width="1"/>
+  <rect x="889.3" y="506.7" width="290.7" height="123.3" rx="12" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="907.3" y="534.7" font-size="13" fill="#6E6E73">阶段3</text>
+  <line x1="905.3" y1="544.7" x2="1164.0" y2="544.7" stroke="#E0E0E0" stroke-width="1"/>
+</g>
+  <g id="footer"><text x="1192" y="696" text-anchor="end" font-size="13" font-family="Microsoft YaHei, Arial, sans-serif" fill="#999999">07 / 30</text></g>
+</svg>

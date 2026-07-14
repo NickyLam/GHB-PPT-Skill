@@ -83,6 +83,10 @@ class VisualBenchmarkContractTest(unittest.TestCase):
 
     def test_builder_refuses_to_overwrite_and_needs_no_secret(self):
         module = load_builder()
+        self.assertEqual(
+            len(list(module.PRECHANGE_SVG_DIR.glob("*.svg"))),
+            len(self.corpus["cases"]),
+        )
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "frozen"
             result = module.build(output, self.corpus, self.preferences)

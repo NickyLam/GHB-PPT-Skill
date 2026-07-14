@@ -19,8 +19,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/architecture-01.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/architecture-01-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/architecture-01.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -50,8 +51,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/architecture-02.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/architecture-02-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/architecture-02.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -81,8 +83,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/architecture-03.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/architecture-03-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/architecture-03.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -112,8 +115,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/architecture-04.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/architecture-04-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/architecture-04.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -143,8 +147,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/architecture-05.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/architecture-05-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/architecture-05.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -174,8 +179,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/process-01.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/process-01-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/process-01.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -205,8 +211,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/process-02.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/process-02-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/process-02.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -236,8 +243,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/process-03.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/process-03-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/process-03.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -267,8 +275,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/process-04.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/process-04-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/process-04.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -298,8 +307,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/process-05.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/process-05-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/process-05.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -329,8 +339,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/comparison-01.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/comparison-01-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/comparison-01.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -360,8 +371,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/comparison-02.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/comparison-02-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/comparison-02.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -391,8 +403,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/comparison-03.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/comparison-03-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/comparison-03.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -422,8 +435,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/comparison-04.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/comparison-04-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/comparison-04.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -453,8 +467,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/comparison-05.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/comparison-05-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/comparison-05.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -484,8 +499,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/timeline-01.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/timeline-01-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/timeline-01.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -515,8 +531,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/timeline-02.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/timeline-02-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/timeline-02.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -546,8 +563,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/timeline-03.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/timeline-03-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/timeline-03.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -577,8 +595,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/timeline-04.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/timeline-04-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/timeline-04.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -608,8 +627,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/timeline-05.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/timeline-05-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/timeline-05.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -639,8 +659,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/metrics-01.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/metrics-01-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/metrics-01.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -670,8 +691,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/metrics-02.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/metrics-02-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/metrics-02.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -701,8 +723,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/metrics-03.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/metrics-03-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/metrics-03.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -732,8 +755,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/metrics-04.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/metrics-04-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/metrics-04.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -763,8 +787,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/metrics-05.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/metrics-05-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/metrics-05.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -794,8 +819,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/summary-01.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/summary-01-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/summary-01.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -825,8 +851,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/summary-02.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/summary-02-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/summary-02.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -856,8 +883,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/summary-03.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/summary-03-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/summary-03.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -887,8 +915,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/summary-04.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/summary-04-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/summary-04.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",
@@ -918,8 +947,9 @@
       "pre_change_evidence": {
         "categorical_status": "approved-current",
         "artifact_status": "rebuildable-not-committed",
-        "authored_svg": "artifacts/visual-benchmark/pre-change/summary-05.svg",
-        "finalized_svg": "artifacts/visual-benchmark/pre-change/summary-05-final.svg",
+        "authored_svg": "tests/fixtures/visual_prechange_svg/summary-05.svg",
+        "finalized_svg": null,
+        "finalized_status": "not-generated-in-u9",
         "rendered_png": null,
         "provenance": {
           "renderer": "scripts/ppt_master/svg_layouts.py",

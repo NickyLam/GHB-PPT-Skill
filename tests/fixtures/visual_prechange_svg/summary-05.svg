@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface"><rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0"/></g>
+  <g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/><text x="108" y="162" font-size="30" font-weight="bold" font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">超出预算时应先减项、再改结构、最后请求作者裁决，而不是全局缩字</text></g>
+  <g id="layout-flywheel" data-layout="flywheel" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <rect x="558.0" y="401.0" width="164" height="68" rx="34" fill="#AB1F29" stroke="#AB1F29" stroke-width="1"/>
+  <text x="640.0" y="442.0" text-anchor="middle" font-size="18" font-weight="bold" fill="#FFFFFF">正向循环</text>
+  <rect x="555.0" y="281.2" width="170.0" height="58" rx="18" fill="#F6F6F7" stroke="#AB1F29" stroke-width="2"/>
+  <text x="640.0" y="316.0" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">减项</text>
+  <line x1="707.7" y1="333.2" x2="939.5" y2="412.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="939.5,412.0 928.7,414.1 932.3,403.7" fill="#44546A"/>
+  <rect x="922.2" y="406.0" width="170.0" height="58" rx="18" fill="#F6F6F7" stroke="#AB1F29" stroke-width="2"/>
+  <text x="1007.2" y="440.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">改结构</text>
+  <line x1="939.5" y1="458.0" x2="707.7" y2="536.8" stroke="#44546A" stroke-width="2"/>
+  <polygon points="707.7,536.8 714.9,528.5 718.5,538.9" fill="#44546A"/>
+  <rect x="555.0" y="530.8" width="170.0" height="58" rx="18" fill="#F6F6F7" stroke="#AB1F29" stroke-width="2"/>
+  <text x="640.0" y="565.6" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">拆页</text>
+  <line x1="572.3" y1="536.8" x2="340.5" y2="458.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="340.5,458.0 351.3,455.9 347.7,466.3" fill="#44546A"/>
+  <rect x="187.8" y="406.0" width="170.0" height="58" rx="18" fill="#FFFFFF" stroke="#AB1F29" stroke-width="2"/>
+  <text x="272.8" y="440.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">作者裁决</text>
+  <line x1="340.5" y1="412.0" x2="572.3" y2="333.2" stroke="#44546A" stroke-width="2"/>
+  <polygon points="572.3,333.2 565.1,341.5 561.5,331.1" fill="#44546A"/>
+</g>
+  <g id="footer"><text x="1192" y="696" text-anchor="end" font-size="13" font-family="Microsoft YaHei, Arial, sans-serif" fill="#999999">30 / 30</text></g>
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface"><rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0"/></g>
+  <g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/><text x="108" y="162" font-size="30" font-weight="bold" font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">统一入口负责串联，而核心转换仍由稳定模块承担</text></g>
+  <g id="layout-pyramid" data-layout="pyramid" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <polygon points="488.8,240.0 791.2,240.0 888.4,331.5 391.6,331.5" fill="#AB1F29" stroke="#AB1F29" stroke-width="1"/>
+  <text x="640.0" y="291.9" text-anchor="middle" font-size="18" font-weight="bold" fill="#FFFFFF">验证与渲染</text>
+  <polygon points="391.6,337.5 888.4,337.5 985.6,429.0 294.4,429.0" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="640.0" y="389.4" text-anchor="middle" font-size="18" font-weight="bold" fill="#2B2B2B">OOXML 合并</text>
+  <polygon points="294.4,435.0 985.6,435.0 1082.8,526.5 197.2,526.5" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="640.0" y="486.9" text-anchor="middle" font-size="18" font-weight="bold" fill="#2B2B2B">SVG 与可编辑对象</text>
+  <polygon points="197.2,532.5 1082.8,532.5 1180.0,624.0 100.0,624.0" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="640.0" y="584.4" text-anchor="middle" font-size="18" font-weight="bold" fill="#2B2B2B">模板与品牌</text>
+</g>
+  <g id="footer"><text x="1192" y="696" text-anchor="end" font-size="13" font-family="Microsoft YaHei, Arial, sans-serif" fill="#999999">02 / 30</text></g>
+</svg>

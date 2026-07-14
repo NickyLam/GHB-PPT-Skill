@@ -29,9 +29,10 @@ python3 tests/fixtures/build_visual_benchmark.py \
   --output artifacts/visual-benchmark/pre-change
 ```
 
-The builder refuses to overwrite an existing destination. It regenerates each
-authored SVG with the current offline renderer and compares its SHA-256 digest
-with the frozen value in `visual_quality_cases.json`. PNG/PDF evidence is not
+The builder refuses to overwrite an existing destination. It copies the
+versioned pre-change authored SVG fixtures and compares every SHA-256 digest
+with the frozen value in `visual_quality_cases.json`; it never asks the later,
+modified renderer to recreate what “before” looked like. PNG/PDF evidence is not
 fabricated when an Office renderer and target fonts are unavailable; cases
 record `unavailable-without-render` and the later render stage must add renderer,
 DPI, font availability, substitutions, and warnings.

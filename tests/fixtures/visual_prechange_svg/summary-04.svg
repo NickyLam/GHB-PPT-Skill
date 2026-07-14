@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface"><rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0"/></g>
+  <g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/><text x="108" y="148" font-size="22" font-weight="bold" font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">所有指标都必须能追溯到 Source of</text><text x="108" y="180" font-size="22" font-weight="bold" font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">Truth，并在 QBR 前完成 owner 复核</text></g>
+  <g id="layout-flywheel" data-layout="flywheel" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <rect x="558.0" y="401.0" width="164" height="68" rx="34" fill="#AB1F29" stroke="#AB1F29" stroke-width="1"/>
+  <text x="640.0" y="442.0" text-anchor="middle" font-size="18" font-weight="bold" fill="#FFFFFF">正向循环</text>
+  <rect x="555.0" y="281.2" width="170.0" height="58" rx="18" fill="#F6F6F7" stroke="#AB1F29" stroke-width="2"/>
+  <text x="640.0" y="316.0" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">采集 Collect</text>
+  <line x1="719.0" y1="329.7" x2="910.2" y2="376.9" stroke="#44546A" stroke-width="2"/>
+  <polygon points="910.2,376.9 899.7,380.0 902.3,369.3" fill="#44546A"/>
+  <rect x="904.2" y="367.4" width="170.0" height="58" rx="18" fill="#F6F6F7" stroke="#AB1F29" stroke-width="2"/>
+  <text x="989.2" y="402.2" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">校验 Validate</text>
+  <line x1="967.2" y1="419.4" x2="877.8" y2="513.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="877.8,513.0 880.4,502.3 888.4,509.9" fill="#44546A"/>
+  <rect x="770.8" y="507.0" width="170.0" height="58" rx="18" fill="#F6F6F7" stroke="#AB1F29" stroke-width="2"/>
+  <text x="855.8" y="541.7" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">解释 Explain</text>
+  <line x1="776.8" y1="536.0" x2="503.2" y2="536.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="503.2,536.0 512.7,530.5 512.7,541.5" fill="#44546A"/>
+  <rect x="339.2" y="507.0" width="170.0" height="58" rx="18" fill="#F6F6F7" stroke="#AB1F29" stroke-width="2"/>
+  <text x="424.2" y="541.7" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">行动 Act</text>
+  <line x1="402.2" y1="513.0" x2="312.8" y2="419.4" stroke="#44546A" stroke-width="2"/>
+  <polygon points="312.8,419.4 323.3,422.5 315.4,430.1" fill="#44546A"/>
+  <rect x="205.8" y="367.4" width="170.0" height="58" rx="18" fill="#FFFFFF" stroke="#AB1F29" stroke-width="2"/>
+  <text x="290.8" y="402.2" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">复盘 Learn</text>
+  <line x1="369.8" y1="376.9" x2="561.0" y2="329.7" stroke="#44546A" stroke-width="2"/>
+  <polygon points="561.0,329.7 553.1,337.3 550.4,326.7" fill="#44546A"/>
+</g>
+  <g id="footer"><text x="1192" y="696" text-anchor="end" font-size="13" font-family="Microsoft YaHei, Arial, sans-serif" fill="#999999">29 / 30</text></g>
+</svg>

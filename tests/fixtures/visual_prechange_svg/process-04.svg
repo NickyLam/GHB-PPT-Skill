@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface"><rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0"/></g>
+  <g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/><text x="108" y="148" font-size="22" font-weight="bold" font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">在不牺牲 Reliability、Security 与 Compliance</text><text x="108" y="180" font-size="22" font-weight="bold" font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">的前提下，将跨区域交付 Lead Time 从 21 天压缩到 7 天</text></g>
+  <g id="layout-waterfall" data-layout="waterfall" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <rect x="100.0" y="538.0" width="196.8" height="92" rx="10" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="198.4" y="589.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">需求澄清与依赖识别</text>
+  <line x1="302.8" y1="584.0" x2="312.8" y2="564.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="312.8,564.0 301.8,570.0 308.8,580.0" fill="#44546A"/>
+  <rect x="320.8" y="504.0" width="196.8" height="92" rx="10" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="419.2" y="544.3" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">Architecture</text>
+  <text x="419.2" y="567.3" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">Review / ADR</text>
+  <line x1="523.6" y1="550.0" x2="533.6" y2="530.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="533.6,530.0 522.6,536.0 529.6,546.0" fill="#44546A"/>
+  <rect x="541.6" y="470.0" width="196.8" height="92" rx="10" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="640.0" y="521.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">自动化构建与集成验证</text>
+  <line x1="744.4" y1="516.0" x2="754.4" y2="496.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="754.4,496.0 743.4,502.0 750.4,512.0" fill="#44546A"/>
+  <rect x="762.4" y="436.0" width="196.8" height="92" rx="10" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="860.8" y="476.3" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">灰度发布与可观测性检</text>
+  <text x="860.8" y="499.3" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">查</text>
+  <line x1="965.2" y1="482.0" x2="975.2" y2="462.0" stroke="#44546A" stroke-width="2"/>
+  <polygon points="975.2,462.0 964.2,468.0 971.2,478.0" fill="#44546A"/>
+  <rect x="983.2" y="402.0" width="196.8" height="92" rx="10" fill="#AB1F29" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="1081.6" y="453.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#FFFFFF">审计证据归档与复盘</text>
+</g>
+  <g id="footer"><text x="1192" y="696" text-anchor="end" font-size="13" font-family="Microsoft YaHei, Arial, sans-serif" fill="#999999">09 / 30</text></g>
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface"><rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0"/></g>
+  <g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/><text x="108" y="162" font-size="30" font-weight="bold" font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">Agent 不是单一模型调用，而是一组可观察、可恢复的执行模块</text></g>
+  <g id="layout-layered_arch" data-layout="layered_arch" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <rect x="100.0" y="240.0" width="1080.0" height="87.0" rx="12" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="128.0" y="289.6" text-anchor="start" font-size="18" font-weight="bold" fill="#2B2B2B">状态与审计</text>
+  <rect x="118.0" y="341.0" width="1044.0" height="87.0" rx="12" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="146.0" y="390.6" text-anchor="start" font-size="18" font-weight="bold" fill="#2B2B2B">工具与执行</text>
+  <rect x="136.0" y="442.0" width="1008.0" height="87.0" rx="12" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="164.0" y="491.6" text-anchor="start" font-size="18" font-weight="bold" fill="#2B2B2B">规划与编排</text>
+  <rect x="154.0" y="543.0" width="972.0" height="87.0" rx="12" fill="#AB1F29" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="182.0" y="592.6" text-anchor="start" font-size="18" font-weight="bold" fill="#FFFFFF">交互与目标</text>
+</g>
+  <g id="footer"><text x="1192" y="696" text-anchor="end" font-size="13" font-family="Microsoft YaHei, Arial, sans-serif" fill="#999999">01 / 30</text></g>
+</svg>

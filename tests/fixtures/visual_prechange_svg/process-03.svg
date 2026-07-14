@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#FFFFFF"/></g>
+  <g id="bg-surface"><rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0"/></g>
+  <g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/><text x="108" y="162" font-size="30" font-weight="bold" font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">未来四周完成基线、入口、验证器和首轮试点</text></g>
+  <g id="layout-staircase" data-layout="staircase" font-family="'Microsoft YaHei', Arial, sans-serif">
+  <rect x="100.0" y="546.0" width="258.0" height="84.0" rx="10" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="118.0" y="578.0" font-size="15" fill="#6E6E73">01</text>
+  <text x="229.0" y="597.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">锁定基线</text>
+  <rect x="374.0" y="514.0" width="258.0" height="116.0" rx="10" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="392.0" y="546.0" font-size="15" fill="#6E6E73">02</text>
+  <text x="503.0" y="581.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">统一入口</text>
+  <rect x="648.0" y="482.0" width="258.0" height="148.0" rx="10" fill="#F6F6F7" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="666.0" y="514.0" font-size="15" fill="#6E6E73">03</text>
+  <text x="777.0" y="565.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#2B2B2B">结构验证</text>
+  <rect x="922.0" y="450.0" width="258.0" height="180.0" rx="10" fill="#AB1F29" stroke="#E0E0E0" stroke-width="1"/>
+  <text x="940.0" y="482.0" font-size="15" fill="#6E6E73">04</text>
+  <text x="1051.0" y="549.8" text-anchor="middle" font-size="17" font-weight="bold" fill="#FFFFFF">试点复盘</text>
+</g>
+  <g id="footer"><text x="1192" y="696" text-anchor="end" font-size="13" font-family="Microsoft YaHei, Arial, sans-serif" fill="#999999">08 / 30</text></g>
+</svg>
