@@ -75,7 +75,9 @@ The public `blind-review-template.json` intentionally omits the masked-side
 role mapping and points only to `blind/<case>/A.svg` and `B.svg`. Give reviewers
 only the template and `blind/` directory; keep `before/`, `after/`, and
 `pilot-gate-review.json` private from them. After independent review, merge the
-audited judgments into the evaluator record. Complete the
+audited judgments into the evaluator record. The embedded `judgment_template`
+lists every required audit field; rubric dimensions use finite 1–5 values.
+Complete the
 frozen advisory rule/case adjudication in
 `deterministic-audit-template.json`, then run:
 

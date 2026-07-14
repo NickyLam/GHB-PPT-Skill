@@ -99,6 +99,7 @@ class VisualMetricsTest(unittest.TestCase):
             )
             public = json.loads((output / "blind-review-template.json").read_text(encoding="utf-8"))
             self.assertNotIn("roles", json.dumps(public))
+            self.assertEqual(set(public["judgment_template"]["rubric"]), {"hierarchy", "balance", "readability", "semantic-fit"})
             for pair in public["pairs"]:
                 self.assertRegex(pair["left_artifact"], r"^blind/[^/]+/A\.svg$")
                 self.assertRegex(pair["right_artifact"], r"^blind/[^/]+/B\.svg$")
@@ -115,6 +116,10 @@ class VisualMetricsTest(unittest.TestCase):
 
         review = self._review_record("pilot")
         review["judgments"][0]["rubric"] = {"hierarchy": 1}
+        with self.assertRaisesRegex(ValueError, "invalid-review-rubric"):
+            evaluate_pilot_gate(PREFERENCES, review, self._deterministic_record())
+        review = self._review_record("pilot")
+        review["judgments"][0]["rubric"]["hierarchy"] = 6
         with self.assertRaisesRegex(ValueError, "invalid-review-rubric"):
             evaluate_pilot_gate(PREFERENCES, review, self._deterministic_record())
 

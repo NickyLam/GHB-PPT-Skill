@@ -154,6 +154,17 @@ def build(output: Path) -> dict[str, Any]:
         "protocol": preferences["blind_review_protocol"],
         "eligible_case_ids": eligible_case_ids,
         "pairs": public_pairs,
+        "judgment_template": {
+            "reviewer_id_hash": "<stable-opaque-reviewer-id>",
+            "page_case_id": "<page-case-id>",
+            "masked_left_id": "<masked-left-id>",
+            "masked_right_id": "<masked-right-id>",
+            "presented_order": ["<masked-left-id>", "<masked-right-id>"],
+            "judgment": "<masked-left-id|masked-right-id|tie|abstain>",
+            "rubric": {dimension: "<1-5>" for dimension in preferences["blind_review_protocol"]["rubric_dimensions"]},
+            "structural_veto": False,
+            "recorded_at": "<ISO-8601 timestamp>",
+        },
         "judgments": [],
     }
     deterministic = {

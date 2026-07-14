@@ -222,7 +222,10 @@ def evaluate_pilot_gate(
         if not isinstance(rubric, dict) or set(rubric) != set(protocol.get("rubric_dimensions", [])):
             raise ValueError("invalid-review-rubric")
         if any(
-            isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or not 1 <= value <= 5
             for value in rubric.values()
         ):
             raise ValueError("invalid-review-rubric")
