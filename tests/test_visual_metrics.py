@@ -118,6 +118,16 @@ class VisualMetricsTest(unittest.TestCase):
         review["judgments"][0]["rubric"] = {"hierarchy": 1}
         with self.assertRaisesRegex(ValueError, "invalid-review-rubric"):
             evaluate_pilot_gate(PREFERENCES, review, self._deterministic_record())
+
+    def test_gate_accepts_explicit_unscored_rubric_without_inventing_numbers(self):
+        review = self._review_record("pilot")
+        for judgment in review["judgments"]:
+            judgment["rubric"] = {
+                dimension: "not-scored"
+                for dimension in ("hierarchy", "balance", "readability", "semantic-fit")
+            }
+        result = evaluate_pilot_gate(PREFERENCES, review, self._deterministic_record())
+        self.assertEqual(result["decision"], "passed")
         review = self._review_record("pilot")
         review["judgments"][0]["rubric"]["hierarchy"] = 6
         with self.assertRaisesRegex(ValueError, "invalid-review-rubric"):

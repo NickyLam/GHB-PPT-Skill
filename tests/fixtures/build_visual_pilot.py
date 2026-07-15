@@ -176,7 +176,10 @@ def build(output: Path, *, revision: bool = False) -> dict[str, Any]:
             "masked_right_id": "<masked-right-id>",
             "presented_order": ["<masked-left-id>", "<masked-right-id>"],
             "judgment": "<masked-left-id|masked-right-id|tie|abstain>",
-            "rubric": {dimension: "<1-5>" for dimension in preferences["blind_review_protocol"]["rubric_dimensions"]},
+            "rubric": {
+                dimension: "<1-5|not-scored>"
+                for dimension in preferences["blind_review_protocol"]["rubric_dimensions"]
+            },
             "structural_veto": False,
             "recorded_at": "<ISO-8601 timestamp>",
         },

@@ -76,7 +76,9 @@ role mapping and points only to `blind/<case>/A.svg` and `B.svg`. Give reviewers
 only the template and `blind/` directory; keep `before/`, `after/`, and
 `pilot-gate-review.json` private from them. After independent review, merge the
 audited judgments into the evaluator record. The embedded `judgment_template`
-lists every required audit field; rubric dimensions use finite 1–5 values.
+lists every required audit field; rubric dimensions use finite 1–5 values or
+the explicit `not-scored` marker when reviewers cannot assign meaningful
+numbers. `not-scored` never changes the A/B aggregation or gate threshold.
 Complete the
 frozen advisory rule/case adjudication in
 `deterministic-audit-template.json`, then run:
