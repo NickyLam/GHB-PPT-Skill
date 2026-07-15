@@ -106,3 +106,14 @@ equal in width and height, applies density-specific gaps, and expresses focal
 intent through fill, border, and typography rather than unequal card area. The
 timeline focal geometry remains unchanged. The exposed round-one pages are
 diagnostic evidence only and must not be reused to pass the revision gate.
+
+Build the frozen revision holdout with:
+
+```bash
+python3 tests/fixtures/build_visual_pilot.py --revision \
+  --output artifacts/visual-benchmark/u11-pilot-revision-2
+```
+
+The revision builder reads only `visual_pilot_revision_cases.json` and the
+versioned SVGs produced from the exact pre-U11 renderer source at commit
+`aabfc6a`; it does not read final-holdout cases.

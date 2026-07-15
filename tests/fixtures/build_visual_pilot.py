@@ -20,6 +20,8 @@ CASES_PATH = Path(__file__).with_name("visual_quality_cases.json")
 PREFERENCES_PATH = Path(__file__).with_name("visual_preferences.json")
 SCENARIOS_PATH = Path(__file__).with_name("scenarios.json")
 PRECHANGE_DIR = Path(__file__).with_name("visual_prechange_svg")
+REVISION_CASES_PATH = Path(__file__).with_name("visual_pilot_revision_cases.json")
+REVISION_PRECHANGE_DIR = Path(__file__).with_name("visual_pilot_revision_prechange_svg")
 
 from scripts.ghb_visual_quality import measure_svg  # noqa: E402
 from scripts.ppt_master.svg_layouts import LayoutSpec, render_layout  # noqa: E402
@@ -55,13 +57,22 @@ def _replace_layout(source: str, family: str, fragment: str) -> str:
     return result
 
 
-def build(output: Path) -> dict[str, Any]:
+def build(output: Path, *, revision: bool = False) -> dict[str, Any]:
     if output.exists():
         raise FileExistsError(f"refusing to overwrite pilot artifacts: {output}")
-    cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
     preferences = json.loads(PREFERENCES_PATH.read_text(encoding="utf-8"))
-    scenarios = json.loads(SCENARIOS_PATH.read_text(encoding="utf-8"))
-    pilot_cases = [case for case in cases["cases"] if case["partition"] == "pilot-holdout"]
+    if revision:
+        revision_corpus = json.loads(REVISION_CASES_PATH.read_text(encoding="utf-8"))
+        pilot_cases = revision_corpus["cases"]
+        prechange_dir = REVISION_PRECHANGE_DIR
+        round_id = revision_corpus["round_id"]
+        scenarios = None
+    else:
+        cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
+        pilot_cases = [case for case in cases["cases"] if case["partition"] == "pilot-holdout"]
+        prechange_dir = PRECHANGE_DIR
+        round_id = "u11-original"
+        scenarios = json.loads(SCENARIOS_PATH.read_text(encoding="utf-8"))
     output.mkdir(parents=True)
     before_dir, after_dir, blind_dir = output / "before", output / "after", output / "blind"
     before_dir.mkdir()
@@ -70,13 +81,17 @@ def build(output: Path) -> dict[str, Any]:
     eligible: list[dict[str, Any]] = []
     for case in pilot_cases:
         case_id = case["case_id"]
-        frozen = PRECHANGE_DIR / f"{case_id}.svg"
+        frozen = prechange_dir / f"{case_id}.svg"
         digest = hashlib.sha256(frozen.read_bytes()).hexdigest()
         if digest != case["pre_change_evidence"]["authored_svg_sha256"]:
             raise ValueError(f"frozen-before-digest-mismatch: {case_id}")
         shutil.copy2(frozen, before_dir / frozen.name)
-        source = case["source"]
-        slide = scenarios[source["scenario_id"]]["slides"][source["body_slide_index"] - 1]
+        if revision:
+            slide = case["slide"]
+        else:
+            source = case["source"]
+            assert scenarios is not None
+            slide = scenarios[source["scenario_id"]]["slides"][source["body_slide_index"] - 1]
         if slide["layout_type"] not in {"timeline", "matrix"}:
             continue
         schema = _pilot_schema(case, slide)
@@ -178,6 +193,7 @@ def build(output: Path) -> dict[str, Any]:
     (output / "deterministic-audit-template.json").write_text(json.dumps(deterministic, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     manifest = {
         "schema": "ghb.visual-pilot-artifacts.v1",
+        "round_id": round_id,
         "eligible_case_count": len(eligible),
         "eligible_cases": eligible,
         "frozen_preferences_sha256": _canonical_sha256(preferences),
@@ -193,8 +209,9 @@ def build(output: Path) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--revision", action="store_true")
     args = parser.parse_args()
-    result = build(args.output)
+    result = build(args.output, revision=args.revision)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 

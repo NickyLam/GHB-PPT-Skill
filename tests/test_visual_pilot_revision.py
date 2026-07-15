@@ -11,11 +11,20 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
 CORPUS_PATH = FIXTURES / "visual_pilot_revision_cases.json"
 FREEZE_PATH = FIXTURES / "freeze_visual_pilot_revision.py"
+PILOT_BUILDER_PATH = FIXTURES / "build_visual_pilot.py"
 FROZEN_DIR = FIXTURES / "visual_pilot_revision_prechange_svg"
 
 
 def load_freezer():
     spec = importlib.util.spec_from_file_location("freeze_visual_pilot_revision", FREEZE_PATH)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_pilot_builder():
+    spec = importlib.util.spec_from_file_location("build_visual_pilot_revision", PILOT_BUILDER_PATH)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -62,6 +71,21 @@ class VisualPilotRevisionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(ValueError, "pre-change SVG digest mismatch"):
                 module.build(Path(tmp) / "changed", changed)
+
+    def test_revision_builder_uses_only_new_holdout_cases(self):
+        module = load_pilot_builder()
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "revision-pilot"
+            manifest = module.build(output, revision=True)
+            expected = {"comparison-r2-01", "timeline-r2-01", "metrics-r2-01"}
+            self.assertEqual(manifest["round_id"], "u11-revision-2")
+            self.assertEqual({row["case_id"] for row in manifest["eligible_cases"]}, expected)
+            self.assertEqual({path.stem for path in (output / "before").glob("*.svg")}, expected)
+            self.assertEqual({path.stem for path in (output / "after").glob("*.svg")}, expected)
+            public = json.loads((output / "blind-review-template.json").read_text(encoding="utf-8"))
+            self.assertEqual(set(public["eligible_case_ids"]), expected)
+            self.assertNotIn("baseline", json.dumps(public))
+            self.assertNotIn("pilot", json.dumps(public["pairs"]))
 
 
 if __name__ == "__main__":
