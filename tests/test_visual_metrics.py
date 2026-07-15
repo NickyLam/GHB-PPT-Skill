@@ -30,7 +30,7 @@ class VisualMetricsTest(unittest.TestCase):
         )
         metrics = measure_svg(f'<svg viewBox="0 0 1280 720">{fragment}</svg>')
         self.assertGreater(metrics["occupancy"]["value"], 0.20)
-        self.assertGreater(metrics["focal-dominance"]["value"], 1.0)
+        self.assertEqual(metrics["focal-dominance"]["value"], 1.0)
         self.assertEqual(metrics["occupancy"]["coverage"], "supported")
         disguised = fragment.replace('data-layout="matrix"', 'data-layout="timeline"')
         self.assertEqual(measure_svg(f'<svg viewBox="0 0 1280 720">{disguised}</svg>'), metrics)

@@ -31,7 +31,7 @@ class SvgLayoutsTest(unittest.TestCase):
         pilot_rect = re.search(r'<rect x="[^"]+" y="[^"]+" width="([^"]+)" height="([^"]+)"', pilot)
         self.assertNotEqual(legacy_rect.groups(), pilot_rect.groups())
 
-    def test_matrix_comparison_alias_changes_proportion_and_focal_area(self):
+    def test_matrix_comparison_keeps_equal_cards_with_visible_gaps(self):
         legacy = render_layout(LayoutSpec("matrix", ["A", "B", "C", "D"]))
         pilot = render_layout(
             LayoutSpec(
@@ -46,7 +46,18 @@ class SvgLayoutsTest(unittest.TestCase):
         self.assertNotEqual(legacy, pilot)
         self.assertIn('data-variant="matrix/comparison"', pilot)
         self.assertIn('data-focal="true"', pilot)
-        self.assertIn('width="619.2"', pilot)
+        cards = [
+            tuple(float(value) for value in match)
+            for match in re.findall(
+                r'<rect x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"',
+                pilot,
+            )
+        ]
+        self.assertEqual(len(cards), 4)
+        self.assertEqual({(width, height) for _, _, width, height in cards}, {(516.0, 196.0)})
+        self.assertEqual(cards[1][0] - (cards[0][0] + cards[0][2]), 8.0)
+        self.assertEqual(cards[2][1] - (cards[0][1] + cards[0][3]), 8.0)
+        self.assertIn('font-size="21"', pilot)
 
     def test_explicit_pilot_intent_rejects_unknown_values_and_over_budget_content(self):
         with self.assertRaisesRegex(ValueError, "layout-budget-items-exceeded"):

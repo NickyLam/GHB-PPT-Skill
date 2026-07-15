@@ -93,3 +93,16 @@ Empty or insufficient human evidence returns `decision: pending`,
 `proceed: false`, and a non-zero exit. It never fabricates a pass. A failed
 threshold similarly blocks expansion; changing the frozen threshold or
 denominator is not a recovery action.
+
+### Revision after an exposed pilot round
+
+Once reviewers have seen a pilot pair, those pages cannot support a later
+unseen-value claim. Preserve the raw feedback, revise geometry using calibration
+inputs, and freeze a new semantic holdout before reviewing the revision.
+
+The first U11 feedback round preferred equal-size matrix options while also
+requiring visible gaps. The matrix revision therefore keeps all four cards
+equal in width and height, applies density-specific gaps, and expresses focal
+intent through fill, border, and typography rather than unequal card area. The
+timeline focal geometry remains unchanged. The exposed round-one pages are
+diagnostic evidence only and must not be reused to pass the revision gate.

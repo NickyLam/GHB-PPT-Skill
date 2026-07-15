@@ -301,29 +301,17 @@ def _render_matrix_pilot(spec: LayoutSpec) -> str:
     while len(labels) < 4:
         labels.append("")
     focal = spec.focal_index if spec.focal_index is not None else 1
-    focal_col = focal % 2
-    focal_row = focal // 2
     density = spec.density or "balanced"
     gap = {"breathing": 22.0, "balanced": 14.0, "dense": 8.0}[density]
-    if spec.variant in {"matrix/comparison", "matrix/spotlight"} or spec.emphasis == "single-focal":
-        focal_share = 0.60
-    else:
-        focal_share = 0.52
-    usable_w = spec.width - gap
-    focal_w = usable_w * focal_share
-    other_w = usable_w - focal_w
-    col_widths = [other_w, focal_w] if focal_col == 1 else [focal_w, other_w]
-    usable_h = spec.height - gap
-    focal_h = usable_h * (0.56 if spec.emphasis == "single-focal" else 0.50)
-    other_h = usable_h - focal_h
-    row_heights = [other_h, focal_h] if focal_row == 1 else [focal_h, other_h]
-    xs = [spec.x, spec.x + col_widths[0] + gap]
-    ys = [spec.y, spec.y + row_heights[0] + gap]
+    cell_w = (spec.width - gap) / 2
+    cell_h = (spec.height - gap) / 2
+    xs = [spec.x, spec.x + cell_w + gap]
+    ys = [spec.y, spec.y + cell_h + gap]
     body: list[str] = []
     for idx, label in enumerate(labels):
         col, row = idx % 2, idx // 2
         x, y = xs[col], ys[row]
-        w, h = col_widths[col], row_heights[row]
+        w, h = cell_w, cell_h
         is_focal = idx == focal
         fill = PRIMARY if is_focal else SURFACE
         text_fill = WHITE if is_focal else TEXT
