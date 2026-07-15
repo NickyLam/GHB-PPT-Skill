@@ -17,6 +17,10 @@ The GHB-owned additions currently colocated under the vendor tree are:
 - `check_layout_diversity.py`
 - `visual_asset_checker.py`
 
+`svg_layouts.py` also owns the GHB-specific `LayoutSpec` visual-intent fields,
+per-family `LAYOUT_CONTRACTS`, and Office-safe density/variant/emphasis
+geometry. These are local renderer contracts, not imported upstream API.
+
 They remain there because they integrate directly with the vendored SVG
 pipeline. Mark and test any further colocated additions explicitly.
 
@@ -39,3 +43,8 @@ pipeline. Mark and test any further colocated additions explicitly.
 Every direct modification to vendored code must have a focused regression test
 and a comment explaining the GHB packaging reason. Prefer a top-level adapter
 when the change can be isolated outside the vendor tree.
+
+For layout-contract changes, focused coverage must prove all ten built-in
+families, legacy byte stability when intent is omitted, item/text budget
+failures, focal visibility, and the restricted SVG element set. Keep
+`comparison` normalized to `matrix`; do not add it to the archetype inventory.

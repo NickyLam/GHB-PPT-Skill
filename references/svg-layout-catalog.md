@@ -12,7 +12,8 @@ Create `layout_plan.json` in the project root:
     "slide": 3,
     "message": "能力建设要先有平台底座，再叠加流程和治理",
     "layout_archetype": "pyramid",
-    "density": "anchor",
+    "density": "balanced",
+    "rhythm_role": "anchor",
     "items": ["基础设施", "平台能力", "流程机制", "治理闭环"],
     "reason": "内容表达层级递进，金字塔能突出基础与顶层目标的关系",
     "alternatives": ["layered_arch", "staircase"]
@@ -27,7 +28,8 @@ Required fields:
 | `slide` | Body-slide number, excluding cover and ending slide |
 | `message` | One-sentence slide takeaway |
 | `layout_archetype` | Chosen structure, e.g. `pyramid` |
-| `density` | `anchor`, `dense`, or `breathing` |
+| `density` | Geometry band: `breathing`, `balanced`, or `dense` |
+| `rhythm_role` | Deck-level role such as `anchor`; this does not replace density |
 | `items` | Ordered labels that drive the SVG component |
 | `reason` | Why this structure fits the content |
 | `alternatives` | 1-2 acceptable fallback layouts |
@@ -70,6 +72,45 @@ Built-in renderers currently cover `pyramid`, `waterfall`, `staircase`,
 `iceberg`. For other named patterns, hand-author the SVG and use the semantic
 pattern name in `data-layout`; add a reusable renderer only after the pattern
 recurs across multiple decks.
+
+## Schema-driven renderer contract
+
+Pass visual intent through `LayoutSpec`. Calls that omit all intent fields keep
+their legacy SVG bytes. Intent-aware calls accept:
+
+- `density`: `breathing`, `balanced`, or `dense`; each changes spacing, scale,
+  or placement geometry.
+- `variant`: one of the family-owned variants below.
+- `emphasis`: `single-focal`, `ranked`, or `distributed`.
+- `focal_index` or `focal_target`: required for `single-focal`; the matching
+  visible shape is tagged `data-focal="true"`.
+- `max_items` and `max_text_chars`: optional page-schema limits. They may make
+  a family limit stricter but cannot expand it.
+
+The renderer rejects content below the semantic minimum, above the family or
+declared node maximum, above the per-item limit, or above the declared/family
+text maximum. Even within those hard ceilings, it also rejects labels whose
+wrapped lines cannot fit the actual component height at the 13 px font floor.
+It does not globally shrink type to hide an over-budget page.
+
+| Archetype | Items | Max chars/item | Max text | Variants |
+|---|---:|---:|---:|---|
+| `pyramid` | 2-5 | 64 | 240 | `pyramid/default`, `pyramid/foundation` |
+| `waterfall` | 2-6 | 56 | 260 | `waterfall/default`, `waterfall/descending` |
+| `staircase` | 2-5 | 56 | 220 | `staircase/default`, `staircase/editorial` |
+| `layered_arch` | 2-6 | 72 | 320 | `layered_arch/default`, `layered_arch/platform` |
+| `matrix` | 2-4 | 80 | 240 | `matrix/default`, `matrix/comparison`, `matrix/spotlight`, `matrix/metric-callout` |
+| `timeline` | 2-6 | 80 | 360 | `timeline/default`, `timeline/editorial`, `timeline/phased` |
+| `funnel` | 2-5 | 56 | 240 | `funnel/default`, `funnel/qualified` |
+| `flywheel` | 3-6 | 48 | 240 | `flywheel/default`, `flywheel/hub-led` |
+| `swimlane` | 2-4 | 48 | 180 | `swimlane/default`, `swimlane/compact` |
+| `iceberg` | 2-4 | 64 | 220 | `iceberg/default`, `iceberg/deep-dive` |
+
+`comparison` is a semantic alias that normalizes to the existing `matrix`
+archetype with `matrix/comparison`; it never emits a new `data-layout` value.
+`matrix/metric-callout` is the catalogued metric-capable variant. Matrix cards
+remain equal width and height with fixed gaps; focal prominence uses fill,
+border, and font hierarchy only, never unequal card area.
 
 Run the checker after SVGs exist:
 
@@ -171,7 +212,7 @@ Avoid for:
 - more than four primary categories
 - content without two meaningful axes
 
-Recommended item count: 4 quadrants.
+Supported item count: 2-4 quadrants/cards; use four when both axes are fully populated.
 
 Default composition: 2×2 grid with one highlighted quadrant. Add axis labels manually when needed.
 
@@ -192,7 +233,7 @@ Avoid for:
 - unordered concepts
 - dense details per milestone
 
-Recommended item count: 3-7.
+Supported item count: 2-6.
 
 Default composition: horizontal line, numbered nodes, alternating labels to preserve breathing room.
 
@@ -212,7 +253,7 @@ Avoid for:
 - parallel ownership handoff
 - cases where every stage matters equally
 
-Recommended item count: 3-5.
+Supported item count: 2-5.
 
 Default composition: top-wide to bottom-narrow stacked trapezoids with the final stage visually emphasized.
 
@@ -272,7 +313,7 @@ Avoid for:
 - time sequencing
 - content with no hidden layer
 
-Recommended item count: 3-5.
+Supported item count: 2-4 (one surface item plus up to three hidden layers).
 
 Default composition: a labeled waterline, 1-2 items above the line, and the remaining items inside the lower iceberg mass.
 
@@ -283,6 +324,7 @@ SVG safety: use one explicit `<polygon>` silhouette plus a `<line>` waterline an
 The current generator supports ten archetypes. If content clearly needs another structure, hand-author the SVG and still set `data-layout`:
 
 - `hub_spoke` for core capability plus surrounding modules.
-- `comparison` for before/after or option A/B.
+- `comparison` is not a fallback archetype; use the built-in `matrix/comparison`
+  variant (or the `comparison` input alias) for before/after or option A/B.
 
 Add a deterministic renderer only after the pattern appears in multiple decks.
