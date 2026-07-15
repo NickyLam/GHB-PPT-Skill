@@ -13,11 +13,12 @@ import argparse
 import base64
 import io
 import json
+import math
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Any, Optional
 from xml.etree import ElementTree as ET
 
 
@@ -27,9 +28,11 @@ VECTOR_EXTENSIONS = {".svg", ".emf", ".wmf"}
 CORRUPT_TEXT_MARKERS = ("\ufffd", "Ã", "Â", "â€", "ðŸ", "ï»¿")
 DENSITY_LIMITS = {
     "breathing": (160, 12),
-    "anchor": (300, 18),
+    "balanced": (300, 18),
     "dense": (520, 28),
 }
+LEGACY_DENSITY_LIMITS = {"anchor": DENSITY_LIMITS["balanced"]}
+EXCLUDED_VISUAL_ROLES = {"background", "master", "header", "footer", "bleed", "chrome"}
 
 
 @dataclass(frozen=True)
@@ -80,17 +83,18 @@ def _number(value: Optional[str]) -> Optional[float]:
     if value is None:
         return None
     match = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*(?:px)?\s*", value)
-    return float(match.group(1)) if match else None
+    if not match:
+        return None
+    number = float(match.group(1))
+    return number if math.isfinite(number) else None
 
 
 def _viewbox(root: ET.Element) -> Optional[Box]:
     values = re.split(r"[\s,]+", root.get("viewBox", "").strip())
     if len(values) != 4:
         return None
-    try:
-        return Box(*map(float, values))
-    except ValueError:
-        return None
+    numbers = [_number(value) for value in values]
+    return Box(*numbers) if all(value is not None for value in numbers) else None
 
 
 def _box_from_element(elem: ET.Element) -> Optional[Box]:
@@ -99,12 +103,254 @@ def _box_from_element(elem: ET.Element) -> Optional[Box]:
         values = re.split(r"[\s,]+", declared.strip())
         if len(values) != 4:
             return None
-        try:
-            return Box(*map(float, values))
-        except ValueError:
-            return None
+        numbers = [_number(value) for value in values]
+        return Box(*numbers) if all(value is not None for value in numbers) else None
     values = [_number(elem.get(name)) for name in ("x", "y", "width", "height")]
     return Box(*values) if all(value is not None for value in values) else None
+
+
+def _hidden(elem: ET.Element, inherited: bool = False) -> bool:
+    style = {
+        key.strip().lower(): value.strip().lower()
+        for key, _, value in (item.partition(":") for item in elem.get("style", "").split(";"))
+        if key.strip()
+    }
+    return inherited or (
+        elem.get("display", "").lower() == "none"
+        or elem.get("visibility", "").lower() == "hidden"
+        or _number(elem.get("opacity")) == 0
+        or style.get("display") == "none"
+        or style.get("visibility") == "hidden"
+        or style.get("opacity") == "0"
+    )
+
+
+def _semantic_role(elem: ET.Element) -> str:
+    explicit = elem.get("data-qa-role", "").strip().lower()
+    if explicit:
+        return explicit
+    identifier = (elem.get("id") or "").strip().lower().replace("_", "-")
+    if identifier in {"bg", "bg-surface"}:
+        return "background"
+    for role in (*sorted(EXCLUDED_VISUAL_ROLES), "title", "body", "metric", "card"):
+        if identifier == role or identifier.startswith(f"{role}-"):
+            return role
+    return "content"
+
+
+def _clip_box(box: Box, canvas: Box) -> Optional[Box]:
+    left = max(box.x, canvas.x)
+    top = max(box.y, canvas.y)
+    right = min(box.x + box.width, canvas.x + canvas.width)
+    bottom = min(box.y + box.height, canvas.y + canvas.height)
+    if right <= left or bottom <= top:
+        return None
+    return Box(left, top, right - left, bottom - top)
+
+
+def _union_area(boxes: list[Box]) -> float:
+    """Return exact union area for axis-aligned boxes."""
+    xs = sorted({value for box in boxes for value in (box.x, box.x + box.width)})
+    area = 0.0
+    for left, right in zip(xs, xs[1:]):
+        if right <= left:
+            continue
+        intervals = sorted(
+            (box.y, box.y + box.height)
+            for box in boxes
+            if box.x < right and box.x + box.width > left and box.height > 0
+        )
+        covered = 0.0
+        if intervals:
+            start, end = intervals[0]
+            for interval_start, interval_end in intervals[1:]:
+                if interval_start > end:
+                    covered += end - start
+                    start, end = interval_start, interval_end
+                else:
+                    end = max(end, interval_end)
+            covered += end - start
+        area += (right - left) * covered
+    return area
+
+
+def _measurement_box(elem: ET.Element) -> Optional[Box]:
+    declared = _box_from_element(elem) if elem.get("data-qa-box") else None
+    return declared or _shape_box(elem)
+
+
+def measure_visible_geometry(svg_text: str) -> dict[str, Any]:
+    """Extract immutable, policy-neutral visible geometry observations.
+
+    Unsupported transforms and unknown text extents reduce coverage instead of
+    being approximated. Semantic layout markers are deliberately ignored.
+    """
+    try:
+        root = ET.fromstring(svg_text)
+    except ET.ParseError as exc:
+        raise ValueError(f"invalid-svg-geometry: malformed XML: {exc}") from exc
+    if _local_name(root.tag) != "svg":
+        raise ValueError("invalid-svg-geometry: root element must be svg")
+    canvas = _viewbox(root)
+    if canvas is None or canvas.width <= 0 or canvas.height <= 0:
+        raise ValueError("invalid-svg-geometry: SVG requires a positive viewBox")
+
+    body_canvas = canvas
+    surface = next((node for node in root.iter() if node.get("id") == "bg-surface"), None)
+    if surface is not None:
+        surface_box = next(
+            (_shape_box(node) for node in surface.iter() if _local_name(node.tag) == "rect"),
+            None,
+        )
+        if surface_box and surface_box.width > 0 and surface_box.height > 0:
+            body_canvas = surface_box
+
+    scope = next(
+        (
+            node
+            for node in root.iter()
+            if _local_name(node.tag) == "g"
+            and ((node.get("id") or "").startswith("layout-") or node.get("data-layout"))
+        ),
+        root,
+    )
+    observations: list[dict[str, Any]] = []
+    raw_observations: list[dict[str, Any]] = []
+    limitations: set[str] = set()
+    text_sizes: list[dict[str, Any]] = []
+    candidate_count = 0
+
+    def collect_declared_text(elem: ET.Element, role: str, hidden: bool = False) -> None:
+        hidden = _hidden(elem, hidden)
+        if hidden:
+            return
+        child_role = _semantic_role(elem)
+        if child_role == "content":
+            child_role = role
+        if _local_name(elem.tag) in {"text", "tspan"} and "".join(elem.itertext()).strip():
+            size = _number(elem.get("font-size"))
+            if size is not None and size > 0:
+                text_sizes.append({"role": child_role, "font_size": size})
+        for child in elem:
+            collect_declared_text(child, child_role, hidden)
+
+    def walk(
+        elem: ET.Element,
+        *,
+        hidden: bool = False,
+        excluded: bool = False,
+        transformed: bool = False,
+        inherited_role: str = "content",
+    ) -> None:
+        nonlocal candidate_count
+        tag = _local_name(elem.tag)
+        hidden = _hidden(elem, hidden)
+        role = _semantic_role(elem)
+        if role == "content" and inherited_role != "content":
+            role = inherited_role
+        excluded = excluded or role in EXCLUDED_VISUAL_ROLES or elem.get("data-allow-overflow", "").lower() in {"1", "true", "yes"}
+        transformed = transformed or bool(elem.get("transform"))
+        if hidden or excluded:
+            return
+        if transformed and not elem.get("data-qa-box"):
+            if tag == "g" or any(True for _ in elem):
+                limitations.add("transformed-group")
+                candidate_count += 1
+                return
+            limitations.add(f"transformed-{tag}")
+            candidate_count += 1
+            return
+        if tag in {"defs", "clipPath", "mask", "filter", "style"}:
+            return
+
+        qa_box = elem.get("data-qa-box")
+        if tag in {"text", "tspan"}:
+            text = "".join(elem.itertext()).strip()
+            if text:
+                size = _number(elem.get("font-size"))
+                if size is not None and size > 0:
+                    text_sizes.append({"role": role, "font_size": size})
+                if not qa_box:
+                    limitations.add("text-extent")
+                    candidate_count += 1
+                    return
+        supported = qa_box is not None or tag in {
+            "rect", "circle", "ellipse", "line", "polygon", "polyline", "image", "use"
+        }
+        if supported:
+            candidate_count += 1
+            box = _measurement_box(elem)
+            if box is None or box.width < 0 or box.height < 0:
+                raise ValueError(f"invalid-svg-geometry: invalid {tag} extent")
+            clipped = _clip_box(box, body_canvas)
+            shared = {
+                "role": role,
+                "focal": elem.get("data-focal", "").lower() == "true",
+                "fill": (elem.get("fill") or "").strip().upper(),
+                "tag": tag,
+            }
+            raw_observations.append(
+                shared | {"box": [box.x, box.y, box.width, box.height]}
+            )
+            if clipped is not None:
+                observations.append(
+                    shared | {"box": [clipped.x, clipped.y, clipped.width, clipped.height]}
+                )
+            if qa_box:
+                if tag not in {"text", "tspan"}:
+                    collect_declared_text(elem, role, hidden)
+                return
+        elif tag not in {"svg", "g", "text", "tspan"}:
+            candidate_count += 1
+            limitations.add(tag)
+            return
+        for child in elem:
+            walk(
+                child,
+                hidden=hidden,
+                excluded=excluded,
+                transformed=transformed,
+                inherited_role=role,
+            )
+
+    walk(scope)
+    measured = len(raw_observations)
+    if measured == 0:
+        status = "not-measurable"
+    elif limitations:
+        status = "partial"
+    else:
+        status = "supported"
+    boxes = [Box(*item["box"]) for item in observations]
+    positive_boxes = [box for box in boxes if box.area > 0]
+    gaps: list[float] = []
+    for index, left in enumerate(positive_boxes):
+        distances = []
+        for right_index, right in enumerate(positive_boxes):
+            if index == right_index:
+                continue
+            dx = max(left.x - (right.x + right.width), right.x - (left.x + left.width), 0.0)
+            dy = max(left.y - (right.y + right.height), right.y - (left.y + left.height), 0.0)
+            distances.append(math.hypot(dx, dy))
+        if distances:
+            gaps.append(min(distances))
+    return {
+        "schema": "svg.geometry-observations.v1",
+        "canvas": [canvas.x, canvas.y, canvas.width, canvas.height],
+        "body_canvas": [body_canvas.x, body_canvas.y, body_canvas.width, body_canvas.height],
+        "observations": observations,
+        "raw_observations": raw_observations,
+        "text_sizes": text_sizes,
+        "gaps": gaps,
+        "coverage": {
+            "status": status,
+            "measured_elements": measured,
+            "candidate_elements": candidate_count,
+            "ratio": round(measured / candidate_count, 6) if candidate_count else 0.0,
+            "limitations": sorted(limitations),
+        },
+        "occupied_area": _union_area(boxes),
+    }
 
 
 def _outside(inner: Box, canvas: Box, tolerance: float = 0.5) -> bool:
@@ -159,24 +405,25 @@ def _qa_item(elem: ET.Element, index: int) -> Optional[QAItem]:
 
 def _check_text(root: ET.Element, result: Result) -> None:
     content_root = next((elem for elem in root.iter() if elem.get("data-layout")), root)
-    for elem in root.iter():
-        if _local_name(elem.tag) != "text":
-            continue
-        text = "".join(elem.itertext()).strip()
-        if not text:
-            result.warnings.append("empty <text> element")
-            continue
-        markers = [marker for marker in CORRUPT_TEXT_MARKERS if marker in text]
-        controls = [char for char in text if ord(char) < 32 and char not in "\t\n\r"]
-        if markers or controls:
-            result.errors.append(f"corrupt/mojibake text detected: {text[:48]!r}")
-    for elem in content_root.iter():
-        if _local_name(elem.tag) != "text":
-            continue
-        text = "".join(elem.itertext()).strip()
-        if text:
-            result.text_elements += 1
-            result.text_chars += len(re.sub(r"\s+", "", text))
+    def walk(elem: ET.Element, hidden: bool = False, in_content: bool = False) -> None:
+        hidden = _hidden(elem, hidden)
+        in_content = in_content or elem is content_root
+        if _local_name(elem.tag) == "text" and not hidden:
+            text = "".join(elem.itertext()).strip()
+            if not text:
+                result.warnings.append("empty <text> element")
+            else:
+                markers = [marker for marker in CORRUPT_TEXT_MARKERS if marker in text]
+                controls = [char for char in text if ord(char) < 32 and char not in "\t\n\r"]
+                if markers or controls:
+                    result.errors.append(f"corrupt/mojibake text detected: {text[:48]!r}")
+                if in_content:
+                    result.text_elements += 1
+                    result.text_chars += len(re.sub(r"\s+", "", text))
+        for child in elem:
+            walk(child, hidden, in_content)
+
+    walk(root)
 
 
 def _check_images(root: ET.Element, path: Path, canvas: Box, stage: str, result: Result) -> None:
@@ -263,8 +510,12 @@ def _check_icons(root: ET.Element, path: Path, icons_dir: Path, canvas: Box, sta
 def _shape_box(elem: ET.Element) -> Optional[Box]:
     tag = _local_name(elem.tag)
     if tag == "rect":
-        x = _number(elem.get("x")) or 0.0
-        y = _number(elem.get("y")) or 0.0
+        x = _number(elem.get("x"))
+        y = _number(elem.get("y"))
+        if (elem.get("x") is not None and x is None) or (elem.get("y") is not None and y is None):
+            return None
+        x = x or 0.0
+        y = y or 0.0
         width = _number(elem.get("width"))
         height = _number(elem.get("height"))
         return Box(x, y, width, height) if width is not None and height is not None else None
@@ -279,9 +530,8 @@ def _shape_box(elem: ET.Element) -> Optional[Box]:
         if None not in (x1, y1, x2, y2):
             return Box(min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1))
     if tag in {"polygon", "polyline"}:
-        try:
-            values = [float(value) for value in re.split(r"[\s,]+", elem.get("points", "").strip())]
-        except ValueError:
+        values = [_number(value) for value in re.split(r"[\s,]+", elem.get("points", "").strip())]
+        if any(value is None for value in values):
             return None
         if len(values) >= 4 and len(values) % 2 == 0:
             xs, ys = values[0::2], values[1::2]
@@ -415,10 +665,13 @@ def _apply_content_plan(results: list[Result], plan_path: Optional[Path]) -> lis
         planned_layout = entry.get("layout_archetype")
         if result.layout != planned_layout:
             result.errors.append(f"data-layout {result.layout!r} does not match plan {planned_layout!r}")
-        density = entry.get("density")
-        limits = DENSITY_LIMITS.get(density)
+        page_schema = entry.get("page_schema")
+        density = page_schema.get("density") if isinstance(page_schema, dict) else entry.get("density")
+        limits = DENSITY_LIMITS.get(density) or (
+            LEGACY_DENSITY_LIMITS.get(density) if not isinstance(page_schema, dict) else None
+        )
         if not limits:
-            result.errors.append(f"unknown density {density!r}; use breathing/anchor/dense")
+            result.errors.append(f"unknown density {density!r}; use breathing/balanced/dense")
             continue
         char_limit, text_limit = limits
         if result.text_chars > char_limit:
@@ -429,7 +682,9 @@ def _apply_content_plan(results: list[Result], plan_path: Optional[Path]) -> lis
             result.errors.append(
                 f"{density} page has {result.text_elements} text elements (limit {text_limit}); consolidate or split"
             )
-        if result.text_chars < 18:
+        if result.text_chars == 0:
+            result.errors.append("planned page has no visible content")
+        elif result.text_chars < 18:
             result.warnings.append("page may be too thin: fewer than 18 visible text characters")
     missing = sorted(set(entries) - seen)
     if missing:

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from scripts.ppt_master.visual_asset_checker import check_svg, main
+from scripts.ppt_master.visual_asset_checker import _apply_content_plan, check_svg, main
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,6 +97,52 @@ class VisualAssetCheckerTest(unittest.TestCase):
             )
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(main([str(project), "--stage", "authored"]), 1)
+
+    def test_nested_page_schema_density_wins_and_legacy_anchor_remains_compatible(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = self.write_svg(
+                root,
+                '<g data-layout="timeline"><text x="10" y="30">' + ("内容" * 100) + "</text></g>",
+            )
+            result = check_svg(path, stage="authored", icons_dir=ICONS)
+            nested = root / "nested.json"
+            nested.write_text(
+                json.dumps([{
+                    "slide": 1,
+                    "layout_archetype": "timeline",
+                    "density": "anchor",
+                    "page_schema": {"density": "breathing"},
+                }]),
+                encoding="utf-8",
+            )
+            self.assertEqual(_apply_content_plan([result], nested), [])
+            self.assertTrue(any("breathing page" in error for error in result.errors))
+
+            legacy_result = check_svg(path, stage="authored", icons_dir=ICONS)
+            legacy = root / "legacy.json"
+            legacy.write_text(
+                json.dumps([{"slide": 1, "layout_archetype": "timeline", "density": "anchor"}]),
+                encoding="utf-8",
+            )
+            self.assertEqual(_apply_content_plan([legacy_result], legacy), [])
+            self.assertFalse(any("unknown density" in error for error in legacy_result.errors))
+
+    def test_planned_page_without_visible_content_is_a_hard_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = self.write_svg(
+                root,
+                '<g data-layout="timeline"><text x="10" y="30" display="none">Hidden</text></g>',
+            )
+            plan = root / "layout_plan.json"
+            plan.write_text(
+                json.dumps([{"slide": 1, "layout_archetype": "timeline", "density": "anchor"}]),
+                encoding="utf-8",
+            )
+            result = check_svg(path, stage="authored", icons_dir=ICONS)
+            _apply_content_plan([result], plan)
+            self.assertIn("planned page has no visible content", result.errors)
 
     def test_finalized_project_scans_svg_final_not_svg_output(self):
         with tempfile.TemporaryDirectory() as tmp:

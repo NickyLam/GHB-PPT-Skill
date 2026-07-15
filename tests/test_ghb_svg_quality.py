@@ -29,6 +29,30 @@ class GhbSvgQualityTest(unittest.TestCase):
         )
         return directory
 
+    def add_visual_contract(self, project: Path) -> None:
+        (project / "visual_profile.json").write_text(
+            json.dumps({
+                "schema": "ghb.visual-profile.v1",
+                "brand": {"primary": "#AB1F29"},
+                "typography": {"min_title_pt": 28, "min_body_pt": 18, "min_title_body_ratio": 1.5},
+                "spacing": {"base_unit": 8, "min_component_gap": 16},
+                "occupancy": {"body": {"min": 0.42, "max": 0.78}},
+                "deck_rhythm": {"max_same_role_streak": 3},
+            }),
+            encoding="utf-8",
+        )
+        plan = json.loads((project / "layout_plan.json").read_text(encoding="utf-8"))
+        plan[0]["slide_id"] = "body-01"
+        plan[0]["page_schema"] = {
+            "schema": "ghb.page-schema.v1",
+            "slide_id": "body-01",
+            "density": "balanced",
+            "rhythm_role": "continuity",
+            "emphasis": "distributed",
+            "layout_variant": "timeline/default",
+        }
+        (project / "layout_plan.json").write_text(json.dumps(plan), encoding="utf-8")
+
     def test_combines_svg_visual_layout_and_plan_checks(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = self.make_project(Path(tmp))
@@ -56,6 +80,60 @@ class GhbSvgQualityTest(unittest.TestCase):
             payload = json.loads(output.read_text(encoding="utf-8"))
             self.assertFalse(payload["passed"])
             self.assertGreater(payload["error_count"], 0)
+
+    def test_reports_stage_scoped_page_metrics_coverage_and_advisory_deck_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self.make_project(Path(tmp))
+            self.add_visual_contract(project)
+            payload = check_project(project, stage="authored")
+            self.assertEqual(payload["stage"], "authored")
+            self.assertEqual(payload["visual_quality"]["schema"], "ghb.visual-quality-report.v1")
+            page = payload["files"][0]
+            self.assertEqual(page["slide_id"], "body-01")
+            self.assertIn("occupancy", page["visual_metrics"])
+            self.assertIn(page["visual_coverage"]["status"], {"supported", "partial", "not-measurable"})
+            self.assertIn("composition-fingerprint", page["visual_metrics"])
+            self.assertIn("deck_metrics", payload["visual_quality"])
+            self.assertNotIn("composite", json.dumps(payload).lower())
+            self.assertTrue(payload["passed"], payload)
+
+    def test_repeated_real_geometry_warns_even_when_layout_markers_differ(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self.make_project(Path(tmp))
+            self.add_visual_contract(project)
+            plan = json.loads((project / "layout_plan.json").read_text(encoding="utf-8"))
+            base_svg = (project / "svg_output" / "01_timeline.svg").read_text(encoding="utf-8").replace(
+                '<text x="100" y="160"',
+                '<rect x="100" y="200" width="400" height="240" data-focal="true" fill="#AB1F29"/>'
+                '<rect x="600" y="200" width="400" height="240" fill="#FFFFFF"/>'
+                '<text x="100" y="160"',
+            )
+            (project / "svg_output" / "01_timeline.svg").write_text(base_svg, encoding="utf-8")
+            for number, marker in ((2, "matrix"), (3, "funnel")):
+                svg = base_svg.replace('data-layout="timeline"', f'data-layout="{marker}"')
+                (project / "svg_output" / f"0{number}_{marker}.svg").write_text(svg, encoding="utf-8")
+                row = json.loads(json.dumps(plan[0]))
+                row["slide"] = number
+                row["slide_id"] = f"body-0{number}"
+                row["layout_archetype"] = marker
+                row["page_schema"]["slide_id"] = row["slide_id"]
+                row["page_schema"]["layout_variant"] = f"{marker}/default"
+                row["page_schema"]["focal_zone"] = "left"
+                plan.append(row)
+            plan[0]["page_schema"]["focal_zone"] = "left"
+            (project / "layout_plan.json").write_text(json.dumps(plan), encoding="utf-8")
+            payload = check_project(project, stage="authored")
+            codes = {finding["code"] for finding in payload["visual_quality"]["deck_findings"]}
+            self.assertIn("visual-composition-repeated", codes)
+            self.assertIn("visual-focal-zone-streak", codes)
+            self.assertEqual(payload["error_count"], 0)
+            self.assertGreaterEqual(payload["warning_count"], 2)
+
+    def test_empty_project_returns_a_stable_failure_in_text_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "svg_output").mkdir()
+            self.assertEqual(main([str(project), "--stage", "authored"]), 1)
 
 
 if __name__ == "__main__":

@@ -38,12 +38,13 @@
 ## 4. 乱码与文本负载
 
 - 禁止 Unicode replacement character `�`、控制字符和常见 UTF-8/Latin-1 乱码片段。
-- `layout_plan.json` 的 `density` 决定主 `data-layout` 内容组上限（页眉页脚不计）：
+- v1 `page_schema.density` 决定主 `data-layout` 内容组上限（页眉页脚不计）：
   - `breathing`：最多 160 个非空白字符、12 个 `<text>`。
-  - `anchor`：最多 300 个非空白字符、18 个 `<text>`。
+  - `balanced`：最多 300 个非空白字符、18 个 `<text>`。
   - `dense`：最多 520 个非空白字符、28 个 `<text>`。
+- 仅当页面没有 `page_schema` 时，旧顶层 `density: anchor` 兼容 balanced 的文本负载；`anchor` 不是 v1 几何密度。
 - 超过上限时先拆页，再删减；不要靠缩小字体塞入。
-- 少于 18 个可见字符会提示页面可能过空，需确认它确实是视觉锚点页。
+- 计划页没有可见内容是错误；少于 18 个可见字符会提示页面可能过空。
 
 ## 5. 强制命令
 
@@ -60,3 +61,78 @@ python3 scripts/ppt_master/visual_asset_checker.py "$PROJECT" --stage finalized
 ```
 
 两次都必须 0 error。机器集成可加 `--json`。
+
+## 6. Deterministic visual-quality findings
+
+The authored and finalized SVG reports measure visible SVG geometry before
+applying GHB policy. `data-layout` is descriptive metadata and is never used as
+proof of composition. Reports do not calculate an aggregate aesthetic score.
+
+## Measurement and coverage
+
+The generic geometry envelope records the slide and body canvases, supported
+shape or `data-qa-box` bounds, semantic role, focal marker, fill, typography
+size where known, and measurement limitations. The GHB policy layer derives:
+
+- body occupancy (union area, so overlapping shapes are not double counted);
+- focal-area ratio, primary-fill focal signal, and observed left/center/right focal zone;
+- title/body size ratio when both sizes are observable;
+- spacing variation, minimum peer gap, and spacing-grid deviation;
+- primary-brand-color area;
+- normalized geometry-and-role composition fingerprint.
+
+Background/master decoration, header, footer, chrome, and elements marked as
+deliberate bleed are excluded from body occupancy. Hidden elements are not
+visible content. A transformed subtree, unsupported path, or text without a QA
+extent is not guessed: it lowers coverage to `partial`, or to `not-measurable`
+when no supported bounds remain. Raw measurements are immutable after
+extraction. Occupancy uses geometry clipped to the body canvas, while explicit
+bounds enforcement retains the pre-clip geometry so body overflow cannot be
+hidden by measurement clipping.
+
+## Policy findings
+
+Each finding has a stable code, severity, affected slide identity, measured
+evidence, expected range, and suggested action.
+
+| Code | Initial severity | Trigger |
+|---|---|---|
+| `visual-occupancy-below-min` / `visual-occupancy-above-max` | warning | Measured occupancy falls outside `visual_profile.occupancy.body`. |
+| `visual-title-body-scale-low` | warning | Measurable title/body ratio is below the profile minimum. |
+| `visual-component-gap-small` | warning | Nearest peer gap is below `spacing.min_component_gap`. |
+| `visual-spacing-inconsistent` | warning | Peer-gap coefficient of variation exceeds the provisional `0.45` band. |
+| `visual-alignment-deviation` | warning | Mean edge deviation exceeds `0.35` of the profile base unit. |
+| `visual-primary-color-overuse` | warning | Primary-color area exceeds the provisional `0.35` body-area band. |
+| `visual-focal-dominance-low` | warning | A single-focal page has an observed focal ratio no greater than `1.1` and no primary-fill focal signal. |
+| `visual-coverage-partial` / `visual-not-measurable` | warning | Geometry coverage is incomplete or absent. |
+| `visual-composition-repeated` | warning | Adjacent body pages have the same geometry/role fingerprint. |
+| `visual-focal-zone-streak` | warning | Three adjacent body pages retain the same observed focal zone. |
+| `visual-rhythm-role-streak` | warning | Declared rhythm role exceeds the profile streak limit. |
+| `visual-density-rhythm-drift` | warning | Four adjacent pages retain one v1 density. |
+| `visual-variant-repetition` | warning | Three adjacent pages repeat one declared semantic variant. |
+| `visual-explicit-bounds-violation` | error | Fully measured content exceeds an explicit bounds override by more than `0.5` SVG unit. |
+| `visual-invalid-geometry` | error | Geometry extraction rejects malformed or non-finite SVG coordinates. |
+
+The provisional balance, hierarchy, color, and deck-rhythm bands are advisory.
+Existing malformed-contract, collision, overflow, empty planned content, and
+other geometry errors remain blocking. `passed` continues to mean that the
+combined report contains no errors; warnings do not change the exit code.
+
+## Schema and compatibility
+
+New projects consume `page_schema.density` with the v1 values `breathing`,
+`balanced`, and `dense`. A row without `page_schema` may use legacy top-level
+`anchor` limits for compatibility; this maps to balanced load only and does not
+make `anchor` a geometry density. `anchor` remains a rhythm role in v1.
+
+Authored and finalized evidence is generated independently and carries its
+stage in the report. Later final-PPTX/readback observations must be a separate
+envelope rather than overwriting either SVG stage.
+
+## Exceptions
+
+An additive `page_schema.policy_exceptions` list may suppress named advisory
+findings for an intentional composition. Deck findings are suppressed when an
+affected page declares that code. Exceptions never alter occupancy,
+fingerprints, focal zones, coverage, or any other raw measurement, and they do
+not suppress existing structural errors.

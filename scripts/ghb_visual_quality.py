@@ -4,134 +4,403 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import statistics
-import xml.etree.ElementTree as ET
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from scripts.ppt_master.visual_asset_checker import Box, measure_visible_geometry  # noqa: E402
 
-SUPPORTED_GEOMETRY = {"svg", "g", "rect", "line", "polygon", "text", "tspan"}
+
 REVIEW_SCHEMA = "ghb.visual-pilot-review.v1"
 DETERMINISTIC_SCHEMA = "ghb.visual-pilot-deterministic.v1"
 
 
-def _tag(element: ET.Element) -> str:
-    return element.tag.rsplit("}", 1)[-1]
+def _union_area(boxes: list[Box]) -> float:
+    xs = sorted({value for box in boxes for value in (box.x, box.x + box.width)})
+    total = 0.0
+    for left, right in zip(xs, xs[1:]):
+        intervals = sorted(
+            (box.y, box.y + box.height)
+            for box in boxes
+            if box.x < right and box.x + box.width > left and box.height > 0
+        )
+        if not intervals:
+            continue
+        start, end = intervals[0]
+        height = 0.0
+        for next_start, next_end in intervals[1:]:
+            if next_start > end:
+                height += end - start
+                start, end = next_start, next_end
+            else:
+                end = max(end, next_end)
+        total += (right - left) * (height + end - start)
+    return total
 
 
-def _number(value: str | None, default: float = 0.0) -> float:
-    if value is None:
-        return default
-    cleaned = value.strip().removesuffix("px")
-    try:
-        result = float(cleaned)
-    except ValueError as exc:
-        raise ValueError(f"invalid-svg-geometry: non-numeric coordinate {value!r}") from exc
-    if not math.isfinite(result):
-        raise ValueError("invalid-svg-geometry: coordinates must be finite")
-    return result
-
-
-def _viewbox(root: ET.Element) -> tuple[float, float, float, float]:
-    raw = root.get("viewBox")
-    if raw:
-        values = [_number(item) for item in raw.replace(",", " ").split()]
-        if len(values) != 4 or values[2] <= 0 or values[3] <= 0:
-            raise ValueError("invalid-svg-geometry: viewBox must contain positive width and height")
-        return values[0], values[1], values[2], values[3]
-    width, height = _number(root.get("width")), _number(root.get("height"))
-    if width <= 0 or height <= 0:
-        raise ValueError("invalid-svg-geometry: SVG requires viewBox or positive width and height")
-    return 0.0, 0.0, width, height
-
-
-def _bbox(element: ET.Element) -> tuple[float, float, float, float] | None:
-    tag = _tag(element)
-    if tag == "rect":
-        x, y = _number(element.get("x")), _number(element.get("y"))
-        width, height = _number(element.get("width")), _number(element.get("height"))
-        if width < 0 or height < 0:
-            raise ValueError("invalid-svg-geometry: rectangle dimensions cannot be negative")
-        return x, y, x + width, y + height
-    if tag == "line":
-        x1, y1 = _number(element.get("x1")), _number(element.get("y1"))
-        x2, y2 = _number(element.get("x2")), _number(element.get("y2"))
-        return min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)
-    if tag == "polygon":
-        raw = element.get("points", "").replace(",", " ").split()
-        if len(raw) < 6 or len(raw) % 2:
-            raise ValueError("invalid-svg-geometry: polygon requires coordinate pairs")
-        values = [_number(item) for item in raw]
-        xs, ys = values[::2], values[1::2]
-        return min(xs), min(ys), max(xs), max(ys)
-    if tag in {"text", "tspan"}:
-        text = "".join(element.itertext()).strip()
-        if not text:
-            return None
-        x, y = _number(element.get("x")), _number(element.get("y"))
-        size = _number(element.get("font-size"), 16.0)
-        width = max(size * 0.55 * len(text), size)
-        return x - width / 2, y - size, x + width / 2, y + size * 0.25
-    return None
-
-
-def measure_svg(svg: str) -> dict[str, Any]:
-    """Measure visible geometry; semantic markers never affect the observations."""
-
-    try:
-        root = ET.fromstring(svg)
-    except ET.ParseError as exc:
-        raise ValueError(f"invalid-svg-geometry: malformed XML: {exc}") from exc
-    if _tag(root) != "svg":
-        raise ValueError("invalid-svg-geometry: root element must be svg")
-    _, _, view_w, view_h = _viewbox(root)
-    scope = next(
-        (
-            node
-            for node in root.iter()
-            if _tag(node) == "g" and str(node.get("id", "")).startswith("layout-")
-        ),
-        root,
-    )
-    limitations = sorted({_tag(node) for node in scope.iter() if _tag(node) not in SUPPORTED_GEOMETRY})
-    boxes: list[tuple[float, float, float, float]] = []
-    rects: list[tuple[ET.Element, tuple[float, float, float, float]]] = []
-    for node in scope.iter():
-        box = _bbox(node)
-        if box is not None:
-            boxes.append(box)
-            if _tag(node) == "rect" and (box[2] - box[0]) > 0 and (box[3] - box[1]) > 0:
-                rects.append((node, box))
-    coverage = "limited" if limitations or not boxes else "supported"
-    if boxes:
-        left = min(box[0] for box in boxes)
-        top = min(box[1] for box in boxes)
-        right = max(box[2] for box in boxes)
-        bottom = max(box[3] for box in boxes)
-        occupancy = max(0.0, min(1.0, (right - left) * (bottom - top) / (view_w * view_h)))
-    else:
-        occupancy = 0.0
-    areas = [(box[2] - box[0]) * (box[3] - box[1]) for _, box in rects]
-    focal_areas = [area for (node, _), area in zip(rects, areas) if node.get("data-focal") == "true"]
-    non_focal = [area for (node, _), area in zip(rects, areas) if node.get("data-focal") != "true"]
-    if focal_areas and non_focal:
-        focal_dominance = max(focal_areas) / max(statistics.median(non_focal), 1.0)
-    elif len(areas) >= 2:
-        focal_dominance = max(areas) / max(statistics.median(areas), 1.0)
-    else:
-        focal_dominance = 1.0 if areas else 0.0
-    centers = sorted(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2) for _, box in rects)
-    gaps = [math.dist(centers[index - 1], centers[index]) for index in range(1, len(centers))]
-    spacing_deviation = statistics.pstdev(gaps) / statistics.mean(gaps) if len(gaps) >= 2 and statistics.mean(gaps) else 0.0
+def _metric(value: float | str | None, coverage: str) -> dict[str, Any]:
     return {
-        "schema": "ghb.visual-provisional-metrics.v1",
-        "occupancy": {"value": round(occupancy, 6), "coverage": coverage},
-        "focal-dominance": {"value": round(focal_dominance, 6), "coverage": coverage},
-        "spacing-consistency": {"value": round(spacing_deviation, 6), "coverage": coverage},
-        "limitations": limitations,
+        "value": round(value, 6) if isinstance(value, float) else value,
+        "coverage": coverage,
+    }
+
+
+def _geometry_fingerprint(observations: list[dict[str, Any]], body: list[float]) -> str:
+    bx, by, width, height = body
+    normalized = []
+    for item in observations:
+        x, y, box_w, box_h = item["box"]
+        normalized.append(
+            (
+                item["role"],
+                round((x - bx) / width, 2),
+                round((y - by) / height, 2),
+                round(box_w / width, 2),
+                round(box_h / height, 2),
+                bool(item["focal"]),
+            )
+        )
+    normalized.sort()
+    canonical = json.dumps(normalized, ensure_ascii=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _focal_zone(observations: list[dict[str, Any]], body: list[float]) -> str | None:
+    candidates = [item for item in observations if item["focal"]]
+    candidates = [item for item in candidates if item["box"][2] * item["box"][3] > 0]
+    if not candidates:
+        return None
+    focal = max(candidates, key=lambda item: item["box"][2] * item["box"][3])
+    center = focal["box"][0] + focal["box"][2] / 2
+    relative = (center - body[0]) / body[2]
+    return "left" if relative < 1 / 3 else "right" if relative > 2 / 3 else "center"
+
+
+def measure_svg(
+    svg: str,
+    *,
+    primary_color: str = "#AB1F29",
+    base_unit: float = 8.0,
+) -> dict[str, Any]:
+    """Return explainable metrics derived from visible geometry, never markers."""
+    raw = measure_visible_geometry(svg)
+    body = raw["body_canvas"]
+    body_area = body[2] * body[3]
+    observations = raw["observations"]
+    boxes = [Box(*item["box"]) for item in observations]
+    areas = [box.area for box in boxes if box.area > 0]
+    focal_areas = [Box(*item["box"]).area for item in observations if item["focal"] and Box(*item["box"]).area > 0]
+    non_focal = [Box(*item["box"]).area for item in observations if not item["focal"] and Box(*item["box"]).area > 0]
+    if focal_areas and non_focal:
+        focal_ratio = max(focal_areas) / max(statistics.median(non_focal), 1.0)
+    elif len(areas) >= 2:
+        focal_ratio = max(areas) / max(statistics.median(areas), 1.0)
+    else:
+        focal_ratio = 1.0 if areas else 0.0
+
+    gaps = raw["gaps"]
+    spacing_deviation = (
+        statistics.pstdev(gaps) / statistics.mean(gaps)
+        if len(gaps) >= 2 and statistics.mean(gaps)
+        else 0.0
+    )
+    edges = [coordinate for box in boxes for coordinate in (box.x, box.y, box.x + box.width, box.y + box.height)]
+    alignment_deviation = (
+        statistics.mean(min(value % base_unit, base_unit - value % base_unit) for value in edges) / base_unit
+        if edges and base_unit > 0
+        else 0.0
+    )
+    primary = primary_color.strip().upper()
+    primary_boxes = [
+        Box(*item["box"])
+        for item in observations
+        if item["fill"] == primary and Box(*item["box"]).area > 0
+    ]
+    focal_primary_fill = any(item["focal"] and item["fill"] == primary for item in observations)
+    title_sizes = [item["font_size"] for item in raw["text_sizes"] if item["role"] == "title"]
+    body_sizes = [item["font_size"] for item in raw["text_sizes"] if item["role"] != "title"]
+    if not title_sizes and len(raw["text_sizes"]) >= 2:
+        largest = max(item["font_size"] for item in raw["text_sizes"])
+        smaller = [item["font_size"] for item in raw["text_sizes"] if item["font_size"] < largest]
+        if smaller:
+            title_sizes = [largest]
+            body_sizes = smaller
+    title_body_ratio = (
+        max(title_sizes) / statistics.median(body_sizes) if title_sizes and body_sizes else None
+    )
+    raw_boxes = [Box(*item["box"]) for item in raw["raw_observations"]]
+    if raw_boxes:
+        left = min(box.x for box in raw_boxes)
+        top = min(box.y for box in raw_boxes)
+        right = max(box.x + box.width for box in raw_boxes)
+        bottom = max(box.y + box.height for box in raw_boxes)
+        content_bounds: dict[str, float] | None = {
+            "x": round(left, 6),
+            "y": round(top, 6),
+            "width": round(right - left, 6),
+            "height": round(bottom - top, 6),
+        }
+    else:
+        content_bounds = None
+    coverage = raw["coverage"]
+    status = coverage["status"]
+    return {
+        "schema": "ghb.visual-metrics.v1",
+        "occupancy": _metric(raw["occupied_area"] / body_area if body_area else 0.0, status),
+        "focal-dominance": _metric(focal_ratio, status),
+        "focal-emphasis": {
+            "area_ratio": round(focal_ratio, 6),
+            "primary_fill": focal_primary_fill,
+            "coverage": status,
+        },
+        "title-body-scale": _metric(title_body_ratio, "supported" if title_body_ratio is not None else "not-measurable"),
+        "alignment-deviation": _metric(alignment_deviation, status),
+        "spacing-consistency": _metric(spacing_deviation, status),
+        "minimum-component-gap": _metric(min(gaps) if gaps else None, status if gaps else "not-measurable"),
+        "emphasis-color-area": _metric(_union_area(primary_boxes) / body_area if body_area else 0.0, status),
+        "composition-fingerprint": {
+            "value": _geometry_fingerprint(observations, body),
+            "coverage": status,
+            "source": "geometry",
+        },
+        "focal-zone": _metric(_focal_zone(observations, body), status if observations else "not-measurable"),
+        "content-bounds": {"value": content_bounds, "coverage": status if content_bounds else "not-measurable"},
+        "coverage": coverage,
+        "limitations": coverage["limitations"],
+    }
+
+
+def _finding(
+    code: str,
+    slide_id: str,
+    evidence: dict[str, Any],
+    expected: dict[str, Any],
+    action: str,
+    *,
+    severity: str = "warning",
+) -> dict[str, Any]:
+    return {
+        "code": code,
+        "severity": severity,
+        "slide_id": slide_id,
+        "evidence": evidence,
+        "expected": expected,
+        "suggested_action": action,
+    }
+
+
+def _exceptions(page_schema: dict[str, Any]) -> set[str]:
+    values = page_schema.get("policy_exceptions", [])
+    return {item for item in values if isinstance(item, str)} if isinstance(values, list) else set()
+
+
+def evaluate_page_quality(
+    svg: str,
+    *,
+    slide_id: str,
+    profile: dict[str, Any],
+    page_schema: dict[str, Any],
+) -> dict[str, Any]:
+    """Apply advisory GHB policy without mutating the raw measurements."""
+    brand = profile.get("brand") if isinstance(profile.get("brand"), dict) else {}
+    spacing = profile.get("spacing") if isinstance(profile.get("spacing"), dict) else {}
+    metrics = measure_svg(
+        svg,
+        primary_color=str(brand.get("primary", "#AB1F29")),
+        base_unit=float(spacing.get("base_unit", 8)),
+    )
+    findings: list[dict[str, Any]] = []
+    requested_exceptions = _exceptions(page_schema)
+    occupancy_policy = profile.get("occupancy", {}).get("body", {}) if isinstance(profile.get("occupancy"), dict) else {}
+    minimum = float(occupancy_policy.get("min", 0.42))
+    maximum = float(occupancy_policy.get("max", 0.78))
+    occupancy = metrics["occupancy"]
+    if occupancy["coverage"] != "not-measurable" and occupancy["value"] < minimum:
+        findings.append(_finding(
+            "visual-occupancy-below-min", slide_id,
+            {"occupancy": occupancy["value"], "coverage": occupancy["coverage"]},
+            {"min": minimum, "max": maximum},
+            "Increase the scale or spread of meaningful body components.",
+        ))
+    if occupancy["coverage"] != "not-measurable" and occupancy["value"] > maximum:
+        findings.append(_finding(
+            "visual-occupancy-above-max", slide_id,
+            {"occupancy": occupancy["value"], "coverage": occupancy["coverage"]},
+            {"min": minimum, "max": maximum},
+            "Reduce or split body components to restore whitespace.",
+        ))
+    typography = profile.get("typography") if isinstance(profile.get("typography"), dict) else {}
+    ratio = metrics["title-body-scale"]
+    ratio_min = float(typography.get("min_title_body_ratio", 1.5))
+    if ratio["value"] is not None and ratio["value"] < ratio_min:
+        findings.append(_finding(
+            "visual-title-body-scale-low", slide_id,
+            {"title_body_ratio": ratio["value"]}, {"min": ratio_min},
+            "Increase title scale relative to body text.",
+        ))
+    min_gap = float(spacing.get("min_component_gap", 16))
+    gap_metric = metrics["minimum-component-gap"]
+    if gap_metric["value"] is not None and gap_metric["value"] < min_gap:
+        findings.append(_finding(
+            "visual-component-gap-small", slide_id,
+            {"minimum_gap": gap_metric["value"]}, {"min": min_gap},
+            "Separate neighboring components while preserving equal sizing.",
+        ))
+    if metrics["spacing-consistency"]["value"] > 0.45:
+        findings.append(_finding(
+            "visual-spacing-inconsistent", slide_id,
+            {"coefficient_of_variation": metrics["spacing-consistency"]["value"]},
+            {"advisory_max": 0.45},
+            "Use a consistent spacing scale between peer components.",
+        ))
+    if metrics["alignment-deviation"]["value"] > 0.35:
+        findings.append(_finding(
+            "visual-alignment-deviation", slide_id,
+            {"grid_deviation": metrics["alignment-deviation"]["value"]},
+            {"advisory_max": 0.35, "base_unit": spacing.get("base_unit", 8)},
+            "Align component edges to the profile spacing grid.",
+        ))
+    if metrics["emphasis-color-area"]["value"] > 0.35:
+        findings.append(_finding(
+            "visual-primary-color-overuse", slide_id,
+            {"primary_color_area": metrics["emphasis-color-area"]["value"]},
+            {"advisory_max": 0.35},
+            "Reserve the primary brand color for focal emphasis.",
+        ))
+    if (
+        page_schema.get("emphasis") == "single-focal"
+        and metrics["focal-dominance"]["value"] <= 1.1
+        and not metrics["focal-emphasis"]["primary_fill"]
+    ):
+        findings.append(_finding(
+            "visual-focal-dominance-low", slide_id,
+            {"focal_ratio": metrics["focal-dominance"]["value"]},
+            {"advisory_min": 1.1},
+            "Increase focal contrast through scale, weight, or color without changing peer card sizes.",
+        ))
+    override = page_schema.get("bounds_override")
+    observed_bounds = metrics["content-bounds"]
+    if isinstance(override, dict) and observed_bounds["coverage"] == "supported" and isinstance(observed_bounds["value"], dict):
+        expected_box = Box(*(float(override[key]) for key in ("x", "y", "width", "height")))
+        value = observed_bounds["value"]
+        observed_box = Box(*(float(value[key]) for key in ("x", "y", "width", "height")))
+        tolerance = 0.5
+        outside = (
+            observed_box.x < expected_box.x - tolerance
+            or observed_box.y < expected_box.y - tolerance
+            or observed_box.x + observed_box.width > expected_box.x + expected_box.width + tolerance
+            or observed_box.y + observed_box.height > expected_box.y + expected_box.height + tolerance
+        )
+        if outside:
+            findings.append(_finding(
+                "visual-explicit-bounds-violation", slide_id,
+                {"observed": value, "coverage": "supported"},
+                {"bounds_override": override, "tolerance": tolerance},
+                "Move or resize content to satisfy the explicitly declared measurable bounds.",
+                severity="error",
+            ))
+    if metrics["coverage"]["status"] == "partial":
+        findings.append(_finding(
+            "visual-coverage-partial", slide_id,
+            metrics["coverage"], {"status": "supported"},
+            "Add QA boxes or flatten supported geometry before relying on balance findings.",
+        ))
+    elif metrics["coverage"]["status"] == "not-measurable":
+        findings.append(_finding(
+            "visual-not-measurable", slide_id,
+            metrics["coverage"], {"measured_elements": ">=1"},
+            "Provide visible supported geometry or declared QA boxes.",
+        ))
+    suppressed = {
+        item["code"]
+        for item in findings
+        if item["severity"] == "warning" and item["code"] in requested_exceptions
+    }
+    findings = [
+        item
+        for item in findings
+        if not (item["severity"] == "warning" and item["code"] in requested_exceptions)
+    ]
+    return {
+        "slide_id": slide_id,
+        "page_schema": page_schema,
+        "measurements": metrics,
+        "coverage": metrics["coverage"],
+        "findings": findings,
+        "suppressed_issue_codes": sorted(suppressed),
+    }
+
+
+def analyze_deck_quality(pages: list[dict[str, Any]], *, profile: dict[str, Any]) -> dict[str, Any]:
+    """Evaluate geometry/rhythm streaks; all results remain advisory."""
+    fingerprints = [
+        page["measurements"]["composition-fingerprint"]["value"]
+        if page["coverage"]["status"] != "not-measurable" else None
+        for page in pages
+    ]
+    focal_zones = [
+        page["measurements"]["focal-zone"]["value"]
+        if page["coverage"]["status"] != "not-measurable" else None
+        for page in pages
+    ]
+    densities = [page.get("page_schema", {}).get("density") for page in pages]
+    roles = [page.get("page_schema", {}).get("rhythm_role") for page in pages]
+    variants = [page.get("page_schema", {}).get("layout_variant") for page in pages]
+    findings: list[dict[str, Any]] = []
+
+    def repeated_runs(values: list[Any], minimum: int) -> list[tuple[int, int, Any]]:
+        runs: list[tuple[int, int, Any]] = []
+        start = 0
+        for index in range(1, len(values) + 1):
+            if index < len(values) and values[index] == values[start] and values[start] is not None:
+                continue
+            if values[start] is not None and index - start >= minimum:
+                runs.append((start, index - 1, values[start]))
+            start = index
+        return runs
+
+    def add_run(code: str, run: tuple[int, int, Any], action: str) -> None:
+        start, end, value = run
+        affected = pages[start : end + 1]
+        if any(code in _exceptions(page.get("page_schema", {})) for page in affected):
+            return
+        findings.append({
+            "code": code,
+            "severity": "warning",
+            "slide_ids": [page["slide_id"] for page in affected],
+            "evidence": {"value": value, "streak": end - start + 1},
+            "expected": {"max_streak": end - start},
+            "suggested_action": action,
+        })
+
+    for run in repeated_runs(fingerprints, 2):
+        add_run("visual-composition-repeated", run, "Vary actual component geometry, not only data-layout markers.")
+    for run in repeated_runs(focal_zones, 3):
+        add_run("visual-focal-zone-streak", run, "Move the focal component to vary deck rhythm.")
+    max_role = int(profile.get("deck_rhythm", {}).get("max_same_role_streak", 3)) if isinstance(profile.get("deck_rhythm"), dict) else 3
+    for run in repeated_runs(roles, max_role + 1):
+        add_run("visual-rhythm-role-streak", run, "Insert an anchor or transition page.")
+    for run in repeated_runs(densities, 4):
+        add_run("visual-density-rhythm-drift", run, "Alternate density where the narrative permits.")
+    for run in repeated_runs(variants, 3):
+        add_run("visual-variant-repetition", run, "Use a different semantic variant or component arrangement.")
+    return {
+        "schema": "ghb.visual-deck-metrics.v1",
+        "measurements": {
+            "composition_fingerprints": fingerprints,
+            "focal_zones": focal_zones,
+            "densities": densities,
+            "rhythm_roles": roles,
+            "layout_variants": variants,
+        },
+        "findings": findings,
     }
 
 
