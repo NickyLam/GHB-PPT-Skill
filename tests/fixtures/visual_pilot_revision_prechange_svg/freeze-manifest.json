@@ -1,0 +1,25 @@
+{
+  "schema": "ghb.visual-pilot-revision-freeze.v1",
+  "round_id": "u11-revision-2",
+  "pre_change_renderer": {
+    "commit": "aabfc6a",
+    "path": "scripts/ppt_master/svg_layouts.py"
+  },
+  "pre_change_renderer_sha256": "04dd960b9b23312c122bcde36589fd1b5a7767cb699aa5221ac30fb4d92fe179",
+  "generated": [
+    {
+      "case_id": "comparison-r2-01",
+      "authored_svg_sha256": "dd40f3eedad5e5a6a015b55c814322e91b4248c34113c516cc4d4f415f48662f"
+    },
+    {
+      "case_id": "timeline-r2-01",
+      "authored_svg_sha256": "529aecdab5ffec839bcd2237afd27d1383def3270b81a121aee43fd5d545f55c"
+    },
+    {
+      "case_id": "metrics-r2-01",
+      "authored_svg_sha256": "f7410a22e239d35812c84109fdff9333200cc7d431ce1d04075ffa5f0ebc0b4e"
+    }
+  ],
+  "network": "not-used",
+  "model_adapter": "not-used"
+}

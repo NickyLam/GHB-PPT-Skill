@@ -1,0 +1,53 @@
+{
+  "schema": "ghb.visual-pilot-revision-corpus.v1",
+  "round_id": "u11-revision-2",
+  "frozen_at": "2026-07-15",
+  "pre_change_renderer": {
+    "commit": "aabfc6a",
+    "path": "scripts/ppt_master/svg_layouts.py"
+  },
+  "cases": [
+    {
+      "case_id": "comparison-r2-01",
+      "page_purpose": "comparison",
+      "density": "dense",
+      "slide": {
+        "key_message": "统一平台方案以更低治理成本覆盖更多团队",
+        "layout_type": "matrix",
+        "items": ["各团队自建", "统一平台", "采购套件", "联合运营"]
+      },
+      "pre_change_evidence": {
+        "authored_svg": "tests/fixtures/visual_pilot_revision_prechange_svg/comparison-r2-01.svg",
+        "authored_svg_sha256": "dd40f3eedad5e5a6a015b55c814322e91b4248c34113c516cc4d4f415f48662f"
+      }
+    },
+    {
+      "case_id": "timeline-r2-01",
+      "page_purpose": "timeline",
+      "density": "anchor",
+      "slide": {
+        "key_message": "从样板页验证到全场景推广分四步推进",
+        "layout_type": "timeline",
+        "items": ["样板验证", "规则校准", "团队试点", "规模推广"]
+      },
+      "pre_change_evidence": {
+        "authored_svg": "tests/fixtures/visual_pilot_revision_prechange_svg/timeline-r2-01.svg",
+        "authored_svg_sha256": "529aecdab5ffec839bcd2237afd27d1383def3270b81a121aee43fd5d545f55c"
+      }
+    },
+    {
+      "case_id": "metrics-r2-01",
+      "page_purpose": "metrics",
+      "density": "dense",
+      "slide": {
+        "key_message": "以交付速度、复用覆盖、返工率和缺陷率衡量改造成效",
+        "layout_type": "matrix",
+        "items": ["交付周期 -25%", "复用覆盖 ≥75%", "返工率 ≤8%", "严重缺陷 0"]
+      },
+      "pre_change_evidence": {
+        "authored_svg": "tests/fixtures/visual_pilot_revision_prechange_svg/metrics-r2-01.svg",
+        "authored_svg_sha256": "f7410a22e239d35812c84109fdff9333200cc7d431ce1d04075ffa5f0ebc0b4e"
+      }
+    }
+  ]
+}
