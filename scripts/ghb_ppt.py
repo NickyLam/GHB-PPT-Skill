@@ -260,7 +260,11 @@ def _load_json_evidence(path: Path) -> Any:
 def _file_digest(path: Path) -> str | None:
     if not path.is_file() or path.is_symlink():
         return None
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _svg_bundle(project: Path) -> dict[str, Any]:
@@ -276,8 +280,7 @@ def _svg_bundle(project: Path) -> dict[str, Any]:
     return {"schema": "ghb.svg-bundle-evidence.v1", "files": files}
 
 
-def _render_environment(project: Path) -> dict[str, Any]:
-    render_payload = _load_json_evidence(project / "render" / "render-report.json")
+def _render_environment(render_payload: Any) -> dict[str, Any]:
     return {
         "schema": "ghb.render-environment.v1",
         "renderer": render_payload.get("renderer") if isinstance(render_payload, dict) else None,
@@ -288,9 +291,8 @@ def _render_environment(project: Path) -> dict[str, Any]:
     }
 
 
-def _render_evidence(project: Path) -> dict[str, Any]:
+def _render_evidence(project: Path, payload: Any) -> dict[str, Any]:
     render_dir = project / "render"
-    payload = _load_json_evidence(render_dir / "render-report.json")
     outputs = []
     if isinstance(payload, dict):
         for value in payload.get("outputs", []):
@@ -373,20 +375,26 @@ def build_evidence_items(
             )
         )
     render_path = project / "render" / "render-report.json"
+    render_payload = (
+        _load_json_evidence(render_path) if level >= 4 or include_final else None
+    )
     if level >= 4 or include_final:
         items.extend(
             [
-                EvidenceItem("render-environment", "environment", _render_environment(project)),
+                EvidenceItem(
+                    "render-environment",
+                    "environment",
+                    _render_environment(render_payload),
+                ),
                 EvidenceItem(
                     "render-evidence",
                     "json",
-                    _render_evidence(project),
+                    _render_evidence(project, render_payload),
                     render_path if render_path.is_file() else None,
                 ),
             ]
         )
     if include_final:
-        render_payload = _load_json_evidence(render_path)
         render_status = render_payload.get("status") if isinstance(render_payload, dict) else None
         policy_path = project / ".ghb" / "adapter-policy.json"
         review_path = project / "reports" / "visual-review.json"
@@ -1066,6 +1074,19 @@ def _record_optional_review_result(run: RunContext, report: dict[str, Any]) -> N
     run.output(run.project / "reports" / "visual-review.json")
 
 
+def _record_unavailable_review(
+    run: RunContext, *, deterministic_status: str, required: bool
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    report, policy = write_inactive_review_state(
+        run.project,
+        outcome="unavailable",
+        deterministic_status=deterministic_status,
+        required=required,
+    )
+    _record_optional_review_result(run, report)
+    return report, policy
+
+
 def run_optional_review(
     run: RunContext,
     *,
@@ -1101,12 +1122,9 @@ def run_optional_review(
         or render_payload.get("pptx_sha256") != expected_pptx_digest
         or not deterministic_report.is_file()
     ):
-        report, policy = write_inactive_review_state(
-            run.project, outcome="unavailable", deterministic_status=deterministic_status,
-            required=required,
+        return _record_unavailable_review(
+            run, deterministic_status=deterministic_status, required=required
         )
-        _record_optional_review_result(run, report)
-        return report, policy
     page_paths = []
     for value in render_payload.get("outputs", []):
         if not isinstance(value, str):
@@ -1117,12 +1135,9 @@ def run_optional_review(
         if candidate.name.startswith("slide-") and candidate.suffix.lower() == ".png":
             page_paths.append(candidate.resolve())
     if not page_paths or len(page_paths) != int(render_payload.get("page_count", 0)):
-        report, policy = write_inactive_review_state(
-            run.project, outcome="unavailable", deterministic_status=deterministic_status,
-            required=required,
+        return _record_unavailable_review(
+            run, deterministic_status=deterministic_status, required=required
         )
-        _record_optional_review_result(run, report)
-        return report, policy
     pages = []
     for index, page in enumerate(page_paths, 1):
         try:
@@ -1131,12 +1146,9 @@ def run_optional_review(
             with Image.open(page) as image:
                 width, height = image.size
         except (OSError, ValueError):
-            report, policy = write_inactive_review_state(
-                run.project, outcome="unavailable", deterministic_status=deterministic_status,
-                required=required,
+            return _record_unavailable_review(
+                run, deterministic_status=deterministic_status, required=required
             )
-            _record_optional_review_result(run, report)
-            return report, policy
         pages.append(
             PageEvidence(
                 slide_id=f"slide-{index:02d}",
@@ -1217,6 +1229,14 @@ def validation_error_codes(report_path: Path) -> set[str]:
         for issue in payload.get("issues", [])
         if issue.get("severity") == "error" and issue.get("code")
     }
+
+
+COMPLETED_REVIEW_OUTCOMES = frozenset({"passed", "needs-revision", "limited"})
+
+
+def require_completed_review(report: dict[str, Any], *, required: bool) -> None:
+    if required and report.get("outcome") not in COMPLETED_REVIEW_OUTCOMES:
+        raise PipelineError("required optional review did not complete")
 
 
 def doctor_payload(template: Path) -> dict[str, Any]:
@@ -1649,10 +1669,7 @@ def main(argv: list[str] | None = None) -> int:
                     review_report_path=review_path if review_path.is_file() else None,
                     review_required=args.require_review,
                 )
-                if args.require_review and review_report.get("outcome") not in {
-                    "passed", "needs-revision", "limited"
-                }:
-                    raise PipelineError("required optional review did not complete")
+                require_completed_review(review_report, required=args.require_review)
                 run.checkpoint(
                     "report",
                     [
@@ -1810,10 +1827,7 @@ def main(argv: list[str] | None = None) -> int:
                     review_report_path=review_path if review_path.is_file() else None,
                     review_required=args.require_review,
                 )
-                if args.require_review and review_report.get("outcome") not in {
-                    "passed", "needs-revision", "limited"
-                }:
-                    raise PipelineError("required optional review did not complete")
+                require_completed_review(review_report, required=args.require_review)
                 run.checkpoint(
                     "build",
                     [

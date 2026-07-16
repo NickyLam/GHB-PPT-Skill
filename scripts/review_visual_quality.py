@@ -118,11 +118,7 @@ def _canonical_digest(value: Any) -> str:
 
 
 def _is_within(path: Path, parent: Path) -> bool:
-    try:
-        path.relative_to(parent)
-    except ValueError:
-        return False
-    return True
+    return path.is_relative_to(parent)
 
 
 def _regular_file(path: Path, *, label: str, executable: bool = False) -> Path:
@@ -561,18 +557,14 @@ def _base_report(
         limited = not target_font_available and dimension in {"typography", "cjk"}
         if outcome in {"skipped", "error", "unavailable"}:
             status = "unavailable"
-        elif outcome == "limited":
+        elif outcome == "limited" or limited:
             status = "limited"
         else:
             status = "reviewed"
         dimensions.append(
             {
                 "dimension": dimension,
-                "status": (
-                    status
-                    if outcome in {"skipped", "error", "unavailable"}
-                    else ("limited" if limited else status)
-                ),
+                "status": status,
                 "limitations": ["target-font-missing"] if limited else [],
             }
         )

@@ -42,6 +42,14 @@ PLACEHOLDER_PATTERNS = (
 )
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 @dataclass(frozen=True)
 class Issue:
     severity: str
@@ -621,7 +629,6 @@ def validate_pptx(
     if render_dir is None:
         known_limitations.append("No render directory was supplied; final visual appearance was not verified by this validation run.")
     else:
-        pngs = sorted(render_dir.glob("slide-*.png")) if render_dir.is_dir() else []
         package_info["rendered_pages"] = 0
         render_report_path = render_dir / "render-report.json"
         if render_report_path.is_file():
@@ -636,12 +643,17 @@ def validate_pptx(
                     # The current report is authoritative. Files left by an older
                     # successful render are not evidence for this failed attempt.
                     package_info["rendered_pages"] = 0
-                    if pngs:
+                    stale_png_count = (
+                        sum(1 for _ in render_dir.glob("slide-*.png"))
+                        if render_dir.is_dir()
+                        else 0
+                    )
+                    if stale_png_count:
                         _issue(
                             issues,
                             "warning",
                             "stale-render-files",
-                            f"ignored {len(pngs)} page PNG(s) left by an earlier render",
+                            f"ignored {stale_png_count} page PNG(s) left by an earlier render",
                         )
                 else:
                     reported_pptx = render_payload.get("pptx")
@@ -652,7 +664,7 @@ def validate_pptx(
                     except (OSError, RuntimeError, ValueError):
                         pptx_matches = False
                     reported_digest = render_payload.get("pptx_sha256")
-                    current_digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                    current_digest = _file_sha256(path)
                     if not pptx_matches or reported_digest != current_digest:
                         review_outcome = "stale"
                         message = (

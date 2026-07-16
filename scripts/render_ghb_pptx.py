@@ -22,6 +22,14 @@ class RenderError(RuntimeError):
     """Raised when a requested render backend cannot complete reliably."""
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 @dataclass
 class RenderCommand:
     command: list[str]
@@ -245,19 +253,20 @@ def render_pptx(
     columns: int = 3,
 ) -> RenderReport:
     output_dir.mkdir(parents=True, exist_ok=True)
+    pptx_exists = pptx.is_file()
     report = RenderReport(
         schema="ghb.render-report.v1",
         status="error",
         passed=False,
         pptx=str(pptx.resolve()),
-        pptx_sha256=(hashlib.sha256(pptx.read_bytes()).hexdigest() if pptx.is_file() else None),
+        pptx_sha256=_file_sha256(pptx) if pptx_exists else None,
         output_dir=str(output_dir.resolve()),
         renderer=renderer,
         renderer_path=None,
         dpi=dpi,
         font={"status": "unknown", "warnings": []},
     )
-    if not pptx.is_file():
+    if not pptx_exists:
         report.errors.append(f"PPTX not found: {pptx}")
         _write_report_atomic(output_dir, report)
         return report
