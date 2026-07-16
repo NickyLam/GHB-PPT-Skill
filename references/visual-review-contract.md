@@ -103,6 +103,9 @@ target font is missing, typography and CJK reviewability are forced to
 
 ## Integration boundary
 
-This module defines the U4 adapter and evidence lifecycle only. Attaching it to
-the unified `build`/`report` CLI is U10. Default offline builds have no adapter
-or network dependency.
+The unified CLI exposes this lifecycle only through explicit `review` or
+`build --review`. Both require fresh deterministic and render evidence before
+launching an adapter, then persist `reports/visual-review.json` and recompose
+the final JSON/Markdown reports. Review configuration, authorization, or
+`--require-review` without explicit `--review` is rejected. Default offline
+builds have no adapter, model, or network dependency.

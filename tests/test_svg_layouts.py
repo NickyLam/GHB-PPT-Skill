@@ -1,6 +1,7 @@
 import unittest
 import re
 import hashlib
+import math
 from xml.etree import ElementTree as ET
 
 from scripts.ppt_master.svg_layouts import LAYOUT_CONTRACTS, LayoutSpec, render_layout
@@ -277,6 +278,22 @@ class SvgLayoutsTest(unittest.TestCase):
                         )
                         self.assertTrue(separated)
 
+    def test_comparison_cards_separate_option_heading_from_explanation(self):
+        svg = render_layout(
+            LayoutSpec(
+                "matrix",
+                ["拥挤：信息完整但难扫描", "均衡：层级稳定且可编辑"],
+                density="balanced",
+                variant="matrix/comparison",
+                emphasis="distributed",
+            )
+        )
+
+        self.assertRegex(svg, r'font-size="20" font-weight="bold"[^>]*>拥挤</text>')
+        self.assertRegex(svg, r'font-size="20" font-weight="bold"[^>]*>均衡</text>')
+        self.assertIn(">信息完整但难扫描</text>", svg)
+        self.assertIn(">层级稳定且可编辑</text>", svg)
+
     def test_intent_rejects_text_that_fits_character_budget_but_not_card_height(self):
         with self.assertRaisesRegex(ValueError, "layout-budget-text-exceeded"):
             render_layout(
@@ -336,6 +353,28 @@ class SvgLayoutsTest(unittest.TestCase):
         self.assertEqual(svg.count("class="), 0)
         self.assertGreaterEqual(svg.count("<rect"), 3)
         self.assertGreaterEqual(svg.count("<polygon"), 2)
+
+    def test_waterfall_arrowheads_are_aligned_and_symmetric(self):
+        svg = render_layout(
+            LayoutSpec(
+                "waterfall",
+                ["需求澄清", "架构评审", "集成验证", "发布检查"],
+                density="balanced",
+                emphasis="distributed",
+            )
+        )
+        connector = re.search(
+            r'<line x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"[^>]*/>\s*'
+            r'<polygon points="([^"]+)"',
+            svg,
+        )
+        self.assertIsNotNone(connector)
+        _, _, x2, y2, raw_points = connector.groups()
+        points = [tuple(map(float, pair.split(","))) for pair in raw_points.split()]
+        self.assertEqual(points[0], (float(x2), float(y2)))
+        left_leg = math.dist(points[0], points[1])
+        right_leg = math.dist(points[0], points[2])
+        self.assertAlmostEqual(left_leg, right_leg, delta=0.1)
 
     def test_funnel_outputs_narrowing_layers(self):
         svg = render_layout(LayoutSpec("funnel", ["触达", "激活", "转化", "复购"], title="转化漏斗"))

@@ -133,6 +133,12 @@ family must match `layout_archetype`; the only v1 alias is `comparison` for
 `matrix`. Unknown additive fields are tolerated, but missing required intent is
 never inferred.
 
+Density is not emphasis. `page_schema.emphasis` is a semantic decision grounded
+in the row's `key_message`, not a consequence of density or `rhythm_role`.
+`single-focal` requires a visible `focal_target` that the conclusion actually
+privileges. If no such relationship exists, use `distributed` or `ranked` and
+do not invent a highlighted ordinal item.
+
 The legacy confirmation/layout rhythm vocabulary remains unchanged:
 `anchor`, `dense`, and `breathing`. It is evidence of the confirmed outline,
 not the new page density or rhythm role. During explicit migration, a legacy

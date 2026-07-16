@@ -42,6 +42,8 @@ Create these before `build`:
 - `spec_lock.md`: GHB canvas, colors, typography, and image policy.
 - `content_model.json`: traceable claims, evidence, importance, and required
   content before page planning.
+- `visual_profile.json`: project-wide typography, spacing, composition, focal,
+  rhythm, and content-budget policy.
 - `layout_plan.json`: one record per body slide.
 - `svg_output/NN_name.svg`: authored body pages.
 - `notes/total.md`: one speaker-note section per SVG when notes are required.
@@ -55,6 +57,14 @@ diversity checker.
 Map every page to `content_model.json` using `claim_ids`. Add the semantic
 evidence fields required by [project-contract.md](project-contract.md) for
 timeline, matrix, swimlane, flywheel, and comparison layouts.
+
+Density is not emphasis. Choose `page_schema.emphasis` from the conclusion in
+`key_message`, never from density or the legacy `anchor` rhythm. Use
+`single-focal` only when the conclusion explicitly privileges one visible
+item; then set `focal_target` to that exact item. Use `distributed` for peers
+and `ranked` only when the content itself defines an order. If the title does
+not explain why an item is highlighted, remove the highlight or rewrite the
+title before rendering.
 
 ## GHB lock
 

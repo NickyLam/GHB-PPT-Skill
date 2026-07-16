@@ -318,9 +318,18 @@ def _render_waterfall(spec: LayoutSpec) -> str:
                 f'<line x1="{ax1:.1f}" y1="{ay:.1f}" x2="{ax2:.1f}" y2="{ay - 20:.1f}" '
                 f'stroke="{SECONDARY}" stroke-width="2"/>'
             )
+            # GHB keeps explicit Office-safe polygons in the vendored SVG path;
+            # derive both wings from the connector vector so arrows stay balanced.
+            arrow_points = (
+                _arrowhead(ax2, ay - 20, ax1, ay)
+                if _intent_enabled(spec)
+                else (
+                    f"{ax2:.1f},{ay - 20:.1f} {ax2 - 11:.1f},{ay - 14:.1f} "
+                    f"{ax2 - 4:.1f},{ay - 4:.1f}"
+                )
+            )
             body.append(
-                f'<polygon points="{ax2:.1f},{ay - 20:.1f} {ax2 - 11:.1f},{ay - 14:.1f} '
-                f'{ax2 - 4:.1f},{ay - 4:.1f}" fill="{SECONDARY}"/>'
+                f'<polygon points="{arrow_points}" fill="{SECONDARY}"/>'
             )
     return _group(spec, body)
 
@@ -447,6 +456,40 @@ def _render_matrix_pilot(spec: LayoutSpec) -> str:
             f'{focal_attr} fill="{fill}" stroke="{PRIMARY if highlighted else BORDER}" stroke-width="{2 if highlighted else 1}"/>'
         )
         if label:
+            comparison_parts: list[str] = []
+            if spec.variant == "matrix/comparison":
+                separator = "：" if "：" in label else ":"
+                if separator in label:
+                    comparison_parts = label.split(separator, 1)
+            if len(comparison_parts) == 2:
+                heading, explanation = (part.strip() for part in comparison_parts)
+                # GHB comparison cards keep equal geometry while making the
+                # semantic option label independently scannable and editable.
+                body.extend(
+                    _wrapped_text(
+                        heading,
+                        x + w / 2,
+                        y + h * 0.36,
+                        w - 40,
+                        22 if highlighted else 20,
+                        text_fill,
+                        max_lines=1,
+                        max_height=h * 0.24,
+                    )
+                )
+                body.extend(
+                    _wrapped_text(
+                        explanation,
+                        x + w / 2,
+                        y + h * 0.64,
+                        w - 40,
+                        16 if highlighted else 15,
+                        text_fill,
+                        max_lines=2,
+                        max_height=h * 0.34,
+                    )
+                )
+                continue
             if spec.variant == "matrix/metric-callout":
                 size = 26 if highlighted else 22
             elif spec.variant == "matrix/spotlight":

@@ -93,6 +93,13 @@ text maximum. Even within those hard ceilings, it also rejects labels whose
 wrapped lines cannot fit the actual component height at the 13 px font floor.
 It does not globally shrink type to hide an over-budget page.
 
+Density is not emphasis. The author must derive emphasis from `key_message`:
+`single-focal` is valid only when the conclusion names or clearly privileges
+the matching visible `focal_target`. Never select the second item, the largest
+card, or an `anchor` page by convention. For peer comparisons and complete
+cycles, prefer `distributed`; when color or fill is used, its semantic meaning
+must be evident from the title or an explicit label.
+
 | Archetype | Items | Max chars/item | Max text | Variants |
 |---|---:|---:|---:|---|
 | `pyramid` | 2-5 | 64 | 240 | `pyramid/default`, `pyramid/foundation` |

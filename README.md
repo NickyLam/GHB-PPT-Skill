@@ -54,6 +54,7 @@ python3 scripts/ghb_ppt.py analyze-template \
 - `confirmation.json`（六项确认的机器可读凭证）
 - `design_spec.md` 与 `spec_lock.md`
 - `content_model.json`（可追溯的论点与不可删减项）
+- `visual_profile.json`（项目级视觉阈值与预算）
 - `layout_plan.json`
 - `svg_output/*.svg`
 - `notes/total.md`（需要备注时）
@@ -90,6 +91,7 @@ merge              合并封面、正文、模板母版和可选致谢页
 validate           验证 ZIP/OOXML/母版/内容/可编辑性/版面
 render             生成 PDF、逐页 PNG 和 contact sheet
 report             生成 JSON 与 Markdown 质量报告
+review             显式运行可选视觉评审并重组最终报告
 build              执行完整流水线
 ```
 
@@ -107,6 +109,8 @@ python3 scripts/ghb_ppt.py build --help
 - `--no-ending`：不续接致谢页。
 - `--ending-slide N`：指定模板致谢页。
 - `--no-render`：明确跳过渲染。
+- `--review`：在 build 中显式运行已配置的可选视觉评审。
+- `--require-review`：要求可选评审成功；不改变确定性检查结论。
 - `--repair-attempts 0..3`：限制确定性修复重试次数。
 
 ## 流水线
@@ -142,15 +146,22 @@ project/
 │   ├── svg-authored.json
 │   ├── svg-finalized.json
 │   ├── ppt-readback.md
+│   ├── visual-review.json        # 仅显式 review 时
 │   ├── quality-report.json
 │   └── quality-report.md
 ├── render/                # PDF, slide-*.png, contact-sheet.png
 └── .ghb/
+    ├── evidence-manifest.json
     ├── state.json
     └── runs/<timestamp>/run.json
 ```
 
 ## 质量与恢复
+
+每个 `layout_plan.json` 正文记录使用嵌套 `page_schema` 声明用途、密度、
+节奏角色、变体和强调。Density is not emphasis：不得从密度或旧
+`anchor` 节奏机械推断重点；`single-focal` 必须由 `key_message` 支持并
+绑定真实 `focal_target`。
 
 最终报告检查关系目标、Content Types、ID、母版链、页数与页面角色、
 `ppt_to_md` 回读、计划文字、备注、字体、品牌色、对象统计、越界、

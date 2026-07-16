@@ -187,7 +187,9 @@ def build(output: Path, corpus: dict[str, Any], preferences: dict[str, Any]) -> 
 def _final_page_schema(case: dict[str, Any], slide: dict[str, Any]) -> dict[str, Any]:
     family = str(slide["layout_type"])
     density = "balanced" if case["density"] == "anchor" else case["density"]
-    emphasis = "single-focal" if case["density"] == "anchor" else "distributed"
+    # Density describes available space, not semantic importance. The benchmark
+    # must not invent a focal item merely because a legacy case used `anchor`.
+    emphasis = "distributed"
     variant = f"{family}/default"
     if family == "matrix":
         variant = "matrix/metric-callout" if case["page_purpose"] == "metrics" else "matrix/comparison"
@@ -203,8 +205,6 @@ def _final_page_schema(case: dict[str, Any], slide: dict[str, Any]) -> dict[str,
             "max_text_chars": contract.max_text_chars,
         },
     }
-    if emphasis == "single-focal":
-        schema["focal_target"] = slide["items"][1 if len(slide["items"]) > 1 else 0]
     return schema
 
 

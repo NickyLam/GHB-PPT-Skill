@@ -32,6 +32,22 @@ Inspect the contact sheet, then open suspicious page PNGs. Check:
 - repeated geometry that contradicts `layout_plan.json`.
 
 Record subjective items as manual review. Never invent an aesthetic score.
+人工最终批准始终独立于确定性检查和可选模型评审。
+
+The optional adapter runs only through explicit `review` or `build --review`
+after deterministic and render evidence is fresh. Its status is reported as
+`skipped`, `unavailable`, `passed`, `needs-revision`, `limited`, or `error`;
+these values do not rewrite deterministic findings. `completion_status` may be
+`failed` when deterministic delivery failed or the optional review errored. A
+missing adapter remains `skipped` in the offline default. Missing fonts force
+typography review to `limited`.
+
+Treat `needs-revision` as authored-content advice: first preserve semantics and
+remove redundant wording, then choose another catalogued variant or density.
+Split a page only at a semantic boundary and request user judgment before any
+semantic deletion, invention, or page-count change. After a change, regenerate
+the affected SVG, PPTX, render, evidence manifest, optional review, and final
+reports; stale evidence cannot be reused.
 
 ## Repair loop
 
@@ -57,5 +73,6 @@ directory permissions may have changed.
 ## Evidence to retain
 
 Keep the final PPTX, source/final SVGs, cover/content intermediates, run log,
-state file, authored/finalized SVG JSON, final JSON/Markdown report, page PNGs,
-contact sheet, and any known-limitations note.
+state file, `.ghb/evidence-manifest.json`, authored/finalized SVG JSON,
+`reports/visual-review.json` when present, final JSON/Markdown report, page
+PNGs, contact sheet, and any known-limitations note.

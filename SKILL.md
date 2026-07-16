@@ -89,6 +89,13 @@ SVG 和备注。
 - [references/svg-image-embedding.md](references/svg-image-embedding.md)：仅在使用
   图片或图标时读取。
 
+`visual_profile.json` 定义全局字号、间距、占用率、构图和预算；每个正文
+记录必须在嵌套 `page_schema` 中声明页面用途、密度、节奏角色、版式变体和
+强调意图。Density is not emphasis：不能因为页面较稀疏或旧节奏为
+`anchor` 就机械强调第 2 项。只有 `key_message` 明确支持某个可见项目时才
+使用 `single-focal`，且 `focal_target` 必须与该项目精确对应；否则使用
+`distributed` 或 `ranked`。
+
 每个正文 SVG 必须：
 
 - 使用 `viewBox="0 0 1280 720"`；
@@ -133,11 +140,16 @@ LibreOffice 渲染和最终报告。修复重试仅限 `0..3` 次确定性操作
 | `merge` | 合并封面、正文、母版和可选致谢页 |
 | `validate` | 输出最终结构/内容/可编辑性检查 |
 | `render` | 输出 PDF、逐页 PNG 和 contact sheet |
+| `review` | 基于新鲜确定性与渲染证据运行一次显式可选视觉评审 |
 | `report` | 生成 JSON/Markdown 质量报告 |
 | `build` | 执行完整流程并写检查点 |
 
 用 `--dry-run` 查看计划；用 `--no-render` 明确跳过渲染；不要以
 `--no-render` 的结果声称视觉验证通过。
+
+默认构建不调用模型。仅当操作者明确提供可信配置时使用 `review` 或
+`build --review`；远程适配器还需要单独的披露授权。`--require-review`
+只提升可选评审的交付要求，不改变确定性检查结果。
 
 ## 验收与修复
 
@@ -148,8 +160,10 @@ LibreOffice 渲染和最终报告。修复重试仅限 `0..3` 次确定性操作
 - `reports/ppt-readback.md`
 - `reports/quality-report.json`
 - `reports/quality-report.md`
+- `reports/visual-review.json`（仅显式运行可选评审时）
 - `render/contact-sheet.png` 和逐页 PNG（渲染器可用时）
-- `.ghb/runs/<run>/run.json` 与 `.ghb/state.json`
+- `.ghb/evidence-manifest.json`、`.ghb/runs/<run>/run.json` 与
+  `.ghb/state.json`
 
 按 [references/quality-and-recovery.md](references/quality-and-recovery.md)
 逐页检查。至少确认：页数/角色正确、母版链完整、无悬空关系、无白底、

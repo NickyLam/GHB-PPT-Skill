@@ -231,6 +231,20 @@ class VisualBenchmarkContractTest(unittest.TestCase):
             )
         self.assertEqual(manifest["decision"], "pending")
 
+    def test_final_schema_does_not_invent_focal_intent_from_density(self):
+        module = load_builder()
+        schema = module._final_page_schema(
+            {"density": "anchor", "page_purpose": "timeline"},
+            {
+                "layout_type": "timeline",
+                "items": ["准备", "试点", "复盘", "规模化"],
+            },
+        )
+
+        self.assertEqual(schema["density"], "balanced")
+        self.assertEqual(schema["emphasis"], "distributed")
+        self.assertNotIn("focal_target", schema)
+
     def test_deterministic_fixture_expectations_use_real_codes_or_limitations(self):
         module = load_builder()
         report = module.evaluate_deterministic_fixtures()
