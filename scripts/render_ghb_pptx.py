@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -32,11 +33,16 @@ class RenderCommand:
 
 @dataclass
 class RenderReport:
+    schema: str
+    status: str
     passed: bool
     pptx: str
+    pptx_sha256: str | None
     output_dir: str
     renderer: str
-    renderer_path: str
+    renderer_path: str | None
+    dpi: int
+    font: dict[str, object]
     page_count: int = 0
     pdf: str | None = None
     pages: list[str] = field(default_factory=list)
@@ -44,6 +50,31 @@ class RenderReport:
     commands: list[RenderCommand] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+
+    @property
+    def outputs(self) -> list[str]:
+        return [value for value in [self.pdf, *self.pages, self.contact_sheet] if value]
+
+
+def _write_report_atomic(output_dir: Path, report: RenderReport) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    destination = output_dir / "render-report.json"
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".tmp", dir=output_dir
+    )
+    temp_path = Path(temp_name)
+    try:
+        payload = asdict(report)
+        payload["outputs"] = report.outputs
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, destination)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
 
 def detect_renderer(preferred: str = "auto") -> tuple[str, str]:
@@ -142,35 +173,16 @@ def _font_warning() -> str | None:
     return None
 
 
-def render_pptx(
+def _render_outputs(
+    report: RenderReport,
+    *,
     pptx: Path,
     output_dir: Path,
-    *,
-    renderer: str = "auto",
-    dpi: int = 144,
-    columns: int = 3,
-) -> RenderReport:
-    if not pptx.is_file():
-        raise RenderError(f"PPTX not found: {pptx}")
-    if dpi < 72 or dpi > 600:
-        raise RenderError("DPI must be between 72 and 600")
-    renderer_name, renderer_path = detect_renderer(renderer)
-    pdftoppm = shutil.which("pdftoppm")
-    if not pdftoppm:
-        raise RenderError("pdftoppm is required for deterministic per-page PNG rendering")
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    report = RenderReport(
-        passed=False,
-        pptx=str(pptx.resolve()),
-        output_dir=str(output_dir.resolve()),
-        renderer=renderer_name,
-        renderer_path=renderer_path,
-    )
-    warning = _font_warning()
-    if warning:
-        report.warnings.append(warning)
-
+    renderer_path: str,
+    pdftoppm: str,
+    dpi: int,
+    columns: int,
+) -> tuple[Path, list[Path], Path]:
     with tempfile.TemporaryDirectory(prefix="ghb-render-") as tmp:
         staging = Path(tmp) / "output"
         profile = Path(tmp) / "lo-profile"
@@ -178,10 +190,9 @@ def render_pptx(
         profile.mkdir()
         staged_source = Path(tmp) / f"input{pptx.suffix.lower()}"
         shutil.copy2(pptx, staged_source)
-        profile_uri = profile.resolve().as_uri()
         command = [
             renderer_path,
-            f"-env:UserInstallation={profile_uri}",
+            f"-env:UserInstallation={profile.resolve().as_uri()}",
             "--headless",
             "--convert-to", "pdf",
             "--outdir", str(staging),
@@ -192,8 +203,7 @@ def render_pptx(
         generated_pdf = staging / "input.pdf"
         if conversion.returncode or not generated_pdf.is_file():
             detail = conversion.stderr.strip() or conversion.stdout.strip() or "no PDF produced"
-            report.errors.append(f"LibreOffice conversion failed: {detail}")
-            return report
+            raise RenderError(f"LibreOffice conversion failed: {detail}")
 
         page_prefix = staging / "slide"
         raster = _run([pdftoppm, "-png", "-r", str(dpi), str(generated_pdf), str(page_prefix)])
@@ -204,14 +214,13 @@ def render_pptx(
         )
         if raster.returncode or not pages:
             detail = raster.stderr.strip() or raster.stdout.strip() or "no page PNGs produced"
-            report.errors.append(f"PDF rasterization failed: {detail}")
-            return report
+            raise RenderError(f"PDF rasterization failed: {detail}")
         contact = make_contact_sheet(pages, staging / "contact-sheet.png", columns=columns)
 
         # Replace only files owned by this renderer, leaving unrelated user files intact.
         for stale in output_dir.glob("slide-*.png"):
             stale.unlink()
-        for stale_name in ("render.pdf", "contact-sheet.png", "render-report.json"):
+        for stale_name in ("render.pdf", "contact-sheet.png"):
             stale = output_dir / stale_name
             if stale.exists():
                 stale.unlink()
@@ -224,17 +233,81 @@ def render_pptx(
             final_pages.append(destination)
         final_contact = output_dir / "contact-sheet.png"
         shutil.copy2(contact, final_contact)
+    return final_pdf, final_pages, final_contact
+
+
+def render_pptx(
+    pptx: Path,
+    output_dir: Path,
+    *,
+    renderer: str = "auto",
+    dpi: int = 144,
+    columns: int = 3,
+) -> RenderReport:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report = RenderReport(
+        schema="ghb.render-report.v1",
+        status="error",
+        passed=False,
+        pptx=str(pptx.resolve()),
+        pptx_sha256=(hashlib.sha256(pptx.read_bytes()).hexdigest() if pptx.is_file() else None),
+        output_dir=str(output_dir.resolve()),
+        renderer=renderer,
+        renderer_path=None,
+        dpi=dpi,
+        font={"status": "unknown", "warnings": []},
+    )
+    if not pptx.is_file():
+        report.errors.append(f"PPTX not found: {pptx}")
+        _write_report_atomic(output_dir, report)
+        return report
+    if dpi < 72 or dpi > 600:
+        report.errors.append("DPI must be between 72 and 600")
+        _write_report_atomic(output_dir, report)
+        return report
+    try:
+        renderer_name, renderer_path = detect_renderer(renderer)
+        report.renderer = renderer_name
+        report.renderer_path = renderer_path
+        pdftoppm = shutil.which("pdftoppm")
+        if not pdftoppm:
+            raise RenderError("pdftoppm is required for deterministic per-page PNG rendering")
+        warning = _font_warning()
+        if warning:
+            report.warnings.append(warning)
+            report.font = {"status": "limited", "warnings": [warning]}
+        else:
+            report.font = {"status": "available", "warnings": []}
+    except RenderError as exc:
+        report.status = "unavailable"
+        report.errors.append(str(exc))
+        _write_report_atomic(output_dir, report)
+        return report
+
+    assert report.renderer_path is not None
+    try:
+        final_pdf, final_pages, final_contact = _render_outputs(
+            report,
+            pptx=pptx,
+            output_dir=output_dir,
+            renderer_path=report.renderer_path,
+            pdftoppm=pdftoppm,
+            dpi=dpi,
+            columns=columns,
+        )
+    except (OSError, RenderError) as exc:
+        report.status = "error"
+        report.errors.append(str(exc))
+        _write_report_atomic(output_dir, report)
+        return report
 
     report.passed = True
+    report.status = "passed"
     report.page_count = len(final_pages)
     report.pdf = str(final_pdf.resolve())
     report.pages = [str(path.resolve()) for path in final_pages]
     report.contact_sheet = str(final_contact.resolve())
-    report_path = output_dir / "render-report.json"
-    report_path.write_text(
-        json.dumps(asdict(report), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    _write_report_atomic(output_dir, report)
     return report
 
 
@@ -263,7 +336,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(asdict(report), ensure_ascii=False, indent=2))
+        payload = asdict(report)
+        payload["outputs"] = report.outputs
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(f"[{'PASS' if report.passed else 'FAIL'}] renderer={report.renderer} pages={report.page_count}")
         for warning in report.warnings:

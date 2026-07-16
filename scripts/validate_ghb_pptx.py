@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
-import posixpath
+import os
 import re
 import sys
+import tempfile
 import zipfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -85,6 +87,7 @@ class ValidationReport:
     package: dict[str, Any] = field(default_factory=dict)
     known_limitations: list[str] = field(default_factory=list)
     manual_review: list[str] = field(default_factory=list)
+    quality: dict[str, Any] = field(default_factory=dict)
 
     @property
     def errors(self) -> list[Issue]:
@@ -447,6 +450,7 @@ def validate_pptx(
     expect_body_notes: bool = False,
     svg_report_paths: list[Path] | None = None,
     readback_markdown_path: Path | None = None,
+    freshness: dict[str, Any] | None = None,
 ) -> ValidationReport:
     issues: list[Issue] = []
     if not path.is_file():
@@ -606,13 +610,15 @@ def validate_pptx(
         "Review typography, visual hierarchy, intentional overlaps, and aesthetic balance page by page.",
         "Confirm PowerPoint rendering on the target enterprise desktop environment.",
     ]
+    review_outcome = "unavailable"
+    render_status = "unavailable"
+    render_provenance: dict[str, Any] = {}
+    visual_findings: list[dict[str, Any]] = []
     if render_dir is None:
         known_limitations.append("No render directory was supplied; final visual appearance was not verified by this validation run.")
     else:
         pngs = sorted(render_dir.glob("slide-*.png")) if render_dir.is_dir() else []
-        if len(pngs) != len(slides):
-            _issue(issues, "warning", "render-count", f"render directory contains {len(pngs)} page PNGs for {len(slides)} slides")
-        package_info["rendered_pages"] = len(pngs)
+        package_info["rendered_pages"] = 0
         render_report_path = render_dir / "render-report.json"
         if render_report_path.is_file():
             try:
@@ -620,14 +626,85 @@ def validate_pptx(
             except (OSError, json.JSONDecodeError) as exc:
                 _issue(issues, "warning", "invalid-render-report", str(exc))
             else:
+                render_status = str(render_payload.get("status") or ("passed" if render_payload.get("passed") else "error"))
+                review_outcome = "skipped" if render_status == "passed" else "unavailable"
+                if render_status != "passed":
+                    # The current report is authoritative. Files left by an older
+                    # successful render are not evidence for this failed attempt.
+                    package_info["rendered_pages"] = 0
+                    if pngs:
+                        _issue(
+                            issues,
+                            "warning",
+                            "stale-render-files",
+                            f"ignored {len(pngs)} page PNG(s) left by an earlier render",
+                        )
+                else:
+                    reported_pptx = render_payload.get("pptx")
+                    try:
+                        pptx_matches = bool(reported_pptx) and Path(
+                            str(reported_pptx)
+                        ).resolve() == path.resolve()
+                    except (OSError, RuntimeError, ValueError):
+                        pptx_matches = False
+                    reported_digest = render_payload.get("pptx_sha256")
+                    current_digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                    if not pptx_matches or reported_digest != current_digest:
+                        review_outcome = "stale"
+                        message = (
+                            "render report is not bound to the PPTX being validated; "
+                            "ignored existing page images"
+                        )
+                        known_limitations.append(message)
+                        _issue(issues, "warning", "render-pptx-mismatch", message)
+                    else:
+                        declared_pages = []
+                        for value in render_payload.get("outputs", []):
+                            if not isinstance(value, str):
+                                continue
+                            candidate = Path(value)
+                            if not candidate.is_absolute():
+                                candidate = render_dir / candidate
+                            if (
+                                candidate.name.startswith("slide-")
+                                and candidate.suffix.lower() == ".png"
+                                and candidate.is_file()
+                            ):
+                                declared_pages.append(candidate)
+                        package_info["rendered_pages"] = len(declared_pages)
+                        if len(declared_pages) != len(slides):
+                            review_outcome = "limited"
+                            _issue(
+                                issues,
+                                "warning",
+                                "render-count",
+                                f"render report declares {len(declared_pages)} page PNGs "
+                                f"for {len(slides)} slides",
+                            )
+                render_provenance = {
+                    "renderer": render_payload.get("renderer"),
+                    "dpi": render_payload.get("dpi"),
+                    "font": render_payload.get("font"),
+                    "outputs": render_payload.get("outputs", []),
+                    "status": render_status,
+                }
                 package_info["render"] = {
                     "renderer": render_payload.get("renderer"),
                     "page_count": render_payload.get("page_count"),
                     "passed": render_payload.get("passed"),
+                    "status": render_status,
                 }
                 for warning in render_payload.get("warnings", []):
                     known_limitations.append(str(warning))
                     _issue(issues, "warning", "render-warning", str(warning))
+                for error in render_payload.get("errors", []):
+                    message = str(error)
+                    known_limitations.append(message)
+                    _issue(issues, "warning", f"render-{render_status}", message)
+        else:
+            message = "render directory has no authoritative render-report.json"
+            known_limitations.append(message)
+            _issue(issues, "warning", "missing-render-report", message)
 
     svg_quality: list[dict[str, Any]] = []
     for svg_report_path in svg_report_paths or []:
@@ -645,6 +722,23 @@ def validate_pptx(
             "path": str(svg_report_path),
         }
         svg_quality.append(summary)
+        for file_payload in svg_payload.get("files", []):
+            if not isinstance(file_payload, dict):
+                continue
+            for finding in file_payload.get("visual_findings", []):
+                if not isinstance(finding, dict):
+                    continue
+                code = finding.get("code")
+                severity = finding.get("severity")
+                if not isinstance(code, str) or severity not in {"error", "warning"}:
+                    continue
+                visual_findings.append({
+                    **finding,
+                    "source": "svg-visual-quality",
+                    "stage": svg_payload.get("stage"),
+                    "file": file_payload.get("file"),
+                    "slide_id": finding.get("slide_id") or file_payload.get("slide_id"),
+                })
         if not svg_payload.get("passed"):
             _issue(issues, "error", "svg-quality-gate", f"SVG {summary['stage']} report failed with {summary['error_count']} errors")
     if svg_quality:
@@ -681,6 +775,20 @@ def validate_pptx(
                         f"ppt_to_md readback contains {readback_slides} slide sections for {len(slides)} pages",
                     )
 
+    freshness_payload = freshness or {"status": "fresh", "states": {}, "issues": []}
+    if freshness_payload.get("status") != "fresh" or freshness_payload.get("issues"):
+        codes = [
+            str(item.get("code", "unknown"))
+            for item in freshness_payload.get("issues", [])
+            if isinstance(item, dict)
+        ]
+        _issue(
+            issues,
+            "error",
+            "stale-evidence",
+            "freshness evidence is not valid: " + ", ".join(codes or ["stale"]),
+        )
+
     report = ValidationReport(
         pptx=str(path.resolve()),
         passed=not any(issue.severity == "error" for issue in issues),
@@ -695,6 +803,69 @@ def validate_pptx(
         known_limitations=known_limitations,
         manual_review=manual_review,
     )
+    blocking = [asdict(issue) for issue in report.errors] + [
+        item for item in visual_findings if item["severity"] == "error"
+    ]
+    advisory = [asdict(issue) for issue in report.warnings] + [
+        item for item in visual_findings if item["severity"] == "warning"
+    ]
+    per_slide = []
+    for slide in slides:
+        slide_issues = [issue for issue in issues if issue.slide == slide.slide]
+        per_slide.append(
+            {
+                "slide": slide.slide,
+                "role": slide.role,
+                "blocking_count": sum(issue.severity == "error" for issue in slide_issues),
+                "advisory_count": sum(issue.severity == "warning" for issue in slide_issues),
+                "issue_codes": [issue.code for issue in slide_issues],
+                "evidence": {
+                    "text_objects": slide.text_objects,
+                    "shape_objects": slide.shape_objects,
+                    "min_font_pt": slide.min_font_pt,
+                    "out_of_bounds_objects": slide.out_of_bounds_objects,
+                },
+                "actions": [],
+            }
+        )
+    visual_by_slide: dict[str, list[dict[str, Any]]] = {}
+    for finding in visual_findings:
+        slide_id = str(finding.get("slide_id") or "unknown")
+        visual_by_slide.setdefault(slide_id, []).append(finding)
+    for slide_id, findings in sorted(visual_by_slide.items()):
+        per_slide.append({
+            "slide": None,
+            "slide_id": slide_id,
+            "role": "body-visual",
+            "blocking_count": sum(item["severity"] == "error" for item in findings),
+            "advisory_count": sum(item["severity"] == "warning" for item in findings),
+            "issue_codes": [item["code"] for item in findings],
+            "evidence": [item.get("evidence", {}) for item in findings],
+            "actions": [
+                str(item["suggested_action"])
+                for item in findings
+                if item.get("suggested_action")
+            ],
+        })
+    report.quality = {
+        "deterministic_outcome": {
+            "status": "passed" if report.passed else "failed",
+            "passed": report.passed,
+            "blocking_count": len(blocking),
+            "advisory_count": len(advisory),
+            "visual_evidence": package_info.get("svg_quality", []),
+        },
+        "freshness": freshness_payload,
+        "reviewability": {
+            "review_outcome": review_outcome,
+            "render_status": render_status,
+            "limitations": list(known_limitations),
+            "provenance": render_provenance,
+        },
+        "blocking_findings": blocking,
+        "advisory_findings": advisory,
+        "per_slide_evidence": per_slide,
+    }
     return report
 
 
@@ -706,9 +877,29 @@ def report_dict(report: ValidationReport) -> dict[str, Any]:
     }
 
 
+def _write_text_atomic(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
 def markdown_report(report: ValidationReport) -> str:
+    quality = report.quality
+    freshness = quality.get("freshness", {})
+    reviewability = quality.get("reviewability", {})
     lines = [
         "# GHB PPTX Quality Report",
+        "",
+        "## Deterministic outcome",
         "",
         f"- Result: **{'PASS' if report.passed else 'FAIL'}**",
         f"- File: `{report.pptx}`",
@@ -716,15 +907,46 @@ def markdown_report(report: ValidationReport) -> str:
         f"- Errors: {len(report.errors)}",
         f"- Warnings: {len(report.warnings)}",
         "",
-        "## Issues",
+        "## Freshness",
         "",
+        f"- Status: `{freshness.get('status', 'fresh')}`",
+        f"- States: `{json.dumps(freshness.get('states', {}), ensure_ascii=False, sort_keys=True)}`",
+        f"- Issues: `{json.dumps(freshness.get('issues', []), ensure_ascii=False, sort_keys=True)}`",
+        "",
+        "## Reviewability and limitations",
+        "",
+        f"- Review outcome: `{reviewability.get('review_outcome', 'unavailable')}`",
+        f"- Render status: `{reviewability.get('render_status', 'unavailable')}`",
+        f"- Provenance: `{json.dumps(reviewability.get('provenance', {}), ensure_ascii=False, sort_keys=True)}`",
     ]
-    if not report.issues:
-        lines.append("No structural issues detected.")
+    lines.extend(f"- Limitation: {item}" for item in reviewability.get("limitations", []))
+    lines.extend([
+        "",
+        "## Blocking findings",
+        "",
+    ])
+    if quality.get("blocking_findings"):
+        for issue in quality["blocking_findings"]:
+            where = f" slide {issue.get('slide') or issue.get('slide_id')}" if issue.get("slide") or issue.get("slide_id") else ""
+            message = issue.get("message") or issue.get("suggested_action") or "See measured evidence."
+            lines.append(f"- `ERROR` `{issue['code']}`{where}: {message}")
     else:
-        for issue in report.issues:
-            where = f" slide {issue.slide}" if issue.slide else ""
-            lines.append(f"- `{issue.severity.upper()}` `{issue.code}`{where}: {issue.message}")
+        lines.append("No blocking deterministic findings.")
+    lines.extend(["", "## Advisory findings", ""])
+    if quality.get("advisory_findings"):
+        for issue in quality["advisory_findings"]:
+            where = f" slide {issue.get('slide') or issue.get('slide_id')}" if issue.get("slide") or issue.get("slide_id") else ""
+            message = issue.get("message") or issue.get("suggested_action") or "See measured evidence."
+            lines.append(f"- `WARNING` `{issue['code']}`{where}: {message}")
+    else:
+        lines.append("No advisory deterministic findings.")
+    lines.extend(["", "## Per-slide evidence and actions", ""])
+    for item in quality.get("per_slide_evidence", []):
+        identity = item.get("slide_id") or item.get("slide")
+        lines.append(
+            f"- Slide {identity} ({item['role']}): blocking={item['blocking_count']}, "
+            f"advisory={item['advisory_count']}, codes={','.join(item['issue_codes']) or 'none'}"
+        )
     lines.extend([
         "",
         "## Per-slide object summary",
@@ -773,6 +995,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expect-body-notes", action="store_true")
     parser.add_argument("--svg-report", type=Path, action="append", default=[])
     parser.add_argument("--readback-markdown", type=Path)
+    parser.add_argument("--freshness-json", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--json-output", type=Path)
     parser.add_argument("--markdown-output", type=Path)
@@ -782,6 +1005,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     expect_ending = False if args.no_ending else True if args.expect_ending else None
+    freshness = None
+    if args.freshness_json:
+        try:
+            freshness = json.loads(args.freshness_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            freshness = {
+                "status": "stale",
+                "states": {},
+                "issues": [{"code": "invalid-freshness-evidence", "message": str(exc)}],
+            }
     report = validate_pptx(
         args.pptx,
         expected_body_count=args.body_count,
@@ -793,14 +1026,16 @@ def main(argv: list[str] | None = None) -> int:
         expect_body_notes=args.expect_body_notes,
         svg_report_paths=args.svg_report,
         readback_markdown_path=args.readback_markdown,
+        freshness=freshness,
     )
     payload = report_dict(report)
     if args.json_output:
-        args.json_output.parent.mkdir(parents=True, exist_ok=True)
-        args.json_output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        _write_text_atomic(
+            args.json_output,
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        )
     if args.markdown_output:
-        args.markdown_output.parent.mkdir(parents=True, exist_ok=True)
-        args.markdown_output.write_text(markdown_report(report), encoding="utf-8")
+        _write_text_atomic(args.markdown_output, markdown_report(report))
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:

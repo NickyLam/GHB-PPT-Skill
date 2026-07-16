@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -11,8 +12,8 @@ from PIL import Image
 from pptx import Presentation
 from pptx.util import Inches
 
-from scripts.merge_template_master import merge_pptx, parse_rels, relation_type, resolve_target
-from scripts.validate_ghb_pptx import main, validate_pptx
+from scripts.merge_template_master import merge_pptx, relation_type, resolve_target
+from scripts.validate_ghb_pptx import main, markdown_report, report_dict, validate_pptx
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -170,6 +171,246 @@ class ValidateGhbPptxTest(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertTrue(json.loads(json_path.read_text(encoding="utf-8"))["passed"])
             self.assertIn("Per-slide object summary", markdown_path.read_text(encoding="utf-8"))
+
+    def test_json_and_markdown_share_mandated_evidence_hierarchy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output, _result = self.build(Path(tmp), count=1, no_ending=True)
+            report = validate_pptx(output, expected_body_count=1, expect_ending=False)
+            payload = report_dict(report)
+            self.assertEqual(
+                list(payload["quality"].keys()),
+                [
+                    "deterministic_outcome",
+                    "freshness",
+                    "reviewability",
+                    "blocking_findings",
+                    "advisory_findings",
+                    "per_slide_evidence",
+                ],
+            )
+            self.assertEqual(payload["quality"]["reviewability"]["review_outcome"], "unavailable")
+            markdown = markdown_report(report)
+            headings = [
+                "## Deterministic outcome",
+                "## Freshness",
+                "## Reviewability and limitations",
+                "## Blocking findings",
+                "## Advisory findings",
+                "## Per-slide evidence and actions",
+            ]
+            self.assertEqual([markdown.index(item) for item in headings], sorted(markdown.index(item) for item in headings))
+            self.assertIn("Review outcome: `unavailable`", markdown)
+
+    def test_markdown_preserves_freshness_issues_from_json_hierarchy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output, _result = self.build(Path(tmp), count=1, no_ending=True)
+            freshness = {
+                "status": "stale",
+                "states": {"pptx": "stale"},
+                "issues": [{"code": "evidence-byte-digest-mismatch", "identity": "pptx"}],
+            }
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=False,
+                freshness=freshness,
+            )
+            self.assertEqual(report_dict(report)["quality"]["freshness"], freshness)
+            markdown = markdown_report(report)
+            self.assertIn("evidence-byte-digest-mismatch", markdown)
+            self.assertIn('"identity": "pptx"', markdown)
+
+    def test_successful_render_is_review_skipped_not_visual_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1, no_ending=True)
+            render_dir = directory / "render"
+            render_dir.mkdir()
+            (render_dir / "slide-01.png").write_bytes(b"png")
+            (render_dir / "slide-02.png").write_bytes(b"png")
+            (render_dir / "render-report.json").write_text(
+                json.dumps({
+                    "schema": "ghb.render-report.v1",
+                    "status": "passed",
+                    "passed": True,
+                    "pptx": str(output.resolve()),
+                    "pptx_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+                    "renderer": "soffice",
+                    "dpi": 144,
+                    "font": {"status": "available", "warnings": []},
+                    "outputs": ["render.pdf", "slide-01.png", "slide-02.png"],
+                    "warnings": [],
+                    "errors": [],
+                }),
+                encoding="utf-8",
+            )
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=False,
+                render_dir=render_dir,
+            )
+            quality = report_dict(report)["quality"]
+            self.assertEqual(quality["reviewability"]["review_outcome"], "skipped")
+            self.assertNotEqual(quality["deterministic_outcome"]["status"], "visual-pass")
+
+    def test_final_reports_preserve_detailed_svg_visual_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1, no_ending=True)
+            svg_report = directory / "svg-authored.json"
+            svg_report.write_text(
+                json.dumps({
+                    "stage": "authored",
+                    "passed": True,
+                    "error_count": 0,
+                    "warning_count": 1,
+                    "files": [{
+                        "file": "01_matrix.svg",
+                        "slide_id": "body-01",
+                        "visual_findings": [{
+                            "code": "visual-component-gap-small",
+                            "severity": "warning",
+                            "slide_id": "body-01",
+                            "evidence": {"minimum_gap": 0},
+                            "expected": {"min": 16},
+                            "suggested_action": "Separate peer cards.",
+                        }],
+                    }],
+                }),
+                encoding="utf-8",
+            )
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=False,
+                svg_report_paths=[svg_report],
+            )
+            payload = report_dict(report)
+            advisory = payload["quality"]["advisory_findings"]
+            self.assertIn("visual-component-gap-small", {item["code"] for item in advisory})
+            body = next(
+                item for item in payload["quality"]["per_slide_evidence"]
+                if item.get("slide_id") == "body-01"
+            )
+            self.assertEqual(body["actions"], ["Separate peer cards."])
+            self.assertIn("visual-component-gap-small", markdown_report(report))
+
+    def test_render_failure_reason_remains_visible_in_quality_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1, no_ending=True)
+            render_dir = directory / "render"
+            render_dir.mkdir()
+            (render_dir / "render-report.json").write_text(
+                json.dumps({
+                    "schema": "ghb.render-report.v1",
+                    "status": "unavailable",
+                    "passed": False,
+                    "renderer": "auto",
+                    "dpi": 144,
+                    "font": {"status": "unknown", "warnings": []},
+                    "outputs": [],
+                    "warnings": [],
+                    "errors": ["no renderer detected"],
+                }),
+                encoding="utf-8",
+            )
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=False,
+                render_dir=render_dir,
+            )
+            self.assertIn("no renderer detected", "\n".join(report.known_limitations))
+            self.assertIn("render-unavailable", {item.code for item in report.warnings})
+
+    def test_failed_render_report_does_not_reuse_old_page_images(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1, no_ending=True)
+            render_dir = directory / "render"
+            render_dir.mkdir()
+            (render_dir / "slide-01.png").write_bytes(b"old")
+            (render_dir / "slide-02.png").write_bytes(b"old")
+            (render_dir / "render-report.json").write_text(
+                json.dumps({
+                    "schema": "ghb.render-report.v1",
+                    "status": "error",
+                    "passed": False,
+                    "renderer": "soffice",
+                    "dpi": 144,
+                    "font": {"status": "available", "warnings": []},
+                    "outputs": [],
+                    "warnings": [],
+                    "errors": ["conversion failed"],
+                }),
+                encoding="utf-8",
+            )
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=False,
+                render_dir=render_dir,
+            )
+            self.assertEqual(report.package["rendered_pages"], 0)
+            reviewability = report_dict(report)["quality"]["reviewability"]
+            self.assertEqual(reviewability["render_status"], "error")
+            self.assertEqual(reviewability["provenance"]["outputs"], [])
+
+    def test_successful_render_for_overwritten_pptx_is_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1, no_ending=True)
+            render_dir = directory / "render"
+            render_dir.mkdir()
+            pages = []
+            for index in (1, 2):
+                page = render_dir / f"slide-{index:02d}.png"
+                page.write_bytes(b"old")
+                pages.append(str(page.resolve()))
+            (render_dir / "render-report.json").write_text(
+                json.dumps({
+                    "schema": "ghb.render-report.v1",
+                    "status": "passed",
+                    "passed": True,
+                    "pptx": str(output.resolve()),
+                    "pptx_sha256": "0" * 64,
+                    "renderer": "soffice",
+                    "dpi": 144,
+                    "font": {"status": "available", "warnings": []},
+                    "outputs": pages,
+                    "warnings": [],
+                    "errors": [],
+                }),
+                encoding="utf-8",
+            )
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=False,
+                render_dir=render_dir,
+            )
+            self.assertEqual(report.package["rendered_pages"], 0)
+            reviewability = report_dict(report)["quality"]["reviewability"]
+            self.assertEqual(reviewability["review_outcome"], "stale")
+            self.assertIn("render-pptx-mismatch", {item.code for item in report.warnings})
+
+    def test_stale_freshness_is_blocking(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output, _result = self.build(Path(tmp), count=1, no_ending=True)
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=False,
+                freshness={
+                    "status": "stale",
+                    "states": {"pptx": "stale"},
+                    "issues": [{"code": "invalid-freshness-evidence"}],
+                },
+            )
+            self.assertFalse(report.passed)
+            self.assertIn("stale-evidence", {item.code for item in report.errors})
 
     def test_readback_markdown_is_required_when_requested(self):
         with tempfile.TemporaryDirectory() as tmp:

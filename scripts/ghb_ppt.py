@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -26,6 +27,14 @@ sys.path.insert(0, str(ROOT))
 from scripts.remove_svg_background import (  # noqa: E402
     BackgroundRemovalError,
     remove_project_backgrounds,
+)
+from scripts.render_ghb_pptx import render_pptx  # noqa: E402
+from scripts.evidence_manifest import (  # noqa: E402
+    EvidenceItem,
+    FreshnessResult,
+    create_manifest,
+    evaluate_freshness,
+    write_manifest_atomic,
 )
 
 
@@ -121,21 +130,49 @@ class RunContext:
         if not self.dry_run:
             self._write_record()
 
-    def checkpoint(self, stage: str, outputs: list[Path]) -> None:
+    def checkpoint(
+        self,
+        stage: str,
+        outputs: list[Path],
+        *,
+        pptx_path: Path | None = None,
+        final_report_path: Path | None = None,
+        final_markdown_path: Path | None = None,
+    ) -> None:
         if self.dry_run:
             return
         state_dir = self.project / ".ghb"
         state_dir.mkdir(parents=True, exist_ok=True)
+        items = build_evidence_items(
+            self.project,
+            run_id=self.run_dir.name,
+            stage=stage,
+            include_final=stage in {"build", "report"},
+            pptx_path=pptx_path or next(
+                (path for path in outputs if path.suffix.lower() == ".pptx"),
+                None,
+            ),
+            final_report_path=final_report_path,
+            final_markdown_path=final_markdown_path,
+        )
+        manifest = create_manifest(
+            project_id=self.project.name,
+            run_id=self.run_dir.name,
+            items=items,
+        )
         payload = {
             "last_successful_stage": stage,
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "run": str(self.run_dir),
             "outputs": [str(path.resolve()) for path in outputs],
+            "evidence_manifest": manifest,
         }
         (state_dir / "state.json").write_text(
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        if stage in {"build", "report"}:
+            write_manifest_atomic(state_dir / "evidence-manifest.json", manifest)
 
     def finish(self) -> None:
         self.record.status = "succeeded"
@@ -199,6 +236,208 @@ def ensure_project(project: Path, *, create: bool = False, dry_run: bool = False
         return
     if not project.is_dir():
         raise PipelineError(f"project directory not found: {project}")
+
+
+def _load_json_evidence(path: Path) -> Any:
+    if not path.is_file():
+        return {"status": "missing"}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "invalid", "error": type(exc).__name__}
+
+
+def _file_digest(path: Path) -> str | None:
+    if not path.is_file() or path.is_symlink():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _svg_bundle(project: Path) -> dict[str, Any]:
+    files = []
+    for directory in ("svg_output", "svg_final"):
+        for path in sorted((project / directory).glob("*.svg")):
+            files.append(
+                {
+                    "path": str(path.relative_to(project)),
+                    "sha256": _file_digest(path),
+                }
+            )
+    return {"schema": "ghb.svg-bundle-evidence.v1", "files": files}
+
+
+def _render_environment(project: Path) -> dict[str, Any]:
+    render_payload = _load_json_evidence(project / "render" / "render-report.json")
+    return {
+        "schema": "ghb.render-environment.v1",
+        "renderer": render_payload.get("renderer") if isinstance(render_payload, dict) else None,
+        "renderer_available": bool(shutil.which("soffice") or shutil.which("libreoffice")),
+        "rasterizer_available": bool(shutil.which("pdftoppm")),
+        "dpi": render_payload.get("dpi") if isinstance(render_payload, dict) else None,
+        "font": render_payload.get("font") if isinstance(render_payload, dict) else None,
+    }
+
+
+def build_evidence_items(
+    project: Path,
+    *,
+    run_id: str,
+    stage: str = "build",
+    include_final: bool = False,
+    pptx_path: Path | None = None,
+    final_report_path: Path | None = None,
+    final_markdown_path: Path | None = None,
+) -> list[EvidenceItem]:
+    """Describe current pipeline evidence using U8's canonical dependency identities."""
+
+    project = project.resolve()
+    profile = project / "visual_profile.json"
+    layout = project / "layout_plan.json"
+    rules = ROOT / "references" / "visual-quality-rules.md"
+    items = [
+        EvidenceItem("visual-profile", "json", _load_json_evidence(profile), profile if profile.is_file() else None),
+        EvidenceItem("layout-plan", "json", _load_json_evidence(layout), layout if layout.is_file() else None),
+        EvidenceItem(
+            "rule-contract",
+            "markdown",
+            {"schema": "ghb.visual-rule-contract.v1", "sha256": _file_digest(rules)},
+            rules if rules.is_file() else None,
+        ),
+    ]
+    stage_order = {
+        "check-svg": 1,
+        "check-project": 0,
+        "build-cover": 0,
+        "build-content": 1,
+        "merge": 2,
+        "validate": 3,
+        "render": 4,
+        "build": 5,
+    }
+    level = stage_order.get(stage, 0)
+    if level >= 1 or include_final:
+        items.append(EvidenceItem("svg-bundle", "svg-bundle", _svg_bundle(project)))
+    pptx = (pptx_path or project / "exports" / "final.pptx").resolve()
+    if level >= 2 or include_final:
+        items.append(
+            EvidenceItem(
+                "pptx",
+                "pptx",
+                {"schema": "ghb.pptx-evidence.v1", "sha256": _file_digest(pptx)},
+                pptx if pptx.is_file() else None,
+            )
+        )
+    deterministic_report_path = project / "reports" / "quality-pre-render.json"
+    final_report_path = (
+        final_report_path or project / "reports" / "quality-report.json"
+    ).resolve()
+    final_markdown_path = (
+        final_markdown_path or project / "reports" / "quality-report.md"
+    ).resolve()
+    if level >= 3 or include_final:
+        items.append(
+            EvidenceItem(
+                "deterministic-report",
+                "json",
+                _load_json_evidence(deterministic_report_path),
+                deterministic_report_path if deterministic_report_path.is_file() else None,
+            )
+        )
+    render_path = project / "render" / "render-report.json"
+    if level >= 4 or include_final:
+        items.extend(
+            [
+                EvidenceItem("render-environment", "environment", _render_environment(project)),
+                EvidenceItem(
+                    "render-evidence",
+                    "json",
+                    _load_json_evidence(render_path),
+                    render_path if render_path.is_file() else None,
+                ),
+            ]
+        )
+    if include_final:
+        render_payload = _load_json_evidence(render_path)
+        render_status = render_payload.get("status") if isinstance(render_payload, dict) else None
+        review_outcome = "skipped" if render_status == "passed" else "unavailable"
+        items.extend(
+            [
+                EvidenceItem("adapter-policy", "optional-review-policy", {"status": "absent"}),
+                EvidenceItem(
+                    "adapter-review",
+                    "optional-review",
+                    {"outcome": review_outcome, "implementation": "absent"},
+                ),
+                EvidenceItem(
+                    "final-report",
+                    "json",
+                    {
+                        "report": _load_json_evidence(final_report_path),
+                        "markdown_sha256": _file_digest(final_markdown_path),
+                        "review_outcome": review_outcome,
+                    },
+                    final_report_path if final_report_path.is_file() else None,
+                ),
+            ]
+        )
+    return items
+
+
+def evidence_freshness(
+    project: Path,
+    manifest: dict[str, Any],
+    *,
+    run_id: str,
+    include_final: bool = True,
+    pptx_path: Path | None = None,
+    final_report_path: Path | None = None,
+    final_markdown_path: Path | None = None,
+) -> FreshnessResult:
+    return evaluate_freshness(
+        manifest,
+        project_id=project.resolve().name,
+        run_id=run_id,
+        current_items=build_evidence_items(
+            project,
+            run_id=run_id,
+            stage="build" if include_final else "validate",
+            include_final=include_final,
+            pptx_path=pptx_path,
+            final_report_path=final_report_path,
+            final_markdown_path=final_markdown_path,
+        ),
+    )
+
+
+def _report_input_freshness(result: FreshnessResult) -> FreshnessResult:
+    """Exclude the report being regenerated while preserving every upstream gate."""
+
+    return FreshnessResult(
+        states={
+            identity: state
+            for identity, state in result.states.items()
+            if identity != "final-report"
+        },
+        issues=tuple(
+            issue for issue in result.issues if issue.get("identity") != "final-report"
+        ),
+    )
+
+
+def _checkpoint_pptx(project: Path) -> Path | None:
+    state_path = project / ".ghb" / "state.json"
+    payload = _load_json_evidence(state_path)
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("last_successful_stage") not in {"build", "report"}:
+        return None
+    outputs = payload.get("outputs")
+    if not isinstance(outputs, list):
+        return None
+    for value in outputs:
+        if isinstance(value, str) and Path(value).suffix.lower() == ".pptx":
+            return Path(value).resolve()
+    return None
 
 
 def timestamped_candidates(requested: Path) -> set[Path]:
@@ -392,6 +631,7 @@ def validate_deck(
     json_output: Path,
     markdown_output: Path,
     render_dir: Path | None = None,
+    freshness: FreshnessResult | None = None,
 ) -> tuple[Path, Path]:
     if not pptx.is_file() and not run.dry_run:
         raise PipelineError(f"final PPTX not found: {pptx}")
@@ -424,6 +664,21 @@ def validate_deck(
     command.append("--expect-ending" if expect_ending else "--no-ending")
     if render_dir is not None:
         command.extend(["--render-dir", str(render_dir)])
+    if freshness is not None:
+        freshness_path = run.run_dir / "freshness.json"
+        freshness_payload = {
+            "status": "fresh" if freshness.fresh else "stale",
+            "states": freshness.states,
+            "issues": list(freshness.issues),
+        }
+        if run.dry_run:
+            run.plan("freshness", f"write {freshness_path}")
+        else:
+            freshness_path.write_text(
+                json.dumps(freshness_payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        command.extend(["--freshness-json", str(freshness_path)])
     for svg_report in (
         run.project / "reports" / "svg-authored.json",
         run.project / "reports" / "svg-finalized.json",
@@ -466,6 +721,51 @@ def render_deck(
         [pptx, output_dir / "render-report.json", output_dir / "contact-sheet.png"],
     )
     return output_dir
+
+
+def record_unavailable_render(
+    run: RunContext,
+    *,
+    pptx: Path,
+    output_dir: Path,
+    dpi: int,
+) -> None:
+    """Replace any older success evidence when this run has no renderer."""
+
+    if run.dry_run:
+        run.plan("render", "record unavailable render evidence")
+        return
+    report = render_pptx(pptx, output_dir, dpi=dpi)
+    if report.status != "unavailable":
+        raise PipelineError(
+            f"expected unavailable render evidence, got {report.status}"
+        )
+    run.record.stages.append(
+        {
+            "stage": "render",
+            "status": "unavailable",
+            "warning": report.errors[0] if report.errors else "renderer unavailable",
+        }
+    )
+    run.output(output_dir / "render-report.json")
+    run._write_record()
+
+
+def record_review_state(run: RunContext, *, render_available: bool) -> str:
+    """Record the deterministic U5 contract while the optional U10 action is absent."""
+
+    outcome = "skipped" if render_available else "unavailable"
+    if not run.dry_run:
+        run.record.stages.append(
+            {
+                "stage": "optional-review",
+                "status": outcome,
+                "outcome": outcome,
+                "implementation": "absent",
+            }
+        )
+        run._write_record()
+    return outcome
 
 
 def validation_error_codes(report_path: Path) -> set[str]:
@@ -758,15 +1058,73 @@ def main(argv: list[str] | None = None) -> int:
                 )
             elif args.command in {"validate", "report"}:
                 report_dir = project / "reports"
+                freshness = None
+                render_dir = args.render_dir.resolve() if args.render_dir else None
+                pptx_path = (
+                    args.pptx.resolve()
+                    if args.pptx
+                    else (_checkpoint_pptx(project) if args.command == "report" else None)
+                ) or _project_output(project, None, "final.pptx")
+                if args.command == "report":
+                    manifest_path = project / ".ghb" / "evidence-manifest.json"
+                    if not manifest_path.is_file():
+                        raise PipelineError(
+                            "evidence manifest not found; run build before report"
+                        )
+                    try:
+                        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                        manifest_run_id = str(manifest.get("run_id", ""))
+                        freshness = _report_input_freshness(
+                            evidence_freshness(
+                                project,
+                                manifest,
+                                run_id=manifest_run_id,
+                                include_final=True,
+                                pptx_path=pptx_path,
+                            )
+                        )
+                    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                        raise PipelineError(f"invalid evidence manifest: {exc}") from exc
+                    if not freshness.fresh:
+                        stale = sorted(
+                            identity
+                            for identity, state in freshness.states.items()
+                            if state == "stale"
+                        )
+                        raise PipelineError(
+                            "stale evidence: " + ", ".join(stale or ["manifest-invalid"])
+                        )
+                    existing_render = project / "render" / "render-report.json"
+                    if render_dir is None and existing_render.is_file():
+                        render_dir = existing_render.parent
+                json_output = (
+                    args.json_output.resolve()
+                    if args.json_output
+                    else report_dir / "quality-report.json"
+                )
+                markdown_output = (
+                    args.markdown_output.resolve()
+                    if args.markdown_output
+                    else report_dir / "quality-report.md"
+                )
                 validate_deck(
                     run,
-                    pptx=_project_output(project, args.pptx, "final.pptx"),
+                    pptx=pptx_path,
                     body_count=args.body_count,
                     expect_ending=not args.no_ending,
-                    json_output=(args.json_output.resolve() if args.json_output else report_dir / "quality-report.json"),
-                    markdown_output=(args.markdown_output.resolve() if args.markdown_output else report_dir / "quality-report.md"),
-                    render_dir=args.render_dir.resolve() if args.render_dir else None,
+                    json_output=json_output,
+                    markdown_output=markdown_output,
+                    render_dir=render_dir,
+                    freshness=freshness,
                 )
+                if args.command == "report":
+                    run.checkpoint(
+                        "report",
+                        [pptx_path, json_output, markdown_output],
+                        pptx_path=pptx_path,
+                        final_report_path=json_output,
+                        final_markdown_path=markdown_output,
+                    )
             elif args.command == "render":
                 render_deck(
                     run,
@@ -860,11 +1218,13 @@ def main(argv: list[str] | None = None) -> int:
                     else:
                         message = "no renderer detected; skipped final PPTX rendering"
                         print(f"[WARN] {message}")
-                        if not run.dry_run:
-                            run.record.stages.append(
-                                {"stage": "render", "status": "skipped", "warning": message}
-                            )
-                            run._write_record()
+                        record_unavailable_render(
+                            run,
+                            pptx=final_path,
+                            output_dir=project / "render",
+                            dpi=args.render_dpi,
+                        )
+                record_review_state(run, render_available=render_dir is not None)
                 validate_deck(
                     run,
                     pptx=final_path,
@@ -874,7 +1234,17 @@ def main(argv: list[str] | None = None) -> int:
                     markdown_output=report_dir / "quality-report.md",
                     render_dir=render_dir,
                 )
-                run.checkpoint("build", [final_path, report_dir / "quality-report.json", report_dir / "quality-report.md"])
+                run.checkpoint(
+                    "build",
+                    [
+                        final_path,
+                        report_dir / "quality-report.json",
+                        report_dir / "quality-report.md",
+                    ],
+                    pptx_path=final_path,
+                    final_report_path=report_dir / "quality-report.json",
+                    final_markdown_path=report_dir / "quality-report.md",
+                )
             run.finish()
             if not run.dry_run:
                 print(f"[OK] Run log: {run.run_dir / 'run.json'}")
