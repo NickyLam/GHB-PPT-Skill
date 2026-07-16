@@ -17,11 +17,253 @@ from scripts.ghb_ppt import (
     validation_error_codes,
     build_evidence_items,
     evidence_freshness,
+    load_review_config,
+    _load_review_authorization,
+    run_optional_review,
 )
 from scripts.validate_project_contract import confirmation_digest, validate_project_contract
 
 
 class GhbPptCliTest(unittest.TestCase):
+    def test_operator_review_config_must_be_explicit_and_outside_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            project.mkdir()
+            adapter = root / "adapter"
+            adapter.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            adapter.chmod(0o755)
+            payload = {
+                "schema": "ghb.visual-review-operator-config.v1",
+                "executable": str(adapter),
+                "capability": "local",
+                "model_id": "fixture-model",
+                "tool_contract": "fixture-tool-v1",
+                "trusted_direct": True,
+                "credential_env_names": ["GHB_REVIEW_TOKEN"],
+            }
+            outside = root / "review-config.json"
+            outside.write_text(json.dumps(payload), encoding="utf-8")
+            config, policy = load_review_config(outside, project)
+            self.assertEqual(config.credential_env_names, ("GHB_REVIEW_TOKEN",))
+            self.assertNotIn(str(outside), json.dumps(policy))
+            inside = project / "review-config.json"
+            inside.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaises(PipelineError):
+                load_review_config(inside, project)
+            config_link = project / "review-config-link.json"
+            config_link.symlink_to(outside)
+            with self.assertRaises(PipelineError):
+                load_review_config(config_link, project)
+
+            for mutation in (
+                {**payload, "trusted_direct": "false"},
+                {**payload, "launcher_supplies_os_sandbox": "false"},
+                {**payload, "deadline_seconds": "credential-value-123"},
+            ):
+                outside.write_text(json.dumps(mutation), encoding="utf-8")
+                with self.assertRaises(PipelineError) as raised:
+                    load_review_config(outside, project)
+                self.assertNotIn("credential-value-123", str(raised.exception))
+
+            authorization = root / "review-authorization.json"
+            authorization.write_text(json.dumps({
+                "schema": "ghb.visual-review-disclosure.v1",
+                "provider": {"token": "credential-value-123"},
+                "destination": "fixture-destination",
+                "retention": "none",
+                "slide_ids": ["slide-01"],
+            }), encoding="utf-8")
+            with self.assertRaises(PipelineError) as raised:
+                _load_review_authorization(authorization, project)
+            self.assertNotIn("credential-value-123", str(raised.exception))
+            authorization_link = project / "review-authorization-link.json"
+            authorization_link.symlink_to(authorization)
+            with self.assertRaises(PipelineError):
+                _load_review_authorization(authorization_link, project)
+
+    def test_optional_review_requires_fresh_complete_render_before_adapter_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "reports").mkdir()
+            (project / "render").mkdir()
+            pptx = project / "final.pptx"
+            pptx.write_bytes(b"pptx")
+            deterministic = project / "reports" / "quality-pre-render.json"
+            deterministic.write_text('{"quality":{"deterministic_outcome":{"status":"passed"}}}', encoding="utf-8")
+            run = RunContext(project, "review")
+            with mock.patch("scripts.ghb_ppt.review_visual_quality") as adapter:
+                result, _policy = run_optional_review(
+                    run,
+                    pptx=pptx,
+                    render_dir=project / "render",
+                    deterministic_report=deterministic,
+                    config_path=None,
+                    authorization_path=None,
+                )
+            adapter.assert_not_called()
+            self.assertEqual(result["outcome"], "unavailable")
+
+    def test_build_review_runs_after_render_before_final_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            events = []
+            review_report = {"schema": "ghb.visual-review-report.v1", "outcome": "passed"}
+            with (
+                mock.patch("scripts.ghb_ppt.check_project_contract"),
+                mock.patch("scripts.ghb_ppt.build_cover"),
+                mock.patch("scripts.ghb_ppt.build_content"),
+                mock.patch("scripts.ghb_ppt.merge_deck"),
+                mock.patch("scripts.ghb_ppt.render_deck", side_effect=lambda *a, **k: events.append("render") or project / "render"),
+                mock.patch("scripts.ghb_ppt.run_optional_review", side_effect=lambda *a, **k: (events.append("review") or review_report, {"status": "configured"})),
+                mock.patch("scripts.ghb_ppt.validate_deck", side_effect=lambda *a, **k: events.append("pre-report" if len([x for x in events if "report" in x]) == 0 and "render" not in events else "final-report") or (project / "a", project / "b")),
+                mock.patch.object(RunContext, "checkpoint"),
+            ):
+                code = main([
+                    "build", "--project", str(project), "--review", "--dry-run",
+                    "--title", "T", "--subtitle", "S", "--date", "D",
+                ])
+            self.assertEqual(code, 0)
+            self.assertLess(events.index("render"), events.index("review"))
+            self.assertLess(events.index("review"), events.index("final-report"))
+
+    def test_required_review_failure_is_reported_after_deterministic_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            events = []
+            with (
+                mock.patch("scripts.ghb_ppt.check_project_contract"),
+                mock.patch("scripts.ghb_ppt.build_cover"),
+                mock.patch("scripts.ghb_ppt.build_content"),
+                mock.patch("scripts.ghb_ppt.merge_deck"),
+                mock.patch("scripts.ghb_ppt.render_deck", return_value=project / "render"),
+                mock.patch("scripts.ghb_ppt.run_optional_review", return_value=({"schema":"ghb.visual-review-report.v1","outcome":"error"}, {"status":"configured"})),
+                mock.patch("scripts.ghb_ppt.validate_deck", side_effect=lambda *a, **k: events.append("validated") or (project / "a", project / "b")),
+                mock.patch.object(RunContext, "checkpoint") as checkpoint,
+            ):
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr):
+                    code = main([
+                        "build", "--project", str(project), "--review", "--require-review", "--dry-run",
+                        "--title", "T", "--subtitle", "S", "--date", "D",
+                    ])
+            self.assertEqual(code, 1)
+            self.assertGreaterEqual(len(events), 2)
+            self.assertIn("required optional review", stderr.getvalue())
+            checkpoint.assert_not_called()
+
+    def test_report_command_never_accepts_or_launches_review(self):
+        parser_error = io.StringIO()
+        with contextlib.redirect_stderr(parser_error), self.assertRaises(SystemExit):
+            main(["report", "--project", "/tmp/project", "--review-config", "/tmp/config"])
+        with mock.patch("scripts.ghb_ppt.review_visual_quality") as adapter:
+            code = main(["report", "--project", "/definitely/missing/project"])
+        self.assertEqual(code, 1)
+        adapter.assert_not_called()
+
+    def test_validate_marks_persisted_review_stale_without_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "reports").mkdir()
+            (project / "reports" / "visual-review.json").write_text(
+                '{"schema":"ghb.visual-review-report.v1","outcome":"passed"}',
+                encoding="utf-8",
+            )
+            pptx = project / "final.pptx"
+            pptx.write_bytes(b"pptx")
+            captured = {}
+
+            def validate(_run, **kwargs):
+                captured.update(kwargs)
+                return kwargs["json_output"], kwargs["markdown_output"]
+
+            with mock.patch("scripts.ghb_ppt.validate_deck", side_effect=validate):
+                self.assertEqual(
+                    main([
+                        "validate", "--project", str(project), "--pptx", str(pptx)
+                    ]),
+                    0,
+                )
+            self.assertEqual(captured["freshness"].states["adapter-review"], "stale")
+
+    def test_validate_accepts_manifest_fresh_persisted_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            for directory in ("svg_output", "svg_final", "reports", "render", ".ghb"):
+                (project / directory).mkdir()
+            (project / "visual_profile.json").write_text('{}', encoding="utf-8")
+            (project / "layout_plan.json").write_text('[]', encoding="utf-8")
+            pptx = project / "final.pptx"
+            pptx.write_bytes(b"pptx")
+            (project / "reports" / "quality-pre-render.json").write_text(
+                '{"passed":true}', encoding="utf-8"
+            )
+            (project / "reports" / "quality-report.json").write_text(
+                '{"passed":true}', encoding="utf-8"
+            )
+            (project / "reports" / "quality-report.md").write_text(
+                "fresh\n", encoding="utf-8"
+            )
+            (project / "reports" / "visual-review.json").write_text(
+                '{"schema":"ghb.visual-review-report.v1","outcome":"passed"}',
+                encoding="utf-8",
+            )
+            (project / ".ghb" / "adapter-policy.json").write_text(
+                '{"required":true}', encoding="utf-8"
+            )
+            (project / "render" / "render-report.json").write_text(
+                '{"status":"passed","outputs":[]}', encoding="utf-8"
+            )
+            from scripts.evidence_manifest import create_manifest, write_manifest_atomic
+
+            manifest = create_manifest(
+                project_id=project.name,
+                run_id="review-run",
+                items=build_evidence_items(
+                    project,
+                    run_id="review-run",
+                    include_final=True,
+                    pptx_path=pptx,
+                ),
+            )
+            write_manifest_atomic(project / ".ghb" / "evidence-manifest.json", manifest)
+            captured = {}
+
+            def validate(_run, **kwargs):
+                captured.update(kwargs)
+                return kwargs["json_output"], kwargs["markdown_output"]
+
+            with mock.patch("scripts.ghb_ppt.validate_deck", side_effect=validate):
+                self.assertEqual(
+                    main([
+                        "validate", "--project", str(project), "--pptx", str(pptx)
+                    ]),
+                    0,
+                )
+            self.assertEqual(
+                captured["freshness"].states["adapter-review"],
+                "fresh",
+                captured["freshness"],
+            )
+            self.assertTrue(captured["review_required"])
+
+    def test_report_rejects_render_directory_outside_manifest_authority(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            project.mkdir()
+            custom_render = Path(tmp) / "custom-render"
+            custom_render.mkdir()
+            with mock.patch("scripts.ghb_ppt.validate_deck") as validate:
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr):
+                    code = main([
+                        "report", "--project", str(project),
+                        "--render-dir", str(custom_render),
+                    ])
+            self.assertEqual(code, 1)
+            validate.assert_not_called()
+            self.assertIn("manifest-bound", stderr.getvalue())
+
     def test_real_project_requires_six_decision_confirmation(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)
@@ -302,12 +544,15 @@ class GhbPptCliTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)
             stdout = io.StringIO()
-            with contextlib.redirect_stdout(stdout):
+            with contextlib.redirect_stdout(stdout), mock.patch(
+                "scripts.ghb_ppt.review_visual_quality"
+            ) as adapter:
                 code = main([
                     "build", "--project", str(project), "--dry-run", "--no-render",
                     "--title", "T", "--subtitle", "S", "--date", "D",
                 ])
             self.assertEqual(code, 0)
+            adapter.assert_not_called()
             output = stdout.getvalue()
             stages = ["project-contract", "analyze-template", "svg-authored", "finalize-svg", "svg-finalized", "merge", "validate"]
             positions = [output.index(f"[DRY-RUN] {stage}:") for stage in stages]
@@ -336,12 +581,17 @@ class GhbPptCliTest(unittest.TestCase):
             svg_path = project / "svg_output" / "01.svg"
             pptx_path = project / "exports" / "final.pptx"
             render_path = project / "render" / "render-report.json"
+            render_page = project / "render" / "slide-01.png"
             profile_path.write_text('{"schema":"ghb.visual-profile.v1","v":1}', encoding="utf-8")
             layout_path.write_text('[]', encoding="utf-8")
             svg_path.write_text('<svg/>', encoding="utf-8")
             pptx_path.write_bytes(b"pptx")
             (project / "reports" / "quality-report.json").write_text('{"passed":true}', encoding="utf-8")
-            render_path.write_text('{"status":"passed","dpi":144}', encoding="utf-8")
+            render_page.write_bytes(b"png")
+            render_path.write_text(
+                json.dumps({"status": "passed", "dpi": 144, "outputs": [str(render_page)]}),
+                encoding="utf-8",
+            )
             items = build_evidence_items(project, run_id="run", include_final=True)
             from scripts.evidence_manifest import create_manifest
             manifest = create_manifest(project_id=project.name, run_id="run", items=items)
@@ -371,6 +621,11 @@ class GhbPptCliTest(unittest.TestCase):
                     render_path,
                     '{"status":"passed","dpi":192}',
                     {"render-environment", "render-evidence", "adapter-review", "final-report"},
+                ),
+                (
+                    render_page,
+                    b"changed-png",
+                    {"render-evidence", "adapter-review", "final-report"},
                 ),
             ]
             for path, replacement, expected in cases:

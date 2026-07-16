@@ -6,8 +6,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
+import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -29,6 +32,13 @@ from scripts.remove_svg_background import (  # noqa: E402
     remove_project_backgrounds,
 )
 from scripts.render_ghb_pptx import render_pptx  # noqa: E402
+from scripts.review_visual_quality import (  # noqa: E402
+    AdapterConfig,
+    PageEvidence,
+    RemoteAuthorization,
+    ReviewContractError,
+    review_visual_quality,
+)
 from scripts.evidence_manifest import (  # noqa: E402
     EvidenceItem,
     FreshnessResult,
@@ -278,6 +288,25 @@ def _render_environment(project: Path) -> dict[str, Any]:
     }
 
 
+def _render_evidence(project: Path) -> dict[str, Any]:
+    render_dir = project / "render"
+    payload = _load_json_evidence(render_dir / "render-report.json")
+    outputs = []
+    if isinstance(payload, dict):
+        for value in payload.get("outputs", []):
+            if not isinstance(value, str):
+                continue
+            path = Path(value)
+            if not path.is_absolute():
+                path = render_dir / path
+            outputs.append({"name": path.name, "sha256": _file_digest(path)})
+    return {
+        "schema": "ghb.render-evidence.v1",
+        "report": payload,
+        "outputs": outputs,
+    }
+
+
 def build_evidence_items(
     project: Path,
     *,
@@ -351,7 +380,7 @@ def build_evidence_items(
                 EvidenceItem(
                     "render-evidence",
                     "json",
-                    _load_json_evidence(render_path),
+                    _render_evidence(project),
                     render_path if render_path.is_file() else None,
                 ),
             ]
@@ -359,14 +388,28 @@ def build_evidence_items(
     if include_final:
         render_payload = _load_json_evidence(render_path)
         render_status = render_payload.get("status") if isinstance(render_payload, dict) else None
-        review_outcome = "skipped" if render_status == "passed" else "unavailable"
+        policy_path = project / ".ghb" / "adapter-policy.json"
+        review_path = project / "reports" / "visual-review.json"
+        policy_payload = _load_json_evidence(policy_path)
+        review_payload = _load_json_evidence(review_path)
+        review_outcome = (
+            str(review_payload.get("outcome"))
+            if isinstance(review_payload, dict) and review_payload.get("outcome")
+            else ("skipped" if render_status == "passed" else "unavailable")
+        )
         items.extend(
             [
-                EvidenceItem("adapter-policy", "optional-review-policy", {"status": "absent"}),
+                EvidenceItem(
+                    "adapter-policy",
+                    "optional-review-policy",
+                    policy_payload,
+                    policy_path if policy_path.is_file() else None,
+                ),
                 EvidenceItem(
                     "adapter-review",
                     "optional-review",
-                    {"outcome": review_outcome, "implementation": "absent"},
+                    review_payload,
+                    review_path if review_path.is_file() else None,
                 ),
                 EvidenceItem(
                     "final-report",
@@ -422,6 +465,64 @@ def _report_input_freshness(result: FreshnessResult) -> FreshnessResult:
             issue for issue in result.issues if issue.get("identity") != "final-report"
         ),
     )
+
+
+def _review_input_freshness(result: FreshnessResult) -> FreshnessResult:
+    required = {
+        "visual-profile", "layout-plan", "rule-contract", "svg-bundle", "pptx",
+        "render-environment", "render-evidence", "deterministic-report",
+    }
+    return FreshnessResult(
+        states={identity: state for identity, state in result.states.items() if identity in required},
+        issues=tuple(issue for issue in result.issues if issue.get("identity") in required),
+    )
+
+
+def _with_fresh_review(result: FreshnessResult | None = None) -> FreshnessResult:
+    return FreshnessResult(
+        states={
+            **(result.states if result is not None else {}),
+            "adapter-policy": "fresh",
+            "adapter-review": "fresh",
+        },
+        issues=result.issues if result is not None else (),
+    )
+
+
+def _manifest_review_freshness(project: Path, pptx_path: Path) -> FreshnessResult:
+    """Validate persisted review evidence against the manifest that produced it."""
+
+    manifest_path = project / ".ghb" / "evidence-manifest.json"
+    if not manifest_path.is_file():
+        issue = {
+            "identity": "adapter-review",
+            "code": "missing-evidence-manifest",
+        }
+        return FreshnessResult(
+            states={"adapter-policy": "stale", "adapter-review": "stale"},
+            issues=(issue,),
+        )
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        run_id = str(manifest.get("run_id", ""))
+        return _report_input_freshness(
+            evidence_freshness(
+                project,
+                manifest,
+                run_id=run_id,
+                include_final=True,
+                pptx_path=pptx_path,
+            )
+        )
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        issue = {
+            "identity": "adapter-review",
+            "code": "invalid-evidence-manifest",
+        }
+        return FreshnessResult(
+            states={"adapter-policy": "stale", "adapter-review": "stale"},
+            issues=(issue,),
+        )
 
 
 def _checkpoint_pptx(project: Path) -> Path | None:
@@ -632,6 +733,8 @@ def validate_deck(
     markdown_output: Path,
     render_dir: Path | None = None,
     freshness: FreshnessResult | None = None,
+    review_report_path: Path | None = None,
+    review_required: bool = False,
 ) -> tuple[Path, Path]:
     if not pptx.is_file() and not run.dry_run:
         raise PipelineError(f"final PPTX not found: {pptx}")
@@ -664,6 +767,10 @@ def validate_deck(
     command.append("--expect-ending" if expect_ending else "--no-ending")
     if render_dir is not None:
         command.extend(["--render-dir", str(render_dir)])
+    if review_report_path is not None:
+        command.extend(["--review-report", str(review_report_path)])
+    if review_required:
+        command.append("--review-required")
     if freshness is not None:
         freshness_path = run.run_dir / "freshness.json"
         freshness_payload = {
@@ -766,6 +873,338 @@ def record_review_state(run: RunContext, *, render_available: bool) -> str:
         )
         run._write_record()
     return outcome
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _operator_local_file(path: Path, project: Path, *, label: str) -> Path:
+    candidate = path.expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    lexical = Path(os.path.abspath(candidate))
+    try:
+        metadata = lexical.lstat()
+    except OSError as exc:
+        raise PipelineError(f"{label} is unavailable") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise PipelineError(f"{label} must be a regular non-symlink file")
+    project_root = project.resolve()
+    for checked in (lexical, lexical.resolve(strict=True)):
+        try:
+            checked.relative_to(project_root)
+        except ValueError:
+            continue
+        raise PipelineError(f"{label} must be operator-local and outside the project")
+    return lexical.resolve(strict=True)
+
+
+def load_review_config(path: Path, project: Path) -> tuple[AdapterConfig, dict[str, Any]]:
+    """Load one explicit operator-local registration without accepting secret values."""
+
+    resolved = _operator_local_file(path, project, label="review config")
+    payload = _load_json_evidence(resolved)
+    allowed = {
+        "schema", "executable", "capability", "model_id", "tool_contract",
+        "trusted_direct", "launcher", "launcher_supplies_os_sandbox",
+        "credential_env_names", "deadline_seconds",
+    }
+    if not isinstance(payload, dict) or set(payload) - allowed:
+        raise PipelineError("invalid review operator config fields")
+    if payload.get("schema") != "ghb.visual-review-operator-config.v1":
+        raise PipelineError("unsupported review operator config schema")
+    credentials = payload.get("credential_env_names", [])
+    launcher = payload.get("launcher", [])
+    if not isinstance(credentials, list) or any(not isinstance(item, str) for item in credentials):
+        raise PipelineError("credential_env_names must contain variable names only")
+    if not isinstance(launcher, list) or any(not isinstance(item, str) for item in launcher):
+        raise PipelineError("launcher must be a string list")
+    if any(not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", item) for item in credentials):
+        raise PipelineError("credential_env_names must contain trusted variable names only")
+    if any(
+        re.search(r"(?:token|secret|password|credential|api[-_]?key)", item, re.I)
+        for item in launcher[1:]
+    ):
+        raise PipelineError("launcher arguments contain prohibited sensitive material")
+    trusted_direct = payload.get("trusted_direct", True)
+    launcher_supplies_os_sandbox = payload.get("launcher_supplies_os_sandbox", False)
+    if not isinstance(trusted_direct, bool) or not isinstance(
+        launcher_supplies_os_sandbox, bool
+    ):
+        raise PipelineError("review trust and sandbox flags must be JSON booleans")
+    deadline_seconds = payload.get("deadline_seconds", 30.0)
+    if (
+        isinstance(deadline_seconds, bool)
+        or not isinstance(deadline_seconds, (int, float))
+        or not math.isfinite(float(deadline_seconds))
+        or not 0.05 <= float(deadline_seconds) <= 300
+    ):
+        raise PipelineError("review deadline_seconds must be a finite number from 0.05 to 300")
+    required = ("executable", "capability", "model_id", "tool_contract")
+    if any(not isinstance(payload.get(key), str) or not payload[key] for key in required):
+        raise PipelineError("review operator config is missing required registration fields")
+    config = AdapterConfig(
+        executable=Path(payload["executable"]),
+        capability=payload["capability"],
+        model_id=payload["model_id"],
+        tool_contract=payload["tool_contract"],
+        trusted_direct=trusted_direct,
+        launcher=tuple(launcher),
+        launcher_supplies_os_sandbox=launcher_supplies_os_sandbox,
+        credential_env_names=tuple(credentials),
+        deadline_seconds=float(deadline_seconds),
+    )
+    executable = Path(payload["executable"]).expanduser().resolve()
+    policy = {
+        "schema": "ghb.visual-review-adapter-policy.v1",
+        "status": "configured",
+        "capability": config.capability,
+        "model_id": config.model_id,
+        "tool_contract": config.tool_contract,
+        "trusted_direct": config.trusted_direct,
+        "executable_sha256": _file_digest(executable),
+        "launcher": Path(launcher[0]).name if launcher else None,
+        "launcher_args_sha256": (
+            hashlib.sha256(
+                json.dumps(launcher[1:], ensure_ascii=False, separators=(",", ":")).encode(
+                    "utf-8"
+                )
+            ).hexdigest()
+            if launcher
+            else None
+        ),
+        "credentials": [
+            {"name": name, "present": name in os.environ}
+            for name in config.credential_env_names
+        ],
+    }
+    return config, policy
+
+
+def _load_review_authorization(path: Path | None, project: Path) -> RemoteAuthorization | None:
+    if path is None:
+        return None
+    resolved = _operator_local_file(path, project, label="review authorization")
+    payload = _load_json_evidence(resolved)
+    allowed = {"schema", "provider", "destination", "retention", "slide_ids"}
+    if not isinstance(payload, dict) or set(payload) != allowed:
+        raise PipelineError("invalid remote review authorization")
+    if payload.get("schema") != "ghb.visual-review-disclosure.v1":
+        raise PipelineError("unsupported remote review authorization schema")
+    slide_ids = payload.get("slide_ids")
+    if not isinstance(slide_ids, list) or any(not isinstance(item, str) for item in slide_ids):
+        raise PipelineError("remote review authorization requires exact slide membership")
+    for field_name in ("provider", "destination", "retention"):
+        value = payload.get(field_name)
+        if not isinstance(value, str) or not value or len(value) > 512:
+            raise PipelineError(
+                "remote review authorization fields must be bounded non-empty strings"
+            )
+    return RemoteAuthorization(
+        payload["provider"], payload["destination"], payload["retention"], tuple(slide_ids),
+    )
+
+
+def _inactive_review_report(outcome: str, *, deterministic_status: str) -> dict[str, Any]:
+    return {
+        "schema": "ghb.visual-review-report.v1",
+        "outcome": outcome,
+        "deterministic_status": deterministic_status,
+        "completion_status": "skipped" if outcome == "skipped" else "failed",
+        "freshness": "unavailable" if outcome == "unavailable" else "fresh",
+        "findings": [],
+        "dimension_reviewability": [],
+        "limitations": [] if outcome == "skipped" else ["fresh-render-evidence-unavailable"],
+        "provenance": {"adapter": "absent"},
+    }
+
+
+def write_inactive_review_state(
+    project: Path, *, outcome: str, deterministic_status: str, required: bool = False
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    report = _inactive_review_report(outcome, deterministic_status=deterministic_status)
+    policy = {
+        "schema": "ghb.visual-review-adapter-policy.v1",
+        "status": "absent",
+        "required": required,
+    }
+    _write_json_atomic(project / "reports" / "visual-review.json", report)
+    _write_json_atomic(project / ".ghb" / "adapter-policy.json", policy)
+    return report, policy
+
+
+def _review_failure(code: str, *, deterministic_status: str) -> dict[str, Any]:
+    return {
+        "schema": "ghb.visual-review-report.v1",
+        "outcome": "error",
+        "deterministic_status": deterministic_status,
+        "completion_status": "failed",
+        "freshness": "fresh",
+        "findings": [],
+        "dimension_reviewability": [],
+        "limitations": [code],
+        "provenance": {},
+        "error": {"code": code, "message": "optional review did not complete"},
+    }
+
+
+def _record_optional_review_result(run: RunContext, report: dict[str, Any]) -> None:
+    run.record.stages.append({"stage": "optional-review", "status": report["outcome"]})
+    run.output(run.project / "reports" / "visual-review.json")
+
+
+def run_optional_review(
+    run: RunContext,
+    *,
+    pptx: Path,
+    render_dir: Path,
+    deterministic_report: Path,
+    config_path: Path | None,
+    authorization_path: Path | None,
+    required: bool = False,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Run U4 only after verifying the current render envelope and deterministic report."""
+
+    if run.dry_run:
+        run.plan("optional-review", "verify fresh render, invoke configured adapter, persist advisory projection")
+        return (
+            _inactive_review_report("skipped", deterministic_status="passed"),
+            {"schema": "ghb.visual-review-adapter-policy.v1", "status": "dry-run"},
+        )
+    output = run.project / "reports" / "visual-review.json"
+    policy_path = run.project / ".ghb" / "adapter-policy.json"
+    render_payload = _load_json_evidence(render_dir / "render-report.json")
+    deterministic_payload = _load_json_evidence(deterministic_report)
+    deterministic_status = str(
+        deterministic_payload.get("quality", {})
+        .get("deterministic_outcome", {})
+        .get("status", "failed")
+    ) if isinstance(deterministic_payload, dict) else "failed"
+    expected_pptx_digest = _file_digest(pptx)
+    if (
+        not isinstance(render_payload, dict)
+        or render_payload.get("schema") != "ghb.render-report.v1"
+        or render_payload.get("status") != "passed"
+        or render_payload.get("pptx_sha256") != expected_pptx_digest
+        or not deterministic_report.is_file()
+    ):
+        report, policy = write_inactive_review_state(
+            run.project, outcome="unavailable", deterministic_status=deterministic_status,
+            required=required,
+        )
+        _record_optional_review_result(run, report)
+        return report, policy
+    page_paths = []
+    for value in render_payload.get("outputs", []):
+        if not isinstance(value, str):
+            continue
+        candidate = Path(value)
+        if not candidate.is_absolute():
+            candidate = render_dir / candidate
+        if candidate.name.startswith("slide-") and candidate.suffix.lower() == ".png":
+            page_paths.append(candidate.resolve())
+    if not page_paths or len(page_paths) != int(render_payload.get("page_count", 0)):
+        report, policy = write_inactive_review_state(
+            run.project, outcome="unavailable", deterministic_status=deterministic_status,
+            required=required,
+        )
+        _record_optional_review_result(run, report)
+        return report, policy
+    pages = []
+    for index, page in enumerate(page_paths, 1):
+        try:
+            from PIL import Image
+
+            with Image.open(page) as image:
+                width, height = image.size
+        except (OSError, ValueError):
+            report, policy = write_inactive_review_state(
+                run.project, outcome="unavailable", deterministic_status=deterministic_status,
+                required=required,
+            )
+            _record_optional_review_result(run, report)
+            return report, policy
+        pages.append(
+            PageEvidence(
+                slide_id=f"slide-{index:02d}",
+                role="cover" if index == 1 else "body",
+                image_path=page,
+                width=width,
+                height=height,
+                run_id=run.run_dir.name,
+                sha256=_file_digest(page) or "",
+            )
+        )
+    try:
+        if config_path is None:
+            config = None
+            policy = {"schema": "ghb.visual-review-adapter-policy.v1", "status": "absent"}
+        else:
+            config, policy = load_review_config(config_path, run.project)
+        authorization = _load_review_authorization(authorization_path, run.project)
+    except (PipelineError, ReviewContractError):
+        policy = {
+            "schema": "ghb.visual-review-adapter-policy.v1",
+            "status": "invalid",
+            "required": required,
+        }
+        report = _review_failure(
+            "adapter-security-or-contract", deterministic_status=deterministic_status
+        )
+        _write_json_atomic(output, report)
+        _write_json_atomic(policy_path, policy)
+        _record_optional_review_result(run, report)
+        return report, policy
+    policy["required"] = required
+    deterministic_findings = []
+    quality = deterministic_payload.get("quality", {}) if isinstance(deterministic_payload, dict) else {}
+    for finding in [*quality.get("blocking_findings", []), *quality.get("advisory_findings", [])]:
+        if not isinstance(finding, dict) or not finding.get("code"):
+            continue
+        slide = finding.get("slide_id") or finding.get("slide") or "slide-01"
+        if isinstance(slide, int):
+            slide = f"slide-{slide:02d}"
+        deterministic_findings.append({
+            "code": str(finding["code"]),
+            "severity": "error" if finding.get("severity") == "error" else "warning",
+            "slide_id": str(slide),
+            "evidence": finding.get("evidence", {}),
+            "expected": finding.get("expected", {}),
+            "suggested_action": str(finding.get("suggested_action") or finding.get("message") or "Review deterministic evidence."),
+        })
+    try:
+        report = review_visual_quality(
+            config=config,
+            pages=pages,
+            project_root=run.project,
+            run_id=run.run_dir.name,
+            deterministic_status=deterministic_status,
+            deterministic_findings=deterministic_findings,
+            target_font_available=render_payload.get("font", {}).get("status") == "available",
+            approved_slide_ids={page.slide_id for page in pages},
+            protected_paths=[pptx, deterministic_report, render_dir / "render-report.json"],
+            remote_authorization=authorization,
+            output_path=output,
+        )
+    except ReviewContractError:
+        report = _review_failure("adapter-security-or-contract", deterministic_status=deterministic_status)
+        _write_json_atomic(output, report)
+    _write_json_atomic(policy_path, policy)
+    _record_optional_review_result(run, report)
+    return report, policy
 
 
 def validation_error_codes(report_path: Path) -> set[str]:
@@ -940,6 +1379,14 @@ def parser() -> argparse.ArgumentParser:
     render.add_argument("--output-dir", type=Path)
     render.add_argument("--dpi", type=int, default=144)
 
+    review = sub.add_parser("review", help="Run one explicit optional visual review, then compose reports")
+    add_project(review)
+    review.add_argument("--pptx", type=Path)
+    review.add_argument("--review-config", type=Path)
+    review.add_argument("--review-authorization", type=Path)
+    review.add_argument("--require-review", action="store_true")
+    review.add_argument("--no-ending", action="store_true")
+
     build = sub.add_parser("build", help="Run cover, SVG gates/content export, and master merge")
     add_project(build)
     build.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
@@ -951,6 +1398,10 @@ def parser() -> argparse.ArgumentParser:
     build.add_argument("--content-layout", type=int, default=2)
     build.add_argument("--no-render", action="store_true")
     build.add_argument("--render-dpi", type=int, default=144)
+    build.add_argument("--review", action="store_true")
+    build.add_argument("--review-config", type=Path)
+    build.add_argument("--review-authorization", type=Path)
+    build.add_argument("--require-review", action="store_true")
     build.add_argument(
         "--repair-attempts",
         type=int,
@@ -1060,6 +1511,14 @@ def main(argv: list[str] | None = None) -> int:
                 report_dir = project / "reports"
                 freshness = None
                 render_dir = args.render_dir.resolve() if args.render_dir else None
+                if (
+                    args.command == "report"
+                    and render_dir is not None
+                    and render_dir != (project / "render").resolve()
+                ):
+                    raise PipelineError(
+                        "report render evidence must use the manifest-bound project/render directory"
+                    )
                 pptx_path = (
                     args.pptx.resolve()
                     if args.pptx
@@ -1107,6 +1566,9 @@ def main(argv: list[str] | None = None) -> int:
                     if args.markdown_output
                     else report_dir / "quality-report.md"
                 )
+                review_path = project / "reports" / "visual-review.json"
+                if args.command == "validate" and review_path.is_file():
+                    freshness = _manifest_review_freshness(project, pptx_path)
                 validate_deck(
                     run,
                     pptx=pptx_path,
@@ -1116,6 +1578,16 @@ def main(argv: list[str] | None = None) -> int:
                     markdown_output=markdown_output,
                     render_dir=render_dir,
                     freshness=freshness,
+                    review_report_path=(
+                        review_path
+                        if review_path.is_file()
+                        else None
+                    ),
+                    review_required=bool(
+                        _load_json_evidence(
+                            project / ".ghb" / "adapter-policy.json"
+                        ).get("required", False)
+                    ),
                 )
                 if args.command == "report":
                     run.checkpoint(
@@ -1132,7 +1604,70 @@ def main(argv: list[str] | None = None) -> int:
                     output_dir=(args.output_dir.resolve() if args.output_dir else project / "render"),
                     dpi=args.dpi,
                 )
+            elif args.command == "review":
+                pptx_path = _project_output(project, args.pptx, "final.pptx")
+                render_dir = project / "render"
+                manifest_path = project / ".ghb" / "evidence-manifest.json"
+                if not manifest_path.is_file() and not run.dry_run:
+                    raise PipelineError("review requires a completed evidence manifest")
+                freshness = None
+                if not run.dry_run:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    freshness = _review_input_freshness(
+                        evidence_freshness(
+                            project,
+                            manifest,
+                            run_id=str(manifest.get("run_id", "")),
+                            include_final=True,
+                            pptx_path=pptx_path,
+                        )
+                    )
+                    if not freshness.fresh:
+                        raise PipelineError("review requires fresh deterministic and render evidence")
+                review_report, _policy = run_optional_review(
+                    run,
+                    pptx=pptx_path,
+                    render_dir=render_dir,
+                    deterministic_report=project / "reports" / "quality-pre-render.json",
+                    config_path=args.review_config if args.review_config else None,
+                    authorization_path=(
+                        args.review_authorization if args.review_authorization else None
+                    ),
+                    required=args.require_review,
+                )
+                freshness = _with_fresh_review(freshness)
+                review_path = project / "reports" / "visual-review.json"
+                validate_deck(
+                    run,
+                    pptx=pptx_path,
+                    body_count=None,
+                    expect_ending=not args.no_ending,
+                    json_output=project / "reports" / "quality-report.json",
+                    markdown_output=project / "reports" / "quality-report.md",
+                    render_dir=render_dir,
+                    freshness=freshness,
+                    review_report_path=review_path if review_path.is_file() else None,
+                    review_required=args.require_review,
+                )
+                if args.require_review and review_report.get("outcome") not in {
+                    "passed", "needs-revision", "limited"
+                }:
+                    raise PipelineError("required optional review did not complete")
+                run.checkpoint(
+                    "report",
+                    [
+                        pptx_path,
+                        project / "reports" / "quality-report.json",
+                        project / "reports" / "quality-report.md",
+                        review_path,
+                    ],
+                    pptx_path=pptx_path,
+                    final_report_path=project / "reports" / "quality-report.json",
+                    final_markdown_path=project / "reports" / "quality-report.md",
+                )
             elif args.command == "build":
+                if (args.review_config or args.review_authorization or args.require_review) and not args.review:
+                    raise PipelineError("review options require explicit --review")
                 if args.repair_attempts < 0 or args.repair_attempts > 3:
                     raise PipelineError("--repair-attempts must be between 0 and 3")
                 cover_path = _project_output(project, None, "cover.pptx")
@@ -1224,7 +1759,45 @@ def main(argv: list[str] | None = None) -> int:
                             output_dir=project / "render",
                             dpi=args.render_dpi,
                         )
-                record_review_state(run, render_available=render_dir is not None)
+                deterministic_status = "passed"
+                review_freshness = None
+                if args.review and render_dir is not None:
+                    review_report, _policy = run_optional_review(
+                        run,
+                        pptx=final_path,
+                        render_dir=project / "render",
+                        deterministic_report=pre_json,
+                        config_path=args.review_config if args.review_config else None,
+                        authorization_path=(
+                            args.review_authorization
+                            if args.review_authorization else None
+                        ),
+                        required=args.require_review,
+                    )
+                    review_freshness = _with_fresh_review()
+                elif args.review:
+                    review_report, _policy = write_inactive_review_state(
+                        project,
+                        outcome="unavailable",
+                        deterministic_status=deterministic_status,
+                        required=args.require_review,
+                    )
+                    _record_optional_review_result(run, review_report)
+                    review_freshness = _with_fresh_review()
+                elif run.dry_run:
+                    review_report = _inactive_review_report(
+                        "skipped" if render_dir is not None else "unavailable",
+                        deterministic_status=deterministic_status,
+                    )
+                else:
+                    review_report, _policy = write_inactive_review_state(
+                        project,
+                        outcome="skipped" if render_dir is not None else "unavailable",
+                        deterministic_status=deterministic_status,
+                        required=False,
+                    )
+                    record_review_state(run, render_available=render_dir is not None)
+                review_path = project / "reports" / "visual-review.json"
                 validate_deck(
                     run,
                     pptx=final_path,
@@ -1233,7 +1806,14 @@ def main(argv: list[str] | None = None) -> int:
                     json_output=report_dir / "quality-report.json",
                     markdown_output=report_dir / "quality-report.md",
                     render_dir=render_dir,
+                    freshness=review_freshness,
+                    review_report_path=review_path if review_path.is_file() else None,
+                    review_required=args.require_review,
                 )
+                if args.require_review and review_report.get("outcome") not in {
+                    "passed", "needs-revision", "limited"
+                }:
+                    raise PipelineError("required optional review did not complete")
                 run.checkpoint(
                     "build",
                     [

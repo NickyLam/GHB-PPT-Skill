@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -29,6 +30,7 @@ from scripts.merge_template_master import (  # noqa: E402
     resolve_target,
     slide_layout_part,
 )
+from scripts.review_visual_quality import is_passive_review_text  # noqa: E402
 
 
 CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
@@ -451,6 +453,8 @@ def validate_pptx(
     svg_report_paths: list[Path] | None = None,
     readback_markdown_path: Path | None = None,
     freshness: dict[str, Any] | None = None,
+    review_report_path: Path | None = None,
+    review_required: bool = False,
 ) -> ValidationReport:
     issues: list[Issue] = []
     if not path.is_file():
@@ -706,6 +710,278 @@ def validate_pptx(
             known_limitations.append(message)
             _issue(issues, "warning", "missing-render-report", message)
 
+    review_requirement_satisfied = not review_required
+    review_freshness = "unavailable"
+    if review_report_path is not None:
+        try:
+            review_payload = json.loads(review_report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            review_payload = None
+        allowed_report = {
+            "schema", "outcome", "deterministic_status", "completion_status",
+            "freshness", "findings", "dimension_reviewability", "limitations",
+            "provenance", "error", "request_digest", "reviewer_metadata",
+        }
+        active = re.compile(
+            r"(?:[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]|<[^>]+>|\[[^\]]+\]\([^)]+\)|(?:https?|file)://)",
+            re.IGNORECASE,
+        )
+        success_outcomes = {"passed", "needs-revision", "limited"}
+        review_outcome_value = (
+            review_payload.get("outcome") if isinstance(review_payload, dict) else None
+        )
+        valid = (
+            isinstance(review_payload, dict)
+            and set(review_payload).issubset(allowed_report)
+            and {
+                "schema", "outcome", "freshness", "findings",
+                "dimension_reviewability", "limitations", "provenance",
+            }.issubset(review_payload)
+            and review_payload.get("schema") == "ghb.visual-review-report.v1"
+            and review_payload.get("outcome")
+            in {"passed", "needs-revision", "limited", "unavailable", "skipped", "error"}
+            and isinstance(review_payload.get("findings"), list)
+            and len(review_payload.get("findings", [])) <= 100
+            and isinstance(review_payload.get("dimension_reviewability"), list)
+            and len(review_payload.get("dimension_reviewability", [])) <= 6
+            and isinstance(review_payload.get("limitations"), list)
+            and len(review_payload.get("limitations", [])) <= 32
+            and isinstance(review_payload.get("provenance"), dict)
+        )
+        if valid and review_outcome_value in success_outcomes:
+            valid = (
+                set(review_payload)
+                == {
+                    "schema", "outcome", "deterministic_status", "completion_status",
+                    "freshness", "findings", "dimension_reviewability", "limitations",
+                    "provenance", "request_digest", "reviewer_metadata",
+                }
+                and review_payload.get("freshness") == "fresh"
+                and review_payload.get("deterministic_status") in {"passed", "failed"}
+                and review_payload.get("deterministic_status")
+                == (
+                    "failed"
+                    if any(issue.severity == "error" for issue in issues)
+                    else "passed"
+                )
+                and review_payload.get("completion_status")
+                == (
+                    "failed"
+                    if review_payload.get("deterministic_status") == "failed"
+                    else "completed"
+                )
+                and isinstance(review_payload.get("request_digest"), str)
+                and bool(re.fullmatch(r"[0-9a-f]{64}", review_payload["request_digest"]))
+                and isinstance(review_payload.get("reviewer_metadata"), dict)
+                and set(review_payload["reviewer_metadata"]) == {"adapter_version"}
+                and isinstance(
+                    review_payload["reviewer_metadata"].get("adapter_version"), str
+                )
+                and is_passive_review_text(
+                    review_payload["reviewer_metadata"]["adapter_version"], maximum=256
+                )
+                and render_status == "passed"
+                and package_info.get("rendered_pages") == len(slides)
+                and isinstance(freshness, dict)
+                and freshness.get("states", {}).get("adapter-review") == "fresh"
+            )
+        safe_findings: list[dict[str, Any]] = []
+        safe_provenance: dict[str, Any] = {}
+        if valid:
+            serialized_metadata = json.dumps(
+                {
+                    "provenance": review_payload.get("provenance"),
+                    "limitations": review_payload.get("limitations"),
+                    "dimensions": review_payload.get("dimension_reviewability", []),
+                },
+                ensure_ascii=False,
+            )
+            valid = len(serialized_metadata) <= 65536 and not active.search(serialized_metadata)
+        if valid:
+            provenance = review_payload["provenance"]
+            if provenance == {}:
+                safe_provenance = {}
+            elif provenance == {"adapter": "absent"}:
+                safe_provenance = {"adapter": "absent"}
+            else:
+                allowed_provenance = {
+                    "adapter_sha256", "launcher_sha256", "capability", "model_id",
+                    "tool_contract", "credentials", "disclosure",
+                    "direct_subprocess_isolation",
+                }
+                digest_pattern = re.compile(r"[0-9a-f]{64}")
+                credentials = provenance.get("credentials")
+                disclosure = provenance.get("disclosure")
+                valid = (
+                    set(provenance) == allowed_provenance
+                    and isinstance(provenance.get("adapter_sha256"), str)
+                    and bool(digest_pattern.fullmatch(provenance["adapter_sha256"]))
+                    and (
+                        provenance.get("launcher_sha256") is None
+                        or (
+                            isinstance(provenance.get("launcher_sha256"), str)
+                            and bool(digest_pattern.fullmatch(provenance["launcher_sha256"]))
+                        )
+                    )
+                    and provenance.get("capability") in {"local", "remote"}
+                    and isinstance(provenance.get("model_id"), str)
+                    and is_passive_review_text(provenance["model_id"], maximum=256)
+                    and isinstance(provenance.get("tool_contract"), str)
+                    and is_passive_review_text(provenance["tool_contract"], maximum=256)
+                    and provenance.get("direct_subprocess_isolation") == "trusted-same-user"
+                    and isinstance(credentials, list)
+                    and len(credentials) <= 32
+                    and all(
+                        isinstance(item, dict)
+                        and set(item) == {"name", "present"}
+                        and isinstance(item.get("name"), str)
+                        and bool(re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", item["name"]))
+                        and isinstance(item.get("present"), bool)
+                        for item in credentials
+                    )
+                )
+                if valid and disclosure is not None:
+                    valid = (
+                        isinstance(disclosure, dict)
+                        and set(disclosure)
+                        == {
+                            "provider", "destination", "retention", "slide_ids",
+                            "authorization_digest",
+                        }
+                        and all(
+                            isinstance(disclosure.get(key), str)
+                            and is_passive_review_text(disclosure[key], maximum=512)
+                            for key in ("provider", "destination", "retention")
+                        )
+                        and isinstance(disclosure.get("slide_ids"), list)
+                        and all(
+                            isinstance(item, str) for item in disclosure.get("slide_ids", [])
+                        )
+                        and isinstance(disclosure.get("authorization_digest"), str)
+                        and bool(
+                            digest_pattern.fullmatch(disclosure["authorization_digest"])
+                        )
+                    )
+                if valid:
+                    safe_provenance = provenance
+            if valid and review_outcome_value in success_outcomes:
+                valid = safe_provenance not in ({}, {"adapter": "absent"})
+        if valid:
+            valid = all(
+                isinstance(item, str)
+                and is_passive_review_text(item)
+                for item in review_payload["limitations"]
+            )
+        if valid:
+            allowed_dimensions = {
+                "hierarchy", "spacing", "typography", "cjk", "geometry", "composition"
+            }
+            for dimension in review_payload["dimension_reviewability"]:
+                if (
+                    not isinstance(dimension, dict)
+                    or set(dimension) != {"dimension", "status", "limitations"}
+                    or dimension.get("dimension") not in allowed_dimensions
+                    or dimension.get("status") not in {"reviewed", "limited", "unavailable"}
+                    or not isinstance(dimension.get("limitations"), list)
+                    or any(
+                        not isinstance(item, str) or not is_passive_review_text(item)
+                        for item in dimension.get("limitations", [])
+                    )
+                ):
+                    valid = False
+                    break
+            if valid and review_outcome_value in success_outcomes:
+                valid = {
+                    item["dimension"] for item in review_payload["dimension_reviewability"]
+                } == allowed_dimensions
+        if valid:
+            allowed_finding = {
+                "code", "slide_id", "dimension", "reviewability", "severity",
+                "location", "evidence", "action",
+            }
+            approved_review_slides = {
+                f"slide-{index:02d}" for index in range(1, len(slides) + 1)
+            }
+            for finding in review_payload["findings"]:
+                if (
+                    not isinstance(finding, dict)
+                    or set(finding) != allowed_finding
+                    or finding.get("severity") != "advisory"
+                    or not isinstance(finding.get("code"), str)
+                    or not re.fullmatch(r"[a-z][a-z0-9-]{2,80}", finding["code"])
+                    or not isinstance(finding.get("slide_id"), str)
+                    or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", finding["slide_id"])
+                    or finding["slide_id"] not in approved_review_slides
+                    or finding.get("dimension") not in allowed_dimensions
+                    or finding.get("reviewability") not in {"reviewed", "limited", "unavailable"}
+                    or not isinstance(finding.get("evidence"), str)
+                    or not is_passive_review_text(finding["evidence"])
+                    or not isinstance(finding.get("action"), str)
+                    or not is_passive_review_text(finding["action"])
+                ):
+                    valid = False
+                    break
+                location = finding.get("location")
+                if (
+                    not isinstance(location, dict)
+                    or set(location) != {"x", "y", "width", "height"}
+                    or any(
+                        isinstance(location[key], bool)
+                        or not isinstance(location[key], (int, float))
+                        or not math.isfinite(float(location[key]))
+                        or not 0 <= float(location[key]) <= 1
+                        for key in location
+                    )
+                    or float(location["x"]) + float(location["width"]) > 1.000001
+                    or float(location["y"]) + float(location["height"]) > 1.000001
+                ):
+                    valid = False
+                    break
+                safe_findings.append({
+                    "code": finding["code"],
+                    "severity": "warning",
+                    "slide_id": finding["slide_id"],
+                    "evidence": {
+                        "dimension": finding.get("dimension"),
+                        "reviewability": finding.get("reviewability"),
+                        "location": finding.get("location"),
+                        "observation": finding["evidence"],
+                    },
+                    "expected": {"source": "optional-visual-review"},
+                    "suggested_action": finding["action"],
+                    "source": "optional-visual-review",
+                })
+        if not valid:
+            review_outcome = "error"
+            review_freshness = "stale"
+            known_limitations.append("optional review report failed projection validation")
+            _issue(
+                issues,
+                "warning",
+                "invalid-visual-review-report",
+                "optional review report failed projection validation",
+            )
+        else:
+            review_outcome = str(review_payload["outcome"])
+            review_freshness = str(review_payload.get("freshness", "stale"))
+            review_requirement_satisfied = (
+                review_outcome in {"passed", "needs-revision", "limited"}
+                and review_freshness == "fresh"
+            )
+            visual_findings.extend(safe_findings)
+            for limitation in review_payload.get("limitations", []):
+                if isinstance(limitation, str):
+                    known_limitations.append(limitation)
+            render_provenance = {
+                **render_provenance,
+                "optional_review": safe_provenance,
+            }
+            package_info["optional_review"] = {
+                "outcome": review_outcome,
+                "freshness": review_freshness,
+                "finding_count": len(safe_findings),
+            }
+
     svg_quality: list[dict[str, Any]] = []
     for svg_report_path in svg_report_paths or []:
         try:
@@ -858,6 +1134,9 @@ def validate_pptx(
         "freshness": freshness_payload,
         "reviewability": {
             "review_outcome": review_outcome,
+            "review_freshness": review_freshness,
+            "required": review_required,
+            "requirement_satisfied": review_requirement_satisfied,
             "render_status": render_status,
             "limitations": list(known_limitations),
             "provenance": render_provenance,
@@ -916,6 +1195,9 @@ def markdown_report(report: ValidationReport) -> str:
         "## Reviewability and limitations",
         "",
         f"- Review outcome: `{reviewability.get('review_outcome', 'unavailable')}`",
+        f"- Review freshness: `{reviewability.get('review_freshness', 'unavailable')}`",
+        f"- Review required: `{str(reviewability.get('required', False)).lower()}`",
+        f"- Review requirement satisfied: `{str(reviewability.get('requirement_satisfied', True)).lower()}`",
         f"- Render status: `{reviewability.get('render_status', 'unavailable')}`",
         f"- Provenance: `{json.dumps(reviewability.get('provenance', {}), ensure_ascii=False, sort_keys=True)}`",
     ]
@@ -996,6 +1278,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--svg-report", type=Path, action="append", default=[])
     parser.add_argument("--readback-markdown", type=Path)
     parser.add_argument("--freshness-json", type=Path)
+    parser.add_argument("--review-report", type=Path)
+    parser.add_argument("--review-required", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--json-output", type=Path)
     parser.add_argument("--markdown-output", type=Path)
@@ -1027,8 +1311,15 @@ def main(argv: list[str] | None = None) -> int:
         svg_report_paths=args.svg_report,
         readback_markdown_path=args.readback_markdown,
         freshness=freshness,
+        review_report_path=args.review_report,
+        review_required=args.review_required,
     )
     payload = report_dict(report)
+    reviewability = report.quality.get("reviewability", {})
+    overall_passed = report.passed and (
+        not reviewability.get("required", False)
+        or reviewability.get("requirement_satisfied", False)
+    )
     if args.json_output:
         _write_text_atomic(
             args.json_output,
@@ -1039,13 +1330,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
-        print(f"[{'PASS' if report.passed else 'FAIL'}] {args.pptx}")
+        print(f"[{'PASS' if overall_passed else 'FAIL'}] {args.pptx}")
         print(f"  pages={report.page_count} body={report.body_count} ending={int(report.has_ending)}")
         print(f"  errors={len(report.errors)} warnings={len(report.warnings)}")
         for issue in report.issues:
             where = f" slide={issue.slide}" if issue.slide else ""
             print(f"  {issue.severity.upper()} {issue.code}{where}: {issue.message}")
-    return 0 if report.passed else 1
+    return 0 if overall_passed else 1
 
 
 if __name__ == "__main__":

@@ -412,6 +412,172 @@ class ValidateGhbPptxTest(unittest.TestCase):
             self.assertFalse(report.passed)
             self.assertIn("stale-evidence", {item.code for item in report.errors})
 
+    def test_optional_review_projection_preserves_deterministic_priority_and_markdown_parity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1, no_ending=True)
+            render_dir = directory / "render"
+            render_dir.mkdir()
+            rendered_pages = []
+            for index in (1, 2):
+                page = render_dir / f"slide-{index:02d}.png"
+                page.write_bytes(b"png")
+                rendered_pages.append(str(page.resolve()))
+            (render_dir / "render-report.json").write_text(json.dumps({
+                "schema": "ghb.render-report.v1", "status": "passed", "passed": True,
+                "pptx": str(output.resolve()),
+                "pptx_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+                "renderer": "soffice", "dpi": 144,
+                "font": {"status": "available", "warnings": []},
+                "page_count": 2, "outputs": rendered_pages,
+                "warnings": [], "errors": [],
+            }), encoding="utf-8")
+            review = directory / "visual-review.json"
+            review.write_text(json.dumps({
+                "schema": "ghb.visual-review-report.v1",
+                "outcome": "needs-revision",
+                "deterministic_status": "passed",
+                "completion_status": "completed",
+                "freshness": "fresh",
+                "findings": [{
+                    "code": "review-weak-hierarchy", "slide_id": "slide-01",
+                    "dimension": "hierarchy", "reviewability": "reviewed",
+                    "severity": "advisory",
+                    "location": {"x": 0.1, "y": 0.1, "width": 0.2, "height": 0.2},
+                    "evidence": "Weak focal contrast.", "action": "Increase contrast.",
+                }],
+                "dimension_reviewability": [
+                    {"dimension": dimension, "status": "reviewed", "limitations": []}
+                    for dimension in (
+                        "hierarchy", "spacing", "typography", "cjk", "geometry", "composition"
+                    )
+                ],
+                "limitations": [],
+                "provenance": {
+                    "adapter_sha256": "a" * 64, "launcher_sha256": None,
+                    "capability": "local", "model_id": "fixture-model",
+                    "tool_contract": "fixture-tool-v1", "credentials": [],
+                    "disclosure": None,
+                    "direct_subprocess_isolation": "trusted-same-user",
+                },
+                "request_digest": "b" * 64,
+                "reviewer_metadata": {"adapter_version": "fixture-1"},
+            }), encoding="utf-8")
+            report = validate_pptx(
+                output, expected_body_count=1, expect_ending=False,
+                render_dir=render_dir,
+                review_report_path=review, review_required=True,
+                freshness={
+                    "status": "fresh",
+                    "states": {"adapter-review": "fresh"},
+                    "issues": [],
+                },
+            )
+            quality = report_dict(report)["quality"]
+            self.assertEqual(quality["deterministic_outcome"]["status"], "passed")
+            self.assertEqual(quality["reviewability"]["review_outcome"], "needs-revision")
+            self.assertTrue(quality["reviewability"]["requirement_satisfied"])
+            self.assertEqual(quality["advisory_findings"][-1]["severity"], "warning")
+            markdown = markdown_report(report)
+            self.assertLess(markdown.index("## Blocking findings"), markdown.index("review-weak-hierarchy"))
+            self.assertIn("Review outcome: `needs-revision`", markdown)
+
+            unsafe = json.loads(review.read_text(encoding="utf-8"))
+            unsafe["findings"][0]["evidence"] = "../../secret"
+            unsafe["findings"][0]["action"] = "open /tmp/private"
+            review.write_text(json.dumps(unsafe), encoding="utf-8")
+            rejected = validate_pptx(
+                output, expected_body_count=1, expect_ending=False,
+                render_dir=render_dir, review_report_path=review, review_required=True,
+                freshness={
+                    "status": "fresh",
+                    "states": {"adapter-review": "fresh"},
+                    "issues": [],
+                },
+            )
+            rejected_text = json.dumps(report_dict(rejected)) + markdown_report(rejected)
+            self.assertFalse(rejected.quality["reviewability"]["requirement_satisfied"])
+            self.assertNotIn("../../secret", rejected_text)
+            self.assertNotIn("/tmp/private", rejected_text)
+
+    def test_required_review_error_does_not_reclassify_deterministic_outcome(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1, no_ending=True)
+            review = directory / "visual-review.json"
+            review.write_text(json.dumps({
+                "schema": "ghb.visual-review-report.v1", "outcome": "error",
+                "freshness": "fresh", "findings": [], "dimension_reviewability": [],
+                "limitations": ["adapter-timeout"], "provenance": {},
+                "error": {"code": "adapter-timeout", "message": "did not complete"},
+            }), encoding="utf-8")
+            report = validate_pptx(
+                output, expected_body_count=1, expect_ending=False,
+                review_report_path=review, review_required=True,
+            )
+            quality = report_dict(report)["quality"]
+            self.assertEqual(quality["deterministic_outcome"]["status"], "passed")
+            self.assertFalse(quality["reviewability"]["requirement_satisfied"])
+            self.assertEqual(
+                main([
+                    str(output),
+                    "--body-count", "1",
+                    "--no-ending",
+                    "--review-report", str(review),
+                    "--review-required",
+                ]),
+                1,
+            )
+
+    def test_malicious_optional_advisory_is_not_injected_or_promoted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1, no_ending=True)
+            review = directory / "visual-review.json"
+            review.write_text(json.dumps({
+                "schema": "ghb.visual-review-report.v1", "outcome": "passed",
+                "freshness": "fresh", "findings": [{
+                    "code": "review-malicious", "slide_id": "slide-01",
+                    "dimension": "hierarchy", "reviewability": "reviewed",
+                    "severity": "error", "location": {"x":0,"y":0,"width":1,"height":1},
+                    "evidence": "<script>alert(1)</script>", "action": "[run](file:///tmp/x)",
+                }], "dimension_reviewability": [], "limitations": [], "provenance": {},
+            }), encoding="utf-8")
+            report = validate_pptx(
+                output, expected_body_count=1, expect_ending=False,
+                review_report_path=review,
+            )
+            rendered = json.dumps(report_dict(report)) + markdown_report(report)
+            self.assertNotIn("<script>", rendered)
+            self.assertNotIn("file:///tmp/x", rendered)
+            self.assertEqual(report.quality["reviewability"]["review_outcome"], "error")
+
+    def test_optional_review_rejects_unknown_provenance_and_fabricated_slide(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1, no_ending=True)
+            review = directory / "visual-review.json"
+            secret = "credential-value-123"
+            review.write_text(json.dumps({
+                "schema": "ghb.visual-review-report.v1", "outcome": "passed",
+                "freshness": "fresh", "findings": [{
+                    "code": "review-fabricated-slide", "slide_id": "slide-99",
+                    "dimension": "hierarchy", "reviewability": "reviewed",
+                    "severity": "advisory",
+                    "location": {"x": 0, "y": 0, "width": 1, "height": 1},
+                    "evidence": "Fabricated evidence.", "action": "Ignore it.",
+                }], "dimension_reviewability": [], "limitations": [],
+                "provenance": {"api_token": secret},
+            }), encoding="utf-8")
+            report = validate_pptx(
+                output, expected_body_count=1, expect_ending=False,
+                review_report_path=review,
+            )
+            rendered = json.dumps(report_dict(report)) + markdown_report(report)
+            self.assertEqual(report.quality["reviewability"]["review_outcome"], "error")
+            self.assertNotIn(secret, rendered)
+            self.assertNotIn("slide-99", rendered)
+
     def test_readback_markdown_is_required_when_requested(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)

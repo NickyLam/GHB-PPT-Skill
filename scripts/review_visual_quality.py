@@ -149,6 +149,16 @@ def _validate_text(value: Any, *, label: str, maximum: int = MAX_STRING) -> str:
     return value
 
 
+def is_passive_review_text(value: Any, *, maximum: int = MAX_STRING) -> bool:
+    """Return whether untrusted review text is bounded and non-operative."""
+
+    try:
+        _validate_text(value, label="review text", maximum=maximum)
+    except ReviewContractError:
+        return False
+    return True
+
+
 def _bounded_json(value: Any, *, depth: int = 0, counter: list[int] | None = None) -> None:
     if counter is None:
         counter = [0]
@@ -825,6 +835,7 @@ __all__ = [
     "RemoteAuthorization",
     "ReviewContractError",
     "ReviewSecurityError",
+    "is_passive_review_text",
     "review_visual_quality",
     "validate_adapter_response",
 ]
