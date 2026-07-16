@@ -5,13 +5,20 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import math
+import shutil
 import statistics
+import subprocess
 import sys
+import tempfile
+import zipfile
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -20,6 +27,15 @@ from scripts.ppt_master.visual_asset_checker import Box, measure_visible_geometr
 
 REVIEW_SCHEMA = "ghb.visual-pilot-review.v1"
 DETERMINISTIC_SCHEMA = "ghb.visual-pilot-deterministic.v1"
+FINAL_REVIEW_SCHEMA = "ghb.visual-final-review.v1"
+FINAL_DETERMINISTIC_SCHEMA = "ghb.visual-benchmark-deterministic.v1"
+
+
+def _canonical_sha256(value: Any) -> str:
+    payload = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _union_area(boxes: list[Box]) -> float:
@@ -418,17 +434,20 @@ def _pending(reasons: list[str]) -> dict[str, Any]:
     }
 
 
-def evaluate_pilot_gate(
-    preferences: dict[str, Any], review: dict[str, Any], deterministic: dict[str, Any]
+def _aggregate_blind_preferences(
+    preferences: dict[str, Any],
+    review: dict[str, Any],
+    *,
+    review_schema: str,
+    candidate_role: str,
+    require_eligibility: bool = False,
+    error_scope: str = "blind",
 ) -> dict[str, Any]:
-    """Evaluate frozen U11 evidence; absent human judgments can never pass."""
-
+    """Validate one frozen blind protocol and aggregate page-first preferences."""
     if preferences.get("schema") != "ghb.visual-preferences.v1":
         raise ValueError("invalid-visual-preferences-schema")
-    if review.get("schema") != REVIEW_SCHEMA:
-        raise ValueError("invalid-pilot-review-schema")
-    if deterministic.get("schema") != DETERMINISTIC_SCHEMA:
-        raise ValueError("invalid-pilot-deterministic-schema")
+    if review.get("schema") != review_schema:
+        raise ValueError(f"invalid-{error_scope}-review-schema")
     assignments = review.get("pair_assignments")
     judgments = review.get("judgments")
     eligible_case_ids = review.get("eligible_case_ids")
@@ -437,10 +456,11 @@ def evaluate_pilot_gate(
         or not isinstance(judgments, list)
         or not isinstance(eligible_case_ids, list)
     ):
-        raise ValueError("invalid-pilot-review-record")
+        raise ValueError(f"invalid-{error_scope}-review-record")
     if not assignments or not judgments:
-        return _pending(["insufficient-blind-review-evidence", "deterministic-audit-not-yet-eligible"])
+        return {"pending_reasons": ["insufficient-blind-review-evidence"]}
 
+    baseline_role = "baseline"
     protocol = preferences.get("blind_review_protocol", {})
     assignment_by_case: dict[str, dict[str, Any]] = {}
     for assignment in assignments:
@@ -448,7 +468,7 @@ def evaluate_pilot_gate(
         roles = assignment.get("roles")
         if not isinstance(case_id, str) or case_id in assignment_by_case:
             raise ValueError("invalid-or-duplicate-pair-assignment")
-        if not isinstance(roles, dict) or set(roles.values()) != {"baseline", "pilot"}:
+        if not isinstance(roles, dict) or set(roles.values()) != {baseline_role, candidate_role}:
             raise ValueError("invalid-pair-role-assignment")
         masked_ids = {assignment.get("masked_left_id"), assignment.get("masked_right_id")}
         if None in masked_ids or len(masked_ids) != 2 or set(roles) != masked_ids:
@@ -461,7 +481,23 @@ def evaluate_pilot_gate(
         or len(eligible_case_ids) != len(set(eligible_case_ids))
         or set(eligible_case_ids) != set(assignment_by_case)
     ):
-        raise ValueError("incomplete-pilot-case-assignments")
+        raise ValueError(f"incomplete-{error_scope}-case-assignments")
+
+    eligible_reviewers: set[str] | None = None
+    if require_eligibility:
+        roster = review.get("reviewer_eligibility_roster")
+        if not isinstance(roster, list) or not roster:
+            raise ValueError("missing-reviewer-eligibility")
+        eligible_reviewers = set()
+        for attestation in roster:
+            reviewer = attestation.get("reviewer_id_hash") if isinstance(attestation, dict) else None
+            if not isinstance(reviewer, str) or not reviewer:
+                raise ValueError("invalid-reviewer-eligibility")
+            if reviewer in eligible_reviewers:
+                raise ValueError("duplicate-reviewer-eligibility")
+            if any(attestation.get(field) is not True for field in ("independent", "did_not_author", "did_not_tune")):
+                raise ValueError("invalid-reviewer-eligibility")
+            eligible_reviewers.add(reviewer)
 
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     seen: set[tuple[str, str]] = set()
@@ -475,6 +511,8 @@ def evaluate_pilot_gate(
         reviewer = judgment.get("reviewer_id_hash")
         if case_id not in assignment_by_case or not isinstance(reviewer, str) or not reviewer:
             raise ValueError("invalid-review-identity")
+        if eligible_reviewers is not None and reviewer not in eligible_reviewers:
+            raise ValueError("missing-reviewer-eligibility")
         key = (case_id, reviewer)
         if key in seen:
             raise ValueError("duplicate-reviewer-page-judgment")
@@ -516,15 +554,48 @@ def evaluate_pilot_gate(
         records = grouped.get(case_id, [])
         non_tie = [record for record in records if record["judgment"] not in {"tie", "abstain"}]
         if len(records) < minimum_reviewers or len(non_tie) < minimum_non_tie:
-            return _pending(["insufficient-blind-review-evidence"])
+            return {"pending_reasons": ["insufficient-blind-review-evidence"]}
         votes = defaultdict(int)
         for record in non_tie:
             votes[assignment["roles"][record["judgment"]]] += 1
-        if votes["pilot"] == votes["baseline"]:
-            return _pending(["page-preference-tie"])
-        winner = "pilot" if votes["pilot"] > votes["baseline"] else "baseline"
+        if votes[candidate_role] == votes[baseline_role]:
+            return {"pending_reasons": ["page-preference-tie"]}
+        winner = candidate_role if votes[candidate_role] > votes[baseline_role] else baseline_role
         page_results[case_id] = winner
         purpose_results[assignment["page_purpose"]].append(winner)
+    preference_rate = sum(result == candidate_role for result in page_results.values()) / len(page_results)
+    represented = {
+        purpose: "non-regressing" if baseline_role not in results else "regressed"
+        for purpose, results in purpose_results.items()
+    }
+    return {
+        "pending_reasons": [],
+        "preference_rate": preference_rate,
+        "represented_purpose_results": represented,
+        "page_results": page_results,
+        "structural_veto_count": veto_count,
+    }
+
+
+def evaluate_pilot_gate(
+    preferences: dict[str, Any], review: dict[str, Any], deterministic: dict[str, Any]
+) -> dict[str, Any]:
+    """Evaluate frozen U11 evidence; absent human judgments can never pass."""
+
+    if deterministic.get("schema") != DETERMINISTIC_SCHEMA:
+        raise ValueError("invalid-pilot-deterministic-schema")
+    aggregate = _aggregate_blind_preferences(
+        preferences,
+        review,
+        review_schema=REVIEW_SCHEMA,
+        candidate_role="pilot",
+        error_scope="pilot",
+    )
+    if aggregate["pending_reasons"]:
+        reasons = list(aggregate["pending_reasons"])
+        if not review.get("judgments"):
+            reasons.append("deterministic-audit-not-yet-eligible")
+        return _pending(reasons)
 
     gate = preferences.get("deterministic_pilot_false_positive_gate", {})
     expected_pairs = set(gate.get("advisory_rule_case_pairs", []))
@@ -542,11 +613,9 @@ def evaluate_pilot_gate(
         raise ValueError("invalid-blocking-false-positive-audit")
     advisory_false = sum(result["disposition"] == "false-positive" for result in results)
     advisory_rate = advisory_false / max(len(expected_pairs), 1)
-    preference_rate = sum(result == "pilot" for result in page_results.values()) / len(page_results)
-    represented = {
-        purpose: "non-regressing" if "baseline" not in results else "regressed"
-        for purpose, results in purpose_results.items()
-    }
+    preference_rate = aggregate["preference_rate"]
+    represented = aggregate["represented_purpose_results"]
+    veto_count = aggregate["structural_veto_count"]
     reasons: list[str] = []
     if preference_rate < 0.70:
         reasons.append("pilot-preference-below-70-percent")
@@ -564,10 +633,456 @@ def evaluate_pilot_gate(
         "proceed": not reasons,
         "preference_rate": round(preference_rate, 6),
         "represented_purpose_results": represented,
-        "page_results": page_results,
+        "page_results": aggregate["page_results"],
         "structural_veto_count": veto_count,
         "blocking_false_positive_count": len(blocking),
         "advisory_false_positive_rate": round(advisory_rate, 6),
+        "reasons": reasons,
+    }
+
+
+def _final_pending(reasons: list[str]) -> dict[str, Any]:
+    return {
+        "schema": "ghb.visual-final-gate.v1",
+        "decision": "pending",
+        "proceed": False,
+        "preference_rate": None,
+        "represented_purpose_results": {},
+        "page_results": {},
+        "structural_veto_count": 0,
+        "deterministic_fixtures_clean": False,
+        "reasons": reasons,
+    }
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _structural_evidence_complete(
+    evidence: Any,
+    *,
+    evidence_root: Path | None,
+    expected_slide_texts: list[list[str]],
+) -> bool:
+    required = {"pptx", "render", "target_fonts", "contact_sheet"}
+    if not isinstance(evidence, dict) or set(evidence) < required:
+        return False
+    if any(
+        not isinstance(evidence[key], dict)
+        or evidence[key].get("status") != "available"
+        for key in required
+    ):
+        return False
+    if evidence_root is None:
+        raise ValueError("structural-evidence-root-required")
+    root = evidence_root.resolve()
+    resolved_paths: dict[str, Path] = {}
+    for key in required:
+        record = evidence[key]
+        relative = record.get("artifact_path")
+        expected = record.get("artifact_sha256")
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or Path(relative).is_absolute()
+            or not isinstance(expected, str)
+            or len(expected) != 64
+        ):
+            raise ValueError("invalid-structural-evidence")
+        candidate = root / relative
+        if candidate.is_symlink():
+            raise ValueError("invalid-structural-evidence")
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError("invalid-structural-evidence") from exc
+        if not resolved.is_relative_to(root) or not resolved.is_file():
+            raise ValueError("invalid-structural-evidence")
+        resolved_paths[key] = resolved
+        if _file_sha256(resolved) != expected:
+            raise ValueError("structural-evidence-digest-mismatch")
+
+    pptx = resolved_paths["pptx"]
+    if not zipfile.is_zipfile(pptx):
+        raise ValueError("invalid-structural-pptx")
+    with zipfile.ZipFile(pptx) as archive:
+        if not {"[Content_Types].xml", "ppt/presentation.xml"}.issubset(
+            archive.namelist()
+        ):
+            raise ValueError("invalid-structural-pptx")
+    try:
+        from pptx import Presentation
+
+        presentation = Presentation(pptx)
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile) as exc:
+        raise ValueError("invalid-structural-pptx") from exc
+    if len(presentation.slides) != len(expected_slide_texts):
+        raise ValueError("invalid-structural-pptx")
+    for slide, required_texts in zip(
+        presentation.slides, expected_slide_texts, strict=True
+    ):
+        visible_chunks: list[str] = []
+        for shape in slide.shapes:
+            if not hasattr(shape, "text_frame") or not shape.has_text_frame:
+                continue
+            if (
+                shape.width <= 0
+                or shape.height <= 0
+                or shape.left + shape.width <= 0
+                or shape.top + shape.height <= 0
+                or shape.left >= presentation.slide_width
+                or shape.top >= presentation.slide_height
+            ):
+                continue
+            for paragraph in shape.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    if run.font.size is not None and run.font.size.pt < 10:
+                        continue
+                    visible_chunks.append(run.text)
+        normalized = "".join("".join(visible_chunks).split())
+        if any("".join(text.split()) not in normalized for text in required_texts):
+            raise ValueError("structural-pptx-content-mismatch")
+    try:
+        render_payload = json.loads(resolved_paths["render"].read_text(encoding="utf-8"))
+        font_payload = json.loads(
+            resolved_paths["target_fonts"].read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid-structural-render-evidence") from exc
+    if (
+        not isinstance(render_payload, dict)
+        or render_payload.get("schema") != "ghb.render-report.v1"
+        or render_payload.get("status") != "passed"
+        or render_payload.get("passed") is not True
+        or render_payload.get("pptx_sha256") != _file_sha256(pptx)
+    ):
+        raise ValueError("invalid-structural-render-evidence")
+    def reported_path(value: Any) -> Path:
+        candidate = Path(str(value))
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        if candidate.is_symlink():
+            raise ValueError("invalid-structural-render-evidence")
+        resolved = candidate.resolve(strict=True)
+        if not resolved.is_relative_to(root) or not resolved.is_file():
+            raise ValueError("invalid-structural-render-evidence")
+        return resolved
+
+    try:
+        reported_pptx = reported_path(render_payload.get("pptx"))
+        reported_contact = reported_path(render_payload.get("contact_sheet"))
+        reported_pdf = reported_path(render_payload.get("pdf"))
+        reported_pages = [reported_path(value) for value in render_payload.get("pages", [])]
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise ValueError("invalid-structural-render-evidence") from exc
+    if reported_pptx != pptx or reported_contact != resolved_paths["contact_sheet"]:
+        raise ValueError("structural-render-binding-mismatch")
+    if (
+        render_payload.get("page_count") != len(expected_slide_texts)
+        or len(reported_pages) != len(expected_slide_texts)
+        or len(set(reported_pages)) != len(reported_pages)
+    ):
+        raise ValueError("invalid-structural-render-evidence")
+    pdfinfo = shutil.which("pdfinfo")
+    if pdfinfo is None:
+        raise ValueError("pdf-page-validation-unavailable")
+    completed = subprocess.run(
+        [pdfinfo, str(reported_pdf)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    page_line = next(
+        (line for line in completed.stdout.splitlines() if line.startswith("Pages:")),
+        "",
+    )
+    if completed.returncode or page_line.split()[-1:] != [str(len(expected_slide_texts))]:
+        raise ValueError("invalid-structural-render-pdf")
+    outputs = {str(value) for value in render_payload.get("outputs", [])}
+    expected_outputs = {
+        str(render_payload.get("pdf")),
+        str(render_payload.get("contact_sheet")),
+        *(str(value) for value in render_payload.get("pages", [])),
+    }
+    if not expected_outputs.issubset(outputs):
+        raise ValueError("invalid-structural-render-evidence")
+    page_size: tuple[int, int] | None = None
+    page_digests: set[str] = set()
+    for page in reported_pages:
+        try:
+            with Image.open(page) as image:
+                if image.format != "PNG" or image.width < 640 or image.height < 360:
+                    raise ValueError("invalid-structural-render-page")
+                extrema = image.convert("RGB").getextrema()
+                if all(low == high for low, high in extrema):
+                    raise ValueError("invalid-structural-render-page")
+                page_size = page_size or (image.width, image.height)
+        except (OSError, ValueError) as exc:
+            raise ValueError("invalid-structural-render-page") from exc
+        page_digests.add(_file_sha256(page))
+    if len(page_digests) != len(reported_pages):
+        raise ValueError("duplicate-structural-render-pages")
+    if resolved_paths["target_fonts"] != resolved_paths["render"]:
+        raise ValueError("target-font-evidence-not-bound-to-render")
+    font = font_payload.get("font", font_payload) if isinstance(font_payload, dict) else {}
+    if not isinstance(font, dict) or font.get("status") != "available":
+        raise ValueError("target-font-evidence-not-available")
+    try:
+        with Image.open(resolved_paths["contact_sheet"]) as image:
+            if image.format != "PNG":
+                raise ValueError("invalid-structural-contact-sheet")
+            if page_size is None:
+                raise ValueError("invalid-structural-contact-sheet")
+            image.verify()
+    except (OSError, ValueError) as exc:
+        raise ValueError("invalid-structural-contact-sheet") from exc
+    from scripts.render_ghb_pptx import make_contact_sheet
+
+    with tempfile.TemporaryDirectory() as temporary:
+        rebuilt = make_contact_sheet(
+            reported_pages, Path(temporary) / "contact-sheet.png", columns=3
+        )
+        if _file_sha256(rebuilt) != _file_sha256(resolved_paths["contact_sheet"]):
+            raise ValueError("structural-contact-sheet-binding-mismatch")
+    return True
+
+
+def _validate_final_deterministic_contract(
+    contract_document: dict[str, Any], deterministic: dict[str, Any]
+) -> bool:
+    contract = contract_document.get("fixtures")
+    fixtures = deterministic.get("fixtures")
+    if (
+        contract_document.get("schema")
+        != "ghb.visual-final-deterministic-contract.v1"
+        or not isinstance(contract, dict)
+        or not contract
+        or not isinstance(fixtures, list)
+    ):
+        raise ValueError("final-deterministic-contract-mismatch")
+    if deterministic.get("contract_sha256") != _canonical_sha256(contract_document):
+        raise ValueError("final-deterministic-contract-mismatch")
+    rows: dict[str, dict[str, Any]] = {}
+    for row in fixtures:
+        fixture_id = row.get("fixture_id") if isinstance(row, dict) else None
+        if not isinstance(fixture_id, str) or fixture_id in rows:
+            raise ValueError("final-deterministic-contract-mismatch")
+        rows[fixture_id] = row
+    if set(rows) != set(contract):
+        raise ValueError("final-deterministic-contract-mismatch")
+    clean = True
+    for fixture_id, expected in contract.items():
+        row = rows[fixture_id]
+        if (
+            row.get("expected_issue_codes") != expected.get("expected_issue_codes")
+            or row.get("expected_metrics") != expected.get("expected_metrics")
+            or row.get("metric_tolerances") != expected.get("metric_tolerances")
+        ):
+            raise ValueError("final-deterministic-contract-mismatch")
+        observed_codes = row.get("observed_issue_codes")
+        metrics = row.get("metrics")
+        if not isinstance(observed_codes, list) or not isinstance(metrics, dict):
+            raise ValueError("final-deterministic-contract-mismatch")
+        expected_codes = set(expected["expected_issue_codes"])
+        observed_set = set(observed_codes)
+        missing = sorted(expected_codes - observed_set)
+        unexpected = sorted(observed_set - expected_codes)
+        regressions = []
+        for metric, expected_value in expected["expected_metrics"].items():
+            value = metrics.get(metric)
+            tolerance = expected["metric_tolerances"].get(metric)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or isinstance(tolerance, bool)
+                or not isinstance(tolerance, (int, float))
+                or not math.isfinite(float(value))
+                or not math.isfinite(float(tolerance))
+                or abs(float(value) - float(expected_value)) > float(tolerance)
+            ):
+                regressions.append(metric)
+        if (
+            row.get("missing_expected_issue_codes") != missing
+            or row.get("unexpected_issue_codes") != unexpected
+            or row.get("metric_regressions") != sorted(regressions)
+        ):
+            raise ValueError("final-deterministic-contract-mismatch")
+        clean = clean and not missing and not unexpected and not regressions
+    return clean
+
+
+def _validate_final_review_integrity(
+    review: dict[str, Any], corpus: dict[str, Any], *, evidence_root: Path | None
+) -> None:
+    cases = corpus.get("cases") if isinstance(corpus, dict) else None
+    if not isinstance(cases, list):
+        raise ValueError("invalid-final-corpus")
+    final_cases = {
+        case.get("case_id"): case.get("page_purpose")
+        for case in cases
+        if isinstance(case, dict) and case.get("partition") == "final-holdout"
+    }
+    if (
+        len(final_cases) < 12
+        or set(review.get("eligible_case_ids", [])) != set(final_cases)
+    ):
+        raise ValueError("final-holdout-case-mismatch")
+    randomization = review.get("randomization")
+    if (
+        not isinstance(randomization, dict)
+        or randomization.get("algorithm") != "hmac-sha256"
+        or not isinstance(randomization.get("seed"), str)
+    ):
+        raise ValueError("invalid-final-randomization")
+    try:
+        seed = bytes.fromhex(randomization["seed"])
+    except ValueError as exc:
+        raise ValueError("invalid-final-randomization") from exc
+    if len(seed) != 32:
+        raise ValueError("invalid-final-randomization")
+    if evidence_root is None:
+        raise ValueError("final-evidence-root-required")
+    root = evidence_root.resolve()
+    for assignment in review.get("pair_assignments", []):
+        if not isinstance(assignment, dict):
+            raise ValueError("final-role-assignment-mismatch")
+        case_id = assignment.get("page_case_id")
+        left = assignment.get("masked_left_id")
+        right = assignment.get("masked_right_id")
+        if (
+            case_id not in final_cases
+            or assignment.get("page_purpose") != final_cases[case_id]
+            or left != f"{case_id}::A"
+            or right != f"{case_id}::B"
+        ):
+            raise ValueError("final-role-assignment-mismatch")
+        optimized_left = hmac.new(seed, str(case_id).encode(), hashlib.sha256).digest()[0] & 1 == 0
+        expected_roles = {
+            left: "optimized" if optimized_left else "baseline",
+            right: "baseline" if optimized_left else "optimized",
+        }
+        if assignment.get("roles") != expected_roles:
+            raise ValueError("final-role-assignment-mismatch")
+        blind = assignment.get("blind_artifacts")
+        if not isinstance(blind, dict) or set(blind) != {left, right}:
+            raise ValueError("invalid-final-blind-evidence")
+        for masked in (left, right):
+            record = blind[masked]
+            relative = record.get("artifact_path") if isinstance(record, dict) else None
+            digest = record.get("sha256") if isinstance(record, dict) else None
+            if (
+                not isinstance(relative, str)
+                or not relative
+                or Path(relative).is_absolute()
+                or not isinstance(digest, str)
+                or len(digest) != 64
+            ):
+                raise ValueError("invalid-final-blind-evidence")
+            candidate = root / relative
+            if candidate.is_symlink():
+                raise ValueError("invalid-final-blind-evidence")
+            try:
+                resolved = candidate.resolve(strict=True)
+            except OSError as exc:
+                raise ValueError("invalid-final-blind-evidence") from exc
+            if not resolved.is_relative_to(root) or not resolved.is_file():
+                raise ValueError("invalid-final-blind-evidence")
+            if _file_sha256(resolved) != digest:
+                raise ValueError("final-blind-evidence-digest-mismatch")
+
+
+def _final_expected_slide_texts(
+    corpus: dict[str, Any], scenarios: dict[str, Any]
+) -> list[list[str]]:
+    expected: list[list[str]] = []
+    for case in corpus.get("cases", []):
+        if not isinstance(case, dict) or case.get("partition") != "final-holdout":
+            continue
+        source = case.get("source")
+        try:
+            slide = scenarios[source["scenario_id"]]["slides"][
+                source["body_slide_index"] - 1
+            ]
+            texts = [str(slide["key_message"]), *map(str, slide["items"])]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ValueError("invalid-final-scenario-corpus") from exc
+        expected.append(texts)
+    if len(expected) < 12:
+        raise ValueError("invalid-final-scenario-corpus")
+    return expected
+
+
+def evaluate_final_gate(
+    preferences: dict[str, Any],
+    review: dict[str, Any],
+    deterministic: dict[str, Any],
+    *,
+    corpus: dict[str, Any] | None = None,
+    scenarios: dict[str, Any] | None = None,
+    fixture_contract: dict[str, Any] | None = None,
+    evidence_root: Path | None = None,
+) -> dict[str, Any]:
+    """Evaluate real final-holdout judgments without duplicating pilot aggregation."""
+    if deterministic.get("schema") != FINAL_DETERMINISTIC_SCHEMA:
+        raise ValueError("invalid-final-deterministic-schema")
+    if corpus is None:
+        raise ValueError("final-corpus-required")
+    if scenarios is None:
+        raise ValueError("final-scenarios-required")
+    _validate_final_review_integrity(review, corpus, evidence_root=evidence_root)
+    if fixture_contract is None:
+        raise ValueError("final-deterministic-contract-required")
+    deterministic_clean = _validate_final_deterministic_contract(
+        fixture_contract, deterministic
+    )
+    aggregate = _aggregate_blind_preferences(
+        preferences,
+        review,
+        review_schema=FINAL_REVIEW_SCHEMA,
+        candidate_role="optimized",
+        require_eligibility=True,
+        error_scope="final",
+    )
+    evidence_complete = _structural_evidence_complete(
+        review.get("structural_evidence"),
+        evidence_root=evidence_root,
+        expected_slide_texts=_final_expected_slide_texts(corpus, scenarios),
+    )
+    pending_reasons = list(aggregate["pending_reasons"])
+    if not evidence_complete:
+        pending_reasons.append("structural-evidence-incomplete")
+    if pending_reasons:
+        result = _final_pending(sorted(set(pending_reasons)))
+        result["deterministic_fixtures_clean"] = deterministic_clean
+        return result
+
+    preference_rate = aggregate["preference_rate"]
+    represented = aggregate["represented_purpose_results"]
+    veto_count = aggregate["structural_veto_count"]
+    reasons: list[str] = []
+    if not deterministic_clean:
+        reasons.append("deterministic-fixture-regression")
+    if preference_rate < 0.70:
+        reasons.append("final-preference-below-70-percent")
+    if "regressed" in represented.values():
+        reasons.append("purpose-level-regression")
+    if veto_count:
+        reasons.append("structural-regression-veto")
+    return {
+        "schema": "ghb.visual-final-gate.v1",
+        "decision": "failed" if reasons else "passed",
+        "proceed": not reasons,
+        "preference_rate": round(preference_rate, 6),
+        "represented_purpose_results": represented,
+        "page_results": aggregate["page_results"],
+        "structural_veto_count": veto_count,
+        "deterministic_fixtures_clean": deterministic_clean,
         "reasons": reasons,
     }
 
@@ -582,14 +1097,34 @@ def main() -> int:
     gate.add_argument("--review", type=Path, required=True)
     gate.add_argument("--deterministic", type=Path, required=True)
     gate.add_argument("--output", type=Path)
+    final_gate = subparsers.add_parser("final-gate")
+    final_gate.add_argument("--preferences", type=Path, required=True)
+    final_gate.add_argument("--review", type=Path, required=True)
+    final_gate.add_argument("--deterministic", type=Path, required=True)
+    final_gate.add_argument("--corpus", type=Path, required=True)
+    final_gate.add_argument("--fixture-contract", type=Path, required=True)
+    final_gate.add_argument("--scenarios", type=Path, required=True)
+    final_gate.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.command == "measure":
         result = measure_svg(args.svg.read_text(encoding="utf-8"))
-    else:
+    elif args.command == "pilot-gate":
         result = evaluate_pilot_gate(
             json.loads(args.preferences.read_text(encoding="utf-8")),
             json.loads(args.review.read_text(encoding="utf-8")),
             json.loads(args.deterministic.read_text(encoding="utf-8")),
+        )
+    else:
+        result = evaluate_final_gate(
+            json.loads(args.preferences.read_text(encoding="utf-8")),
+            json.loads(args.review.read_text(encoding="utf-8")),
+            json.loads(args.deterministic.read_text(encoding="utf-8")),
+            corpus=json.loads(args.corpus.read_text(encoding="utf-8")),
+            scenarios=json.loads(args.scenarios.read_text(encoding="utf-8")),
+            fixture_contract=json.loads(
+                args.fixture_contract.read_text(encoding="utf-8")
+            ),
+            evidence_root=args.review.parent,
         )
     encoded = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
     if getattr(args, "output", None):

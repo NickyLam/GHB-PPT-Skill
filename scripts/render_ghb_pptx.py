@@ -14,6 +14,7 @@ import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -282,11 +283,10 @@ def render_pptx(
         if not pdftoppm:
             raise RenderError("pdftoppm is required for deterministic per-page PNG rendering")
         warning = _font_warning()
+        font = font_evidence(warning)
         if warning:
             report.warnings.append(warning)
-            report.font = {"status": "limited", "warnings": [warning]}
-        else:
-            report.font = {"status": "available", "warnings": []}
+        report.font = font
     except RenderError as exc:
         report.status = "unavailable"
         report.errors.append(str(exc))
@@ -318,6 +318,17 @@ def render_pptx(
     report.contact_sheet = str(final_contact.resolve())
     _write_report_atomic(output_dir, report)
     return report
+
+
+def font_evidence(warning: str | None) -> dict[str, Any]:
+    """Project the target-font probe into stable render evidence."""
+    if warning:
+        return {
+            "status": "limited",
+            "warnings": [warning],
+            "limitation_codes": ["target-font-missing"],
+        }
+    return {"status": "available", "warnings": [], "limitation_codes": []}
 
 
 def build_parser() -> argparse.ArgumentParser:

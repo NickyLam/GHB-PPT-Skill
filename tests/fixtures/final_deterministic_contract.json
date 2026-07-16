@@ -1,0 +1,13 @@
+{
+  "schema": "ghb.visual-final-deterministic-contract.v1",
+  "fixtures": {
+    "approved-balanced": {"expected_issue_codes": [], "expected_metrics": {"occupancy": 0.48, "emphasis-color-area": 0.0}, "metric_tolerances": {"occupancy": 1e-06, "emphasis-color-area": 1e-06}},
+    "fake-diversity": {"expected_issue_codes": ["visual-composition-repeated"], "expected_metrics": {"occupancy": 0.48, "emphasis-color-area": 0.0}, "metric_tolerances": {"occupancy": 1e-06, "emphasis-color-area": 1e-06}},
+    "empty-text": {"expected_issue_codes": ["empty-text-box"], "expected_metrics": {"empty_text_box_issue_count": 1.0}, "metric_tolerances": {"empty_text_box_issue_count": 0.0}},
+    "font-limited-rendering": {"expected_issue_codes": ["target-font-missing"], "expected_metrics": {"limited": 1.0}, "metric_tolerances": {"limited": 0.0}},
+    "long-title-overflow": {"expected_issue_codes": ["visual-explicit-bounds-violation"], "expected_metrics": {"occupancy": 0.556, "emphasis-color-area": 0.0}, "metric_tolerances": {"occupancy": 1e-06, "emphasis-color-area": 1e-06}},
+    "underscaled-content": {"expected_issue_codes": ["visual-occupancy-below-min"], "expected_metrics": {"occupancy": 0.0512, "emphasis-color-area": 0.0}, "metric_tolerances": {"occupancy": 1e-06, "emphasis-color-area": 1e-06}},
+    "primary-color-overuse": {"expected_issue_codes": ["visual-primary-color-overuse"], "expected_metrics": {"occupancy": 0.5376, "emphasis-color-area": 0.5376}, "metric_tolerances": {"occupancy": 1e-06, "emphasis-color-area": 1e-06}},
+    "repeated-focal-zones": {"expected_issue_codes": ["visual-composition-repeated", "visual-focal-zone-streak"], "expected_metrics": {"occupancy": 0.48, "emphasis-color-area": 0.24}, "metric_tolerances": {"occupancy": 1e-06, "emphasis-color-area": 1e-06}}
+  }
+}

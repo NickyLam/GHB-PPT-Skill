@@ -70,6 +70,7 @@ class RenderGhbPptxTest(unittest.TestCase):
             self.assertEqual(payload["renderer"], "soffice")
             self.assertEqual(payload["dpi"], 96)
             self.assertEqual(payload["font"]["status"], "limited")
+            self.assertEqual(payload["font"]["limitation_codes"], ["target-font-missing"])
             self.assertEqual(payload["outputs"], [])
 
     def test_invalid_input_is_error_not_renderer_unavailable(self):
