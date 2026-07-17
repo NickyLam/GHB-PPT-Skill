@@ -1017,6 +1017,11 @@ def _build_run_xml(
     strike_attr = ' strike="sngStrike"' if 'line-through' in text_dec else ''
 
     fonts = parse_font_family(ff) if ff else default_fonts
+    if any(is_cjk_char(char) for char in text):
+        # LibreOffice may ignore the DrawingML east-Asian typeface and render
+        # the whole run with a:latin. Use the selected CJK font for both slots
+        # whenever the run contains CJK; Source Han Sans SC also covers Latin.
+        fonts = {**fonts, 'latin': fonts['ea']}
 
     fill_xml = _build_text_fill_xml(fill, fill_raw, opacity, ctx)
     outline_xml = _build_text_outline_xml(run)

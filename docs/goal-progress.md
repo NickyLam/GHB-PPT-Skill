@@ -157,10 +157,9 @@ overwritten or attributed to this goal without verification.
 
 - Existing pre-goal layout-diversity work spans vendored code, docs, examples,
   and tests; it has been preserved and is now covered by regression tests.
-- LibreOffice is usable only with an isolated writable profile in this sandbox;
-  it lacks Microsoft YaHei, so Chinese glyph fidelity remains a manual-review
-  limitation even though English/numeric text, geometry, bounds, and structure
-  are rendered and inspected.
+- LibreOffice requires an isolated writable profile plus the host fontconfig
+  file and a writable font cache in this sandbox. Source Han Sans SC is now
+  loaded through that path; fresh A/B/C contact sheets show readable Chinese.
 - The generated binaries are intentionally ignored and reproducible; only the
   fixture generator, tests, and measured reports/docs belong in commits.
 - P1/P2 Git checkpoint is pending solely because managed `.git` write approval

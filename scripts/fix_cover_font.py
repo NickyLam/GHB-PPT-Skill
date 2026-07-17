@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Normalize filled GHB cover slide fonts to Microsoft YaHei atomically."""
+"""Normalize filled GHB cover slide fonts to the project CJK font atomically."""
 
 from __future__ import annotations
 
@@ -11,6 +11,11 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+
+try:
+    from .font_policy import PRIMARY_CJK_FONT
+except ImportError:  # Direct script execution.
+    from font_policy import PRIMARY_CJK_FONT
 
 
 SOURCE_FONTS = ("Arial Unicode MS", "Arial Black", "楷体", "KaiTi", "Arial")
@@ -27,7 +32,7 @@ class FontFixResult:
     replacements: int
 
 
-def fix_cover_font(path: Path, font: str = "Microsoft YaHei") -> FontFixResult:
+def fix_cover_font(path: Path, font: str = PRIMARY_CJK_FONT) -> FontFixResult:
     if not path.is_file():
         raise FontFixError(f"cover PPTX not found: {path}")
     try:
@@ -83,7 +88,7 @@ def fix_cover_font(path: Path, font: str = "Microsoft YaHei") -> FontFixResult:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("cover", type=Path)
-    parser.add_argument("font", nargs="?", default="Microsoft YaHei")
+    parser.add_argument("font", nargs="?", default=PRIMARY_CJK_FONT)
     args = parser.parse_args(argv)
     try:
         result = fix_cover_font(args.cover, args.font)

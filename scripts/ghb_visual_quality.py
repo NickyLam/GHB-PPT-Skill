@@ -723,9 +723,9 @@ def _structural_evidence_complete(
         raise ValueError("invalid-structural-pptx") from exc
     if len(presentation.slides) != len(expected_slide_texts):
         raise ValueError("invalid-structural-pptx")
-    for slide, required_texts in zip(
-        presentation.slides, expected_slide_texts, strict=True
-    ):
+    # Lengths are checked immediately above. Avoid ``strict=True`` here so the
+    # documented Python 3.9+ runtime remains supported.
+    for slide, required_texts in zip(presentation.slides, expected_slide_texts):
         visible_chunks: list[str] = []
         for shape in slide.shapes:
             if not hasattr(shape, "text_frame") or not shape.has_text_frame:

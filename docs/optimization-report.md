@@ -11,6 +11,21 @@ rendering, and reporting. The current nine-case optimized baseline passes every
 structural and layout hard gate. Chinese rendering remains explicitly
 unverified because Microsoft YaHei is absent from the LibreOffice environment.
 
+## 2026-07-16 Source Han Sans SC update
+
+Source Han Sans SC is now the primary CJK font for cover repair, authored SVG,
+DrawingML, examples, and fixture generation; Microsoft YaHei remains a
+compatibility fallback. `doctor` selects Source Han Sans SC with no font
+warning. The isolated LibreOffice renderer now receives the host fontconfig
+file and a writable cache, and CJK runs write Source Han Sans SC to both the
+Latin and East Asian DrawingML slots for LibreOffice compatibility.
+
+Fresh A/B/C evidence under `artifacts/font-integration-v2/` contains 36 rendered
+pages and three inspected contact sheets. All Chinese text is visible, all
+render reports record `font.status: available` with no font warning, and the
+three quality reports have zero errors. Their only warning is the intentional
+template bleed.
+
 ## Measured before and after
 
 | Measure | Before | Current optimized result |

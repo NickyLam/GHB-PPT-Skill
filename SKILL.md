@@ -41,7 +41,9 @@ python3 scripts/ghb_ppt.py doctor
 
 `doctor` 检查 Python、依赖、模板、目录权限、字体和渲染器。缺少
 LibreOffice 时仍可构建和结构验证，但必须记录“未进行最终渲染”。缺少
-Microsoft YaHei 时，不得声称中文视觉效果已经通过。
+`Source Han Sans SC`（首选）和 `Microsoft YaHei`（兼容回退）时，不得声称
+中文视觉效果已经通过。正文 SVG、封面和 DrawingML 默认使用并保留
+`Source Han Sans SC`；跨机器交付前必须在目标渲染环境再次运行 `doctor`。
 
 ## 建立项目
 

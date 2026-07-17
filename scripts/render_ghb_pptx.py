@@ -18,9 +18,31 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
+try:
+    from .font_policy import (
+        LEGACY_CJK_FONT,
+        PRIMARY_CJK_FONT,
+        detect_cjk_fonts,
+        preferred_cjk_font,
+    )
+except ImportError:  # Direct script execution.
+    from font_policy import (
+        LEGACY_CJK_FONT,
+        PRIMARY_CJK_FONT,
+        detect_cjk_fonts,
+        preferred_cjk_font,
+    )
+
 
 class RenderError(RuntimeError):
     """Raised when a requested render backend cannot complete reliably."""
+
+
+FONTCONFIG_FILES = (
+    Path("/opt/homebrew/etc/fonts/fonts.conf"),
+    Path("/usr/local/etc/fonts/fonts.conf"),
+    Path("/etc/fonts/fonts.conf"),
+)
 
 
 def _file_sha256(path: Path) -> str:
@@ -97,7 +119,7 @@ def detect_renderer(preferred: str = "auto") -> tuple[str, str]:
     raise RenderError("no LibreOffice/soffice renderer found")
 
 
-def _run(command: list[str]) -> RenderCommand:
+def _run(command: list[str], *, env: dict[str, str] | None = None) -> RenderCommand:
     started = time.monotonic()
     completed = subprocess.run(
         command,
@@ -105,6 +127,7 @@ def _run(command: list[str]) -> RenderCommand:
         text=True,
         encoding="utf-8",
         errors="replace",
+        env=env,
     )
     return RenderCommand(
         command=command,
@@ -113,6 +136,20 @@ def _run(command: list[str]) -> RenderCommand:
         stderr=completed.stderr,
         duration_seconds=round(time.monotonic() - started, 3),
     )
+
+
+def _render_environment(cache_dir: Path) -> dict[str, str]:
+    """Give isolated LibreOffice a writable cache and host font directories."""
+    env = os.environ.copy()
+    env["XDG_CACHE_HOME"] = str(cache_dir)
+    configured = env.get("FONTCONFIG_FILE")
+    if not configured or not Path(configured).is_file():
+        for candidate in FONTCONFIG_FILES:
+            if candidate.is_file():
+                env["FONTCONFIG_FILE"] = str(candidate)
+                env["FONTCONFIG_PATH"] = str(candidate.parent)
+                break
+    return env
 
 
 def _font(size: int) -> ImageFont.ImageFont:
@@ -171,13 +208,13 @@ def make_contact_sheet(
 def _font_warning() -> str | None:
     fc_list = shutil.which("fc-list")
     if not fc_list:
-        return "fontconfig is unavailable; Microsoft YaHei presence was not checked"
+        return "fontconfig is unavailable; target CJK font presence was not checked"
     completed = subprocess.run([fc_list], capture_output=True, text=True, errors="replace")
-    text = completed.stdout.lower()
-    if "microsoft yahei" not in text and "微软雅黑" not in text:
+    if preferred_cjk_font(detect_cjk_fonts(completed.stdout)) is None:
         return (
-            "Microsoft YaHei is not installed for this renderer; Chinese glyph substitution "
-            "or loss is possible, so rendered pages require manual font review"
+            f"Neither {PRIMARY_CJK_FONT} nor {LEGACY_CJK_FONT} is installed for this renderer; "
+            "Chinese glyph substitution or loss is possible, so rendered pages require "
+            "manual font review"
         )
     return None
 
@@ -195,8 +232,10 @@ def _render_outputs(
     with tempfile.TemporaryDirectory(prefix="ghb-render-") as tmp:
         staging = Path(tmp) / "output"
         profile = Path(tmp) / "lo-profile"
+        font_cache = Path(tmp) / "font-cache"
         staging.mkdir()
         profile.mkdir()
+        font_cache.mkdir()
         staged_source = Path(tmp) / f"input{pptx.suffix.lower()}"
         shutil.copy2(pptx, staged_source)
         command = [
@@ -207,7 +246,7 @@ def _render_outputs(
             "--outdir", str(staging),
             str(staged_source),
         ]
-        conversion = _run(command)
+        conversion = _run(command, env=_render_environment(font_cache))
         report.commands.append(conversion)
         generated_pdf = staging / "input.pdf"
         if conversion.returncode or not generated_pdf.is_file():

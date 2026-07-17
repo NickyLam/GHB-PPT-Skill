@@ -11,7 +11,14 @@ from PIL import Image
 from pptx import Presentation
 from pptx.util import Inches
 
-from scripts.render_ghb_pptx import RenderCommand, RenderError, make_contact_sheet, render_pptx
+from scripts.render_ghb_pptx import (
+    RenderCommand,
+    RenderError,
+    _font_warning,
+    _render_environment,
+    make_contact_sheet,
+    render_pptx,
+)
 
 
 class RenderGhbPptxTest(unittest.TestCase):
@@ -33,6 +40,29 @@ class RenderGhbPptxTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(RenderError, "without page images"):
                 make_contact_sheet([], Path(tmp) / "contact.png")
+
+    def test_source_han_sans_sc_satisfies_renderer_font_probe(self):
+        probe = mock.Mock(stdout="Source Han Sans SC 思源黑体\n", returncode=0)
+        with (
+            mock.patch("scripts.render_ghb_pptx.shutil.which", return_value="/usr/bin/fc-list"),
+            mock.patch("scripts.render_ghb_pptx.subprocess.run", return_value=probe),
+        ):
+            self.assertIsNone(_font_warning())
+
+    def test_renderer_environment_uses_writable_cache_and_host_fontconfig(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = root / "fonts.conf"
+            config.write_text("<fontconfig/>", encoding="utf-8")
+            cache = root / "cache"
+            with (
+                mock.patch("scripts.render_ghb_pptx.FONTCONFIG_FILES", (config,)),
+                mock.patch.dict("scripts.render_ghb_pptx.os.environ", {}, clear=True),
+            ):
+                env = _render_environment(cache)
+            self.assertEqual(env["XDG_CACHE_HOME"], str(cache))
+            self.assertEqual(env["FONTCONFIG_FILE"], str(config))
+            self.assertEqual(env["FONTCONFIG_PATH"], str(root))
 
     def test_missing_renderer_still_writes_atomic_failure_report(self):
         with tempfile.TemporaryDirectory() as tmp:

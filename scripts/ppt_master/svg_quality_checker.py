@@ -480,6 +480,7 @@ class SVGQualityChecker:
         # FONT_FALLBACK_WIN mappings). A stack whose last concrete family is in
         # this set survives the PPTX round-trip on any viewer machine.
         ppt_safe_tail = {
+            'source han sans sc',
             'microsoft yahei', 'simhei', 'simsun', 'kaiti', 'fangsong',
             'dengxian', 'microsoft jhenghei',
             'pingfang sc', 'heiti sc', 'songti sc', 'stsong',
@@ -504,7 +505,7 @@ class SVGQualityChecker:
             if tail not in ppt_safe_tail:
                 result['warnings'].append(
                     f"Font stack does not end on a PPT-safe family "
-                    f"(expected e.g. Microsoft YaHei / SimSun / Arial / "
+                    f"(expected e.g. Source Han Sans SC / Microsoft YaHei / SimSun / Arial / "
                     f"Times New Roman / Consolas): {font_family}"
                 )
                 break
@@ -1297,7 +1298,7 @@ class SVGQualityChecker:
             print(f"  1. XML well-formedness: write typography as raw Unicode (—, ©, →, NBSP); escape XML reserved chars as &amp; &lt; &gt; &quot; &apos; — never use HTML named entities like &nbsp; &mdash; &copy;")
             print(f"  2. viewBox issues: Ensure consistency with canvas format (see references/canvas-formats.md)")
             print(f"  3. foreignObject: Use <text> + <tspan> for manual line breaks")
-            print(f"  4. Font issues: end every font-family stack with a PPT-safe family (e.g. Microsoft YaHei / Arial / Consolas)")
+            print(f"  4. Font issues: end every font-family stack with a PPT-safe family (e.g. Source Han Sans SC / Microsoft YaHei / Arial / Consolas)")
 
     def _print_animation_summary(self):
         """Print animations.json validation issues if present."""

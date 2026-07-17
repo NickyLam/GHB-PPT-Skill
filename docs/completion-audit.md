@@ -8,6 +8,15 @@ This audit maps every goal area to current-state evidence. “Pass” means the
 required artifact or behavior was inspected in the current worktree, not merely
 planned.
 
+## 2026-07-16 font integration addendum
+
+The earlier Microsoft YaHei limitation is superseded for the current build
+environment. Source Han Sans SC is installed and is now the primary project CJK
+font. Fresh A/B/C builds rendered 36/36 pages with readable Chinese; three
+render reports contain no font warning or limitation, and PPTX slide XML retains
+Source Han Sans SC in both Latin and East Asian font slots for CJK runs. The
+historical snapshot below remains unchanged as evidence of the earlier state.
+
 ## Requirement-by-requirement result
 
 | Goal area | Result | Authoritative evidence |

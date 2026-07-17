@@ -4,7 +4,9 @@ import hashlib
 import math
 from xml.etree import ElementTree as ET
 
-from scripts.ppt_master.svg_layouts import LAYOUT_CONTRACTS, LayoutSpec, render_layout
+from scripts.ppt_master.svg_layouts import FONT, LAYOUT_CONTRACTS, LayoutSpec, render_layout
+from scripts.ppt_master.svg_to_pptx.drawingml_elements import _build_run_xml
+from scripts.ppt_master.svg_to_pptx.drawingml_utils import parse_font_family
 
 
 class SvgLayoutsTest(unittest.TestCase):
@@ -34,18 +36,34 @@ class SvgLayoutsTest(unittest.TestCase):
         self.assertIn('x="98.0" y="398.0" width="44" height="44"', timeline)
         self.assertIn('x="120.0" y="220.0" width="520.0" height="200.0"', matrix)
 
+    def test_source_han_sans_sc_is_primary_and_survives_drawingml_conversion(self):
+        self.assertTrue(FONT.startswith("'Source Han Sans SC'"))
+        rendered = render_layout(LayoutSpec("timeline", ["阶段一", "阶段二"]))
+        self.assertIn("Source Han Sans SC", rendered)
+        fonts = parse_font_family("'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif")
+        self.assertEqual(fonts["ea"], "Source Han Sans SC")
+        run_xml = _build_run_xml(
+            {
+                "text": "中文与 English",
+                "font_family": "'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif",
+            },
+            fonts,
+        )
+        self.assertIn('<a:latin typeface="Source Han Sans SC"/>', run_xml)
+        self.assertIn('<a:ea typeface="Source Han Sans SC"/>', run_xml)
+
     def test_all_legacy_calls_remain_byte_stable_without_visual_intent(self):
         expected = {
-            "pyramid": "7886c3380e967a11f1e30044c6bd515d0425a029602368ce101f180c71a00079",
-            "waterfall": "e81b05a7143bc91b78b45bb7ec280171616e369e3c9fb34a7cbd790ecc07ec17",
-            "staircase": "54a7f625715159227433d6690728836fe35060ad0cf60d772a552a3167f26ea0",
-            "layered_arch": "bd41f87b5dc61cb9c6869307bf39aeed73c2ce13bc023736347d84b19db53507",
-            "matrix": "00c84f97634d555be46d48c179ab91110c263f37b2e7a7038de62711903b0efb",
-            "timeline": "86ae416f8bb5463239f2185d76ebc6802695a0e99d2e4fb873eca4eb3b8e70a6",
-            "funnel": "305c4123e24c3846cf4d41b63374f9158a0214324e21029c36dc30f5de0bc332",
-            "flywheel": "d2099e596b4fb8573ed04959dac02f5bd64e130aac6d1763aa0b31030a997ff5",
-            "swimlane": "3883beb12df97b7f768e26af20c0ad196fe473b39527667a2d26915cbe570827",
-            "iceberg": "cdbe0f7aece8064892bcf7e7076d6dd2c18280ba3dd7920f3f68f2bca8086162",
+            "pyramid": "656d76c5d109d545ea7403662ef68a3fb08be8578c5b0ae6b5f489de115ebd4d",
+            "waterfall": "0568b334eb894c885debac6b92078044c4dd45ca2291cb425b6e3d647b7aac77",
+            "staircase": "3ecfcd2ab65e8dabeab9e6e75b09c43a93f19b3a4993391e684dff7fd8a74645",
+            "layered_arch": "2f24e3587bf1c16f2ce0732eef63abdca951fa8ca9023aac5216628d15f43444",
+            "matrix": "5d70a807cb1d05c691fbe0d6e3ab8a7aab663a86412a2557fd0fa5279c0cb410",
+            "timeline": "5d2a27e1751f6747859ddb5bf7a120e96e2ce13411eab95963e9928e307f010e",
+            "funnel": "3824b0b9c5a6186878c31e6ba3141a4b4277690bf2d26b0baa1f9744ef34a1b8",
+            "flywheel": "d3a29f6bea660aa9ef31aaad30b7f85e252778e38b9ad1a03b3469721d047b31",
+            "swimlane": "27b9712977c2f7ed81bca7b0aa61b9cc8ef95e75f9ff4628ac65794d2e40c2a9",
+            "iceberg": "057a871727ba73b4a40561c6abf2b4c106136350dcd7529a39874311ac8f51ea",
         }
         for archetype, digest in expected.items():
             with self.subTest(archetype=archetype):

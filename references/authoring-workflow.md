@@ -74,8 +74,8 @@ Use a 1280×720 SVG viewBox and a 16:9 PowerPoint canvas.
 - Secondary accent: `#44546A`
 - Text: `#2B2B2B`; secondary: `#6E6E73`
 - Border: `#E0E0E0`; surface: `#F6F6F7`
-- Title: Arial Black with Microsoft YaHei for CJK
-- Body: Microsoft YaHei with an Office-safe Latin fallback
+- Title: Arial Black with Source Han Sans SC for CJK
+- Body: Source Han Sans SC with Microsoft YaHei and an Office-safe Latin fallback
 - Body/content/title minimums: follow the density plan; never solve overflow by
   globally shrinking text.
 
@@ -112,4 +112,4 @@ For the bundled template use:
 - `s01_sh4`: date
 
 Keep cover text concise. `build-cover` applies template-fill and then repairs
-KaiTi to Microsoft YaHei atomically.
+KaiTi to Source Han Sans SC atomically.

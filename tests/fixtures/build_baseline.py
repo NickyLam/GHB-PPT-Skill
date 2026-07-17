@@ -232,14 +232,14 @@ def write_svg(path: Path, index: int, total: int, slide: dict[str, object]) -> N
         second_title = xml_text(raw_title[split_at + 1 :].strip())
         header_text = (
             f'<text x="108" y="148" font-size="22" font-weight="bold" '
-            f'font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">{first_title}</text>'
+            f'font-family="Arial Black, Source Han Sans SC, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">{first_title}</text>'
             f'<text x="108" y="180" font-size="22" font-weight="bold" '
-            f'font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">{second_title}</text>'
+            f'font-family="Arial Black, Source Han Sans SC, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">{second_title}</text>'
         )
     else:
         header_text = (
             f'<text x="108" y="162" font-size="30" font-weight="bold" '
-            f'font-family="Arial Black, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">{title}</text>'
+            f'font-family="Arial Black, Source Han Sans SC, Microsoft YaHei, Arial, sans-serif" fill="#2B2B2B">{title}</text>'
         )
     path.write_text(
         f'''<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
@@ -247,7 +247,7 @@ def write_svg(path: Path, index: int, total: int, slide: dict[str, object]) -> N
   <g id="bg-surface"><rect x="56" y="96" width="1168" height="608" rx="12" fill="#FFFFFF" fill-opacity="0.92" stroke="#E0E0E0"/></g>
   <g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/>{header_text}</g>
   {content_xml}
-  <g id="footer"><text x="1192" y="696" text-anchor="end" font-size="13" font-family="Microsoft YaHei, Arial, sans-serif" fill="#999999">{index:02d} / {total:02d}</text></g>
+  <g id="footer"><text x="1192" y="696" text-anchor="end" font-size="13" font-family="Source Han Sans SC, Microsoft YaHei, Arial, sans-serif" fill="#999999">{index:02d} / {total:02d}</text></g>
 </svg>\n''',
         encoding="utf-8",
     )

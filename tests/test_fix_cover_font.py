@@ -34,7 +34,7 @@ class FixCoverFontTest(unittest.TestCase):
             make_cover(path)
             first = fix_cover_font(path)
             self.assertGreaterEqual(first.replacements, 1)
-            self.assertIn('typeface="Microsoft YaHei"', slide_xml(path))
+            self.assertIn('typeface="Source Han Sans SC"', slide_xml(path))
             second = fix_cover_font(path)
             self.assertEqual(second.replacements, 0)
             self.assertEqual(second.changed_parts, 0)

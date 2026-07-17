@@ -21,7 +21,7 @@ TEXT_SECONDARY = "#6E6E73"
 BORDER = "#E0E0E0"
 SURFACE = "#F6F6F7"
 WHITE = "#FFFFFF"
-FONT = "'Microsoft YaHei', Arial, sans-serif"
+FONT = "'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif"
 
 
 @dataclass(frozen=True)

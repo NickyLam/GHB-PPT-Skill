@@ -16,8 +16,9 @@ Treat a deck as deliverable only when all available gates complete:
 
 Warnings are not passes by default. Explain and review every warning. The
 bundled template intentionally has one cover object extending beyond the slide
-for bleed. A missing Microsoft YaHei warning means geometry can be reviewed,
-but Chinese visual fidelity cannot be claimed.
+for bleed. A warning that both Source Han Sans SC and Microsoft YaHei are
+missing means geometry can be reviewed, but Chinese visual fidelity cannot be
+claimed.
 
 ## Visual review
 

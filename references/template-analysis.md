@@ -101,8 +101,9 @@ for label,blk in [('Major(标题)','<a:majorFont>'),('Minor(正文)','<a:minorFo
 "
 ```
 
-→ SVG `typography` 字体栈：标题/正文用模板字（如 Arial Black / Arial），中文加 `Microsoft YaHei`，结尾 PPT-safe：
-`font_family: "'Microsoft YaHei', Arial, sans-serif"`
+→ SVG `typography` 字体栈：标题/正文用模板字（如 Arial Black / Arial），中文首选
+`Source Han Sans SC`，保留 `Microsoft YaHei` 兼容回退，结尾 PPT-safe：
+`font_family: "'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif"`
 
 ## 8. 决策汇总
 
@@ -114,6 +115,6 @@ for label,blk in [('Major(标题)','<a:majorFont>'),('Minor(正文)','<a:minorFo
 | 正文背景版式 | slideLayout2（章节页用） | `--content-layout 2` |
 | 背景装饰图 | image1, image2, image6 | 合并脚本自动注入 |
 | 品牌色 | #AB1F29 | `spec_lock.colors.primary` |
-| 字体 | Arial Black / Arial / Microsoft YaHei | `spec_lock.typography` |
+| 字体 | Arial Black / Source Han Sans SC / Microsoft YaHei | `spec_lock.typography` |
 
 把这些填入 Phase 1–4 的命令与 spec_lock 即可。

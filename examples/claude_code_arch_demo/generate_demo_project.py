@@ -232,13 +232,13 @@ def build_page(index: int, slide: dict[str, object]) -> str:
   </g>
   <g id="header">
     <rect x="88" y="132" width="6" height="40" fill="#AB1F29"/>
-    <text x="108" y="162" font-size="30" font-weight="bold" fill="#2B2B2B" font-family="'Arial Black', 'Microsoft YaHei', Arial, sans-serif">Claude Code 架构解析</text>
+    <text x="108" y="162" font-size="30" font-weight="bold" fill="#2B2B2B" font-family="'Arial Black', 'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif">Claude Code 架构解析</text>
     <line x1="88" y1="190" x2="1192" y2="190" stroke="#E0E0E0" stroke-width="1"/>
-    <text x="1192" y="162" text-anchor="end" font-size="14" fill="#AB1F29" font-family="'Microsoft YaHei', Arial, sans-serif">{slide["part"]}</text>
+    <text x="1192" y="162" text-anchor="end" font-size="14" fill="#AB1F29" font-family="'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif">{slide["part"]}</text>
   </g>
   <g id="content-lead">
-    <text x="120" y="228" font-size="24" font-weight="bold" fill="#2B2B2B" font-family="'Microsoft YaHei', Arial, sans-serif">{slide["title"]}</text>
-    <text x="120" y="254" font-size="17" fill="#6E6E73" font-family="'Microsoft YaHei', Arial, sans-serif">{slide["message"]}</text>
+    <text x="120" y="228" font-size="24" font-weight="bold" fill="#2B2B2B" font-family="'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif">{slide["title"]}</text>
+    <text x="120" y="254" font-size="17" fill="#6E6E73" font-family="'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif">{slide["message"]}</text>
   </g>
   {fragment}
   <g id="content-overlay">
@@ -248,7 +248,7 @@ def build_page(index: int, slide: dict[str, object]) -> str:
   {side_svg}
   </g>
   <g id="footer">
-    <text x="1192" y="696" text-anchor="end" font-size="13" fill="#999999" font-family="'Microsoft YaHei', Arial, sans-serif">{index:02d} / 06</text>
+    <text x="1192" y="696" text-anchor="end" font-size="13" fill="#999999" font-family="'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif">{index:02d} / 06</text>
   </g>
 </svg>
 """
@@ -307,8 +307,8 @@ colors:
   surface_alt: #F6F6F7
   bg: #FFFFFF
 typography:
-  font_family: "'Microsoft YaHei', Arial, sans-serif"
-  title_family: "'Arial Black', 'Microsoft YaHei', Arial, sans-serif"
+  font_family: "'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif"
+  title_family: "'Arial Black', 'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif"
   code_family: "Consolas, 'Courier New', monospace"
   body: 18
   title: 30

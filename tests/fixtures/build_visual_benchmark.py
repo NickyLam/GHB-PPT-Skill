@@ -543,7 +543,7 @@ def evaluate_deterministic_fixtures() -> dict[str, Any]:
     ]
     repeated_focal = analyze_deck_quality(focal_pages, profile=profile)
     empty_codes, empty_metrics = _empty_text_fixture_evidence()
-    font = font_evidence("Microsoft YaHei target font is unavailable")
+    font = font_evidence("Source Han Sans SC and Microsoft YaHei target fonts are unavailable")
 
     def metrics(result: dict[str, Any]) -> dict[str, float]:
         measured = result["measurements"]

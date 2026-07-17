@@ -209,8 +209,9 @@ A/B/C/D 最终 PPTX 基线。
 
 ## 已知限制
 
-- 当前环境未安装 Microsoft YaHei 时，LibreOffice 可能丢失中文或显示
-  方框。报告会保留警告；必须在目标 Office/PowerPoint 环境复核中文。
+- 当前环境同时缺少 `Source Han Sans SC`（首选）和 `Microsoft YaHei`
+  （兼容回退）时，LibreOffice 可能丢失中文或显示方框。报告会保留警告；
+  必须在目标 Office/PowerPoint 环境复核中文。
 - 自动检查不能可靠判断所有审美问题，报告会列出人工复核项而不是生成
   虚假美学分数。
 - 封面备注默认不复制，以避免 notes master 冲突；正文备注受支持并被

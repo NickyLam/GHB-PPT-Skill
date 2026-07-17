@@ -13,8 +13,8 @@ colors:
   surface_alt: #F6F6F7
   bg: #FFFFFF
 typography:
-  font_family: "'Microsoft YaHei', Arial, sans-serif"
-  title_family: "'Arial Black', 'Microsoft YaHei', Arial, sans-serif"
+  font_family: "'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif"
+  title_family: "'Arial Black', 'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif"
   code_family: "Consolas, 'Courier New', monospace"
   body: 18
   title: 30

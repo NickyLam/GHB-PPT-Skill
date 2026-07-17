@@ -21,6 +21,8 @@ def test_top_level_workflow_names_visual_contract_review_and_evidence():
 
     assert "review" in readme
     assert "可选" in skill
+    assert "Source Han Sans SC" in skill
+    assert "Source Han Sans SC" in readme
 
 
 def test_authoring_docs_require_semantic_focal_coherence():

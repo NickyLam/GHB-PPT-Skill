@@ -46,6 +46,12 @@ from scripts.evidence_manifest import (  # noqa: E402
     evaluate_freshness,
     write_manifest_atomic,
 )
+from scripts.font_policy import (  # noqa: E402
+    LEGACY_CJK_FONT,
+    PRIMARY_CJK_FONT,
+    detect_cjk_fonts,
+    preferred_cjk_font,
+)
 
 
 class PipelineError(RuntimeError):
@@ -1254,11 +1260,13 @@ def doctor_payload(template: Path) -> dict[str, Any]:
     if fc_list:
         completed = subprocess.run([fc_list], capture_output=True, text=True, errors="replace")
         font_output = completed.stdout.lower()
+    cjk_fonts = detect_cjk_fonts(font_output)
     fonts = {
-        "Microsoft YaHei": "microsoft yahei" in font_output or "微软雅黑" in font_output,
+        **cjk_fonts,
         "Arial Black": "arial black" in font_output,
         "Arial": "arial" in font_output,
     }
+    target_cjk_font = preferred_cjk_font(cjk_fonts)
     renderers = {
         "soffice": shutil.which("soffice"),
         "libreoffice": shutil.which("libreoffice"),
@@ -1286,8 +1294,11 @@ def doctor_payload(template: Path) -> dict[str, Any]:
     for module, available in imports.items():
         if not available:
             errors.append(f"Python dependency missing: {module}")
-    if not fonts["Microsoft YaHei"]:
-        warnings.append("Microsoft YaHei is not installed; LibreOffice/Keynote CJK rendering may substitute or lose glyphs")
+    if target_cjk_font is None:
+        warnings.append(
+            f"Neither {PRIMARY_CJK_FONT} nor {LEGACY_CJK_FONT} is installed; "
+            "LibreOffice/Keynote CJK rendering may substitute or lose glyphs"
+        )
     for name, permission in permissions.items():
         if not permission["exists"] or not permission["readable"]:
             errors.append(f"required directory is unavailable: {name} ({permission['path']})")
@@ -1304,6 +1315,7 @@ def doctor_payload(template: Path) -> dict[str, Any]:
         "template": str(template.resolve()),
         "dependencies": imports,
         "fonts": fonts,
+        "target_cjk_font": target_cjk_font,
         "renderers": renderers,
         "permissions": permissions,
         "errors": errors,

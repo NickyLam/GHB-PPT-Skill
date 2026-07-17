@@ -7,6 +7,7 @@ from unittest import mock
 from pathlib import Path
 
 from scripts.ghb_ppt import (
+    DEFAULT_TEMPLATE,
     PipelineError,
     RunContext,
     locate_new_timestamped_output,
@@ -17,6 +18,7 @@ from scripts.ghb_ppt import (
     validation_error_codes,
     build_evidence_items,
     evidence_freshness,
+    doctor_payload,
     load_review_config,
     _load_review_authorization,
     run_optional_review,
@@ -486,6 +488,21 @@ class GhbPptCliTest(unittest.TestCase):
         self.assertIn('"dependencies"', stdout.getvalue())
         self.assertIn('"fonts"', stdout.getvalue())
         self.assertIn('"permissions"', stdout.getvalue())
+
+    def test_doctor_accepts_source_han_sans_sc_as_target_cjk_font(self):
+        font_probe = mock.Mock(stdout="Source Han Sans SC 思源黑体\n", returncode=0)
+        with (
+            mock.patch("scripts.ghb_ppt.subprocess.run", return_value=font_probe),
+            mock.patch(
+                "scripts.ghb_ppt.shutil.which",
+                side_effect=lambda name: "/usr/bin/fc-list" if name == "fc-list" else None,
+            ),
+        ):
+            payload = doctor_payload(DEFAULT_TEMPLATE)
+        self.assertTrue(payload["fonts"]["Source Han Sans SC"])
+        self.assertFalse(payload["fonts"]["Microsoft YaHei"])
+        self.assertEqual(payload["target_cjk_font"], "Source Han Sans SC")
+        self.assertFalse(any("CJK" in warning for warning in payload["warnings"]))
 
     def test_validation_error_codes_reads_only_errors(self):
         with tempfile.TemporaryDirectory() as tmp:

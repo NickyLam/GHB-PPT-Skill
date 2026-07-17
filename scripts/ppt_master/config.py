@@ -408,7 +408,7 @@ INDUSTRY_COLORS = {
 
 FONTS = {
     'system_ui': "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    'sans_serif': "'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif",
+    'sans_serif': "'Source Han Sans SC', 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif",
     'monospace': "'SF Mono', Monaco, Consolas, 'Liberation Mono', monospace"
 }
 

@@ -64,7 +64,8 @@ EA_FONTS = {
 }
 SYSTEM_FONTS = {'system-ui', '-apple-system', 'BlinkMacSystemFont'}
 
-# macOS/Linux-only fonts -> Windows equivalents
+# Platform-specific fonts -> portable equivalents. Source Han Sans SC remains
+# unchanged because it is the project-owned cross-platform CJK font.
 FONT_FALLBACK_WIN = {
     'PingFang SC': 'Microsoft YaHei',
     'PingFang TC': 'Microsoft JhengHei',
@@ -88,7 +89,6 @@ FONT_FALLBACK_WIN = {
     # 'Noto Sans JP': → keep as 'Noto Sans JP' (do not map)
     # 'メイリオ': → keep as 'メイリオ' (Meiryo alias)
     'メイリオ': 'Meiryo',
-    'Source Han Sans SC': 'Microsoft YaHei',
     'Source Han Sans TC': 'Microsoft JhengHei',
     'Source Han Serif SC': 'SimSun',
     'Source Han Serif TC': 'SimSun',
@@ -401,7 +401,7 @@ def parse_font_family(font_family_str: str) -> Dict[str, str]:
     Windows. macOS/Linux-only fonts are mapped via FONT_FALLBACK_WIN.
     """
     if not font_family_str:
-        return {'latin': 'Segoe UI', 'ea': 'Microsoft YaHei'}
+        return {'latin': 'Segoe UI', 'ea': 'Source Han Sans SC'}
 
     fonts = [f.strip().strip("'\"") for f in font_family_str.split(',')]
     latin_font = None
@@ -429,7 +429,7 @@ def parse_font_family(font_family_str: str) -> Dict[str, str]:
 
     # EA must always be a CJK-capable font
     if not ea_font:
-        ea_font = 'SimSun' if final_latin in _SERIF_LATIN else 'Microsoft YaHei'
+        ea_font = 'SimSun' if final_latin in _SERIF_LATIN else 'Source Han Sans SC'
 
     return {'latin': final_latin, 'ea': ea_font}
 
