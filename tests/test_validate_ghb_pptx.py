@@ -172,6 +172,184 @@ class ValidateGhbPptxTest(unittest.TestCase):
             self.assertTrue(json.loads(json_path.read_text(encoding="utf-8"))["passed"])
             self.assertIn("Per-slide object summary", markdown_path.read_text(encoding="utf-8"))
 
+    def test_release_policy_rejects_unwaived_warnings_and_accepts_explicit_waivers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1, no_ending=True)
+            render_dir = directory / "render"
+            render_dir.mkdir()
+            rendered_pages = []
+            for index in (1, 2):
+                page = render_dir / f"slide-{index:02d}.png"
+                page.write_bytes(b"png")
+                rendered_pages.append(str(page.resolve()))
+            (render_dir / "render-report.json").write_text(json.dumps({
+                "schema": "ghb.render-report.v1",
+                "status": "passed",
+                "passed": True,
+                "pptx": str(output.resolve()),
+                "pptx_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+                "renderer": "soffice",
+                "dpi": 144,
+                "font": {"status": "available", "warnings": []},
+                "outputs": rendered_pages,
+                "warnings": [],
+                "errors": [],
+            }), encoding="utf-8")
+            first_report = directory / "release-failed.json"
+            code = main([
+                str(output), "--body-count", "1", "--no-ending",
+                "--quality-policy", "release", "--target-renderer", "auto",
+                "--render-dir", str(render_dir),
+                "--json-output", str(first_report),
+            ])
+            self.assertEqual(code, 1)
+            payload = json.loads(first_report.read_text(encoding="utf-8"))
+            self.assertTrue(any(
+                issue["code"] == "release-unresolved-warnings"
+                for issue in payload["issues"]
+            ))
+
+            waivers = directory / "warning-waivers.json"
+            warning_rows = [
+                {
+                    "code": issue["code"],
+                    "slide": issue["slide"],
+                    "reason": "fixture explicitly accepts this advisory",
+                    "approved_by": "test-owner",
+                }
+                for issue in payload["issues"]
+                if issue["severity"] == "warning"
+            ]
+            waivers.write_text(json.dumps({
+                "schema": "ghb.warning-waivers.v1",
+                "waivers": warning_rows,
+            }), encoding="utf-8")
+            passed_report = directory / "release-passed.json"
+            code = main([
+                str(output), "--body-count", "1", "--no-ending",
+                "--quality-policy", "release", "--target-renderer", "auto",
+                "--warning-waivers", str(waivers),
+                "--render-dir", str(render_dir),
+                "--json-output", str(passed_report),
+            ])
+            self.assertEqual(code, 0)
+            passed = json.loads(passed_report.read_text(encoding="utf-8"))
+            self.assertTrue(passed["passed"])
+            self.assertEqual(
+                passed["quality"]["release_policy"]["unresolved_warning_count"], 0
+            )
+
+    def test_release_policy_requires_bound_render_evidence_even_for_auto_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output, _result = self.build(Path(tmp), count=1, no_ending=True)
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=False,
+                quality_policy="release",
+                target_renderer="auto",
+            )
+            self.assertFalse(report.passed)
+            self.assertTrue(any(
+                issue.code == "target-renderer-unverified" for issue in report.errors
+            ))
+
+    def test_release_policy_cannot_waive_stale_render_binding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1, no_ending=True)
+            render_dir = directory / "render"
+            render_dir.mkdir()
+            for index in (1, 2):
+                (render_dir / f"slide-{index:02d}.png").write_bytes(b"png")
+            (render_dir / "render-report.json").write_text(json.dumps({
+                "schema": "ghb.render-report.v1",
+                "status": "passed",
+                "passed": True,
+                "pptx": str(output.resolve()),
+                "pptx_sha256": "0" * 64,
+                "renderer": "soffice",
+                "dpi": 144,
+                "font": {"status": "available", "warnings": []},
+                "outputs": ["slide-01.png", "slide-02.png"],
+                "warnings": [],
+                "errors": [],
+            }), encoding="utf-8")
+
+            initial = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=False,
+                render_dir=render_dir,
+                quality_policy="release",
+                target_renderer="auto",
+            )
+            waivers = directory / "warning-waivers.json"
+            waivers.write_text(json.dumps({
+                "schema": "ghb.warning-waivers.v1",
+                "waivers": [
+                    {
+                        "code": issue.code,
+                        "slide": issue.slide,
+                        "reason": "fixture explicitly accepts this advisory",
+                        "approved_by": "test-owner",
+                    }
+                    for issue in initial.warnings
+                ],
+            }), encoding="utf-8")
+
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=False,
+                render_dir=render_dir,
+                quality_policy="release",
+                warning_waivers_path=waivers,
+                target_renderer="auto",
+            )
+            self.assertFalse(report.passed)
+            self.assertTrue(any(
+                issue.code == "target-renderer-unverified" for issue in report.errors
+            ))
+            self.assertFalse(any(
+                issue.code == "release-unresolved-warnings" for issue in report.errors
+            ))
+
+    def test_release_policy_rejects_target_renderer_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1, no_ending=True)
+            render_dir = directory / "render"
+            render_dir.mkdir()
+            for index in (1, 2):
+                (render_dir / f"slide-{index:02d}.png").write_bytes(b"png")
+            (render_dir / "render-report.json").write_text(json.dumps({
+                "schema": "ghb.render-report.v1",
+                "status": "passed",
+                "passed": True,
+                "pptx": str(output.resolve()),
+                "pptx_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+                "renderer": "soffice",
+                "dpi": 144,
+                "font": {"status": "available", "warnings": []},
+                "outputs": ["slide-01.png", "slide-02.png"],
+                "warnings": [],
+                "errors": [],
+            }), encoding="utf-8")
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=False,
+                render_dir=render_dir,
+                quality_policy="release",
+                target_renderer="wps",
+            )
+            self.assertFalse(report.passed)
+            self.assertTrue(any(
+                issue.code == "target-renderer-mismatch" for issue in report.errors
+            ))
+
     def test_json_and_markdown_share_mandated_evidence_hierarchy(self):
         with tempfile.TemporaryDirectory() as tmp:
             output, _result = self.build(Path(tmp), count=1, no_ending=True)
@@ -183,6 +361,7 @@ class ValidateGhbPptxTest(unittest.TestCase):
                     "deterministic_outcome",
                     "freshness",
                     "reviewability",
+                    "release_policy",
                     "blocking_findings",
                     "advisory_findings",
                     "per_slide_evidence",
@@ -476,7 +655,7 @@ class ValidateGhbPptxTest(unittest.TestCase):
             quality = report_dict(report)["quality"]
             self.assertEqual(quality["deterministic_outcome"]["status"], "passed")
             self.assertEqual(quality["reviewability"]["review_outcome"], "needs-revision")
-            self.assertTrue(quality["reviewability"]["requirement_satisfied"])
+            self.assertFalse(quality["reviewability"]["requirement_satisfied"])
             self.assertEqual(quality["advisory_findings"][-1]["severity"], "warning")
             markdown = markdown_report(report)
             self.assertLess(markdown.index("## Blocking findings"), markdown.index("review-weak-hierarchy"))

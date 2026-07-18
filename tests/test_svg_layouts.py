@@ -366,11 +366,16 @@ class SvgLayoutsTest(unittest.TestCase):
         self.assertNotIn("rgba(", svg)
 
     def test_waterfall_outputs_steps_and_explicit_arrowheads(self):
-        svg = render_layout(LayoutSpec("waterfall", ["输入", "处理", "交付"], title="瀑布递进"))
+        svg = render_layout(LayoutSpec(
+            "waterfall", ["输入", "处理", "交付"], title="瀑布递进",
+            density="balanced", emphasis="distributed",
+        ))
         self.assertIn('data-layout="waterfall"', svg)
         self.assertEqual(svg.count("class="), 0)
         self.assertGreaterEqual(svg.count("<rect"), 3)
         self.assertGreaterEqual(svg.count("<polygon"), 2)
+        self.assertIn('data-flow-node="waterfall-step-1"', svg)
+        self.assertIn('data-flow-from="waterfall-step-1"', svg)
 
     def test_waterfall_arrowheads_are_aligned_and_symmetric(self):
         svg = render_layout(
@@ -382,7 +387,7 @@ class SvgLayoutsTest(unittest.TestCase):
             )
         )
         connector = re.search(
-            r'<line x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"[^>]*/>\s*'
+            r'<line[^>]* x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"[^>]*/>\s*'
             r'<polygon points="([^"]+)"',
             svg,
         )
@@ -393,6 +398,39 @@ class SvgLayoutsTest(unittest.TestCase):
         left_leg = math.dist(points[0], points[1])
         right_leg = math.dist(points[0], points[2])
         self.assertAlmostEqual(left_leg, right_leg, delta=0.1)
+
+    def test_dense_waterfall_keeps_compact_nodes_and_visible_forward_connectors(self):
+        svg = render_layout(
+            LayoutSpec(
+                "waterfall",
+                ["可回收设计", "复飞验证", "发射频次提升", "单位成本下降", "产能扩张"],
+                x=120,
+                y=268,
+                width=820,
+                height=322,
+                density="dense",
+                emphasis="ranked",
+            )
+        )
+        root = ET.fromstring(f"<svg>{svg}</svg>")
+        boxes = [node for node in root.iter() if node.tag == "rect"]
+        connectors = [node for node in root.iter() if node.tag == "line"]
+
+        self.assertEqual(len(boxes), 5)
+        self.assertEqual(len(connectors), 4)
+        self.assertLessEqual(max(float(box.get("height")) for box in boxes), 90.0)
+        for left, right, connector in zip(boxes, boxes[1:], connectors):
+            gap = float(right.get("x")) - (
+                float(left.get("x")) + float(left.get("width"))
+            )
+            self.assertGreaterEqual(gap, 30.0)
+            x1 = float(connector.get("x1"))
+            x2 = float(connector.get("x2"))
+            self.assertGreater(x2, x1)
+            self.assertGreaterEqual(math.dist(
+                (x1, float(connector.get("y1"))),
+                (x2, float(connector.get("y2"))),
+            ), 24.0)
 
     def test_funnel_outputs_narrowing_layers(self):
         svg = render_layout(LayoutSpec("funnel", ["触达", "激活", "转化", "复购"], title="转化漏斗"))
@@ -407,6 +445,39 @@ class SvgLayoutsTest(unittest.TestCase):
         self.assertGreaterEqual(svg.count("<line"), 4)
         self.assertGreaterEqual(svg.count("<polygon"), 4)
         self.assertGreaterEqual(svg.count("<rect"), 5)
+
+    def test_flywheel_connectors_stop_outside_rounded_nodes(self):
+        svg = render_layout(
+            LayoutSpec(
+                "flywheel",
+                ["卫星部署", "网络覆盖", "用户订阅", "现金回流", "再投资扩网"],
+                x=120,
+                y=268,
+                width=820,
+                height=322,
+                density="dense",
+                emphasis="distributed",
+            )
+        )
+        root = ET.fromstring(f"<svg>{svg}</svg>")
+        boxes = [node for node in root.iter() if node.tag == "rect"][1:]
+        connectors = [node for node in root.iter() if node.tag == "line"]
+        self.assertEqual(len(boxes), len(connectors))
+        self.assertTrue(all(node.get("data-flow-node") for node in boxes))
+        self.assertTrue(all(node.get("data-flow-from") for node in connectors))
+
+        def inside(box, point, margin=0.0):
+            x = float(box.get("x")) + margin
+            y = float(box.get("y")) + margin
+            width = float(box.get("width")) - margin * 2
+            height = float(box.get("height")) - margin * 2
+            return x <= point[0] <= x + width and y <= point[1] <= y + height
+
+        for index, connector in enumerate(connectors):
+            start = (float(connector.get("x1")), float(connector.get("y1")))
+            end = (float(connector.get("x2")), float(connector.get("y2")))
+            self.assertFalse(inside(boxes[index], start))
+            self.assertFalse(inside(boxes[(index + 1) % len(boxes)], end))
 
     def test_swimlane_outputs_lane_headers_and_stage_grid(self):
         svg = render_layout(

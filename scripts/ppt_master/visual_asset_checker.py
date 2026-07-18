@@ -597,6 +597,209 @@ def _check_collisions(root: ET.Element, canvas: Box, result: Result) -> None:
                 )
 
 
+def _point_inside(box: Box, point: tuple[float, float], tolerance: float = 0.5) -> bool:
+    return (
+        box.x - tolerance <= point[0] <= box.x + box.width + tolerance
+        and box.y - tolerance <= point[1] <= box.y + box.height + tolerance
+    )
+
+
+def _segment_intersects_box(
+    start: tuple[float, float], end: tuple[float, float], box: Box
+) -> bool:
+    """Return whether a finite line segment crosses an axis-aligned box."""
+    if _point_inside(box, start) or _point_inside(box, end):
+        return True
+    x1, y1 = start
+    x2, y2 = end
+    dx = x2 - x1
+    dy = y2 - y1
+    lower, upper = 0.0, 1.0
+    for p, q in (
+        (-dx, x1 - box.x),
+        (dx, box.x + box.width - x1),
+        (-dy, y1 - box.y),
+        (dy, box.y + box.height - y1),
+    ):
+        if abs(p) < 1e-9:
+            if q < 0:
+                return False
+            continue
+        ratio = q / p
+        if p < 0:
+            lower = max(lower, ratio)
+        else:
+            upper = min(upper, ratio)
+        if lower > upper:
+            return False
+    return True
+
+
+def _check_flow_geometry(root: ET.Element, result: Result) -> None:
+    """Validate opt-in process node/edge geometry before Office conversion.
+
+    GHB authors mark nodes with ``data-flow-node`` plus ``data-qa-box`` and
+    connector lines with ``data-flow-from``/``data-flow-to``. This local
+    contract avoids guessing relationships from drawing order.
+    """
+    nodes: dict[str, Box] = {}
+    text_boxes: list[tuple[str, Box]] = []
+    for index, elem in enumerate(root.iter(), start=1):
+        node_id = (elem.get("data-flow-node") or "").strip()
+        if node_id:
+            box = _box_from_element(elem)
+            if not box or box.width <= 0 or box.height <= 0:
+                result.errors.append(
+                    f"flow-node-contract: {node_id!r} requires a positive data-qa-box"
+                )
+            elif node_id in nodes:
+                result.errors.append(f"flow-node-contract: duplicate node {node_id!r}")
+            else:
+                nodes[node_id] = box
+        if elem.get("data-qa-role", "").strip().lower() in {"text", "title", "label"}:
+            box = _box_from_element(elem)
+            if box:
+                text_boxes.append((elem.get("id") or f"text#{index}", box))
+
+    for index, elem in enumerate(root.iter(), start=1):
+        source_id = (elem.get("data-flow-from") or "").strip()
+        target_id = (elem.get("data-flow-to") or "").strip()
+        if not source_id and not target_id:
+            continue
+        label = elem.get("id") or f"connector#{index}"
+        if not source_id or not target_id or source_id == target_id:
+            result.errors.append(
+                f"flow-connector-contract: {label} needs distinct data-flow-from/data-flow-to"
+            )
+            continue
+        source = nodes.get(source_id)
+        target = nodes.get(target_id)
+        if source is None or target is None:
+            result.errors.append(
+                f"flow-connector-contract: {label} references missing node(s) "
+                f"{source_id!r}->{target_id!r}"
+            )
+            continue
+        if _local_name(elem.tag) != "line":
+            result.errors.append(
+                f"flow-connector-contract: {label} must use an Office-safe line; "
+                "arrowheads may be separate polygons"
+            )
+            continue
+        values = [_number(elem.get(name)) for name in ("x1", "y1", "x2", "y2")]
+        if any(value is None for value in values):
+            result.errors.append(f"flow-connector-contract: {label} has invalid endpoints")
+            continue
+        x1, y1, x2, y2 = (float(value) for value in values)
+        start, end = (x1, y1), (x2, y2)
+        intersected_nodes = [
+            node_id
+            for node_id, node_box in nodes.items()
+            if _segment_intersects_box(start, end, node_box)
+        ]
+        if intersected_nodes:
+            result.errors.append(
+                f"connector-node-intersection: {label} crosses node bound(s) "
+                f"{intersected_nodes}"
+            )
+        visible_length = math.dist(start, end)
+        if visible_length < 24.0:
+            result.errors.append(
+                f"connector-visible-length-low: {label} has only {visible_length:.1f}px "
+                "of visible connector; require at least 24px"
+            )
+        for text_label, text_box in text_boxes:
+            if _segment_intersects_box(start, end, text_box):
+                result.errors.append(
+                    f"connector-text-intersection: {label} crosses {text_label}"
+                )
+
+
+def _inside_box(inner: Box, outer: Box, tolerance: float = 0.5) -> bool:
+    return not _outside(inner, outer, tolerance=tolerance)
+
+
+def _check_component_contracts(root: ET.Element, result: Result) -> None:
+    """Validate opt-in card slots and paired comparison alignment."""
+    components: dict[str, tuple[ET.Element, Box]] = {}
+    pair_members: dict[tuple[str, str], list[str]] = {}
+    slots: dict[str, dict[str, Box]] = {}
+    for elem in root.iter():
+        component_kind = (elem.get("data-component") or "").strip()
+        component_id = (elem.get("data-component-id") or "").strip()
+        if not component_kind and not component_id:
+            continue
+        if not component_kind or not component_id:
+            result.errors.append(
+                "component-contract: data-component and data-component-id must appear together"
+            )
+            continue
+        box = _box_from_element(elem)
+        if not box or box.width <= 0 or box.height <= 0:
+            result.errors.append(
+                f"component-contract: {component_id!r} requires a positive data-qa-box"
+            )
+            continue
+        if component_id in components:
+            result.errors.append(f"component-contract: duplicate component {component_id!r}")
+            continue
+        components[component_id] = (elem, box)
+        slots[component_id] = {}
+        pair = (elem.get("data-component-pair") or "").strip()
+        if pair:
+            pair_members.setdefault((component_kind, pair), []).append(component_id)
+
+    for elem in root.iter():
+        parent_id = (elem.get("data-component-parent") or "").strip()
+        slot = (elem.get("data-component-slot") or "").strip()
+        if not parent_id and not slot:
+            continue
+        label = elem.get("id") or slot or _local_name(elem.tag)
+        if not parent_id or not slot:
+            result.errors.append(
+                f"component-contract: {label} needs data-component-parent and data-component-slot"
+            )
+            continue
+        parent = components.get(parent_id)
+        child_box = _box_from_element(elem)
+        if parent is None or child_box is None:
+            result.errors.append(
+                f"component-contract: {label} references missing parent or has no data-qa-box"
+            )
+            continue
+        if not _inside_box(child_box, parent[1]):
+            result.errors.append(
+                f"component-slot-overflow: {label} exceeds component {parent_id!r}"
+            )
+        if slot in slots[parent_id]:
+            result.errors.append(
+                f"component-contract: component {parent_id!r} repeats slot {slot!r}"
+            )
+        else:
+            slots[parent_id][slot] = child_box
+
+    for (kind, pair), members in pair_members.items():
+        if len(members) != 2:
+            result.errors.append(
+                f"component-balance-outlier: {kind} pair {pair!r} has {len(members)} members; expected 2"
+            )
+            continue
+        left_id, right_id = members
+        all_slots = sorted(set(slots[left_id]) | set(slots[right_id]))
+        for slot in all_slots:
+            left = slots[left_id].get(slot)
+            right = slots[right_id].get(slot)
+            if left is None or right is None:
+                result.errors.append(
+                    f"component-balance-outlier: pair {pair!r} slot {slot!r} is missing on one side"
+                )
+                continue
+            if abs(left.y - right.y) > 24.0 or abs(left.height - right.height) > 24.0:
+                result.errors.append(
+                    f"component-balance-outlier: pair {pair!r} slot {slot!r} differs by more than 24px"
+                )
+
+
 def check_svg(path: Path, *, stage: str, icons_dir: Path) -> Result:
     result = Result(path=path, errors=[], warnings=[])
     try:
@@ -618,6 +821,8 @@ def check_svg(path: Path, *, stage: str, icons_dir: Path) -> Result:
     _check_icons(root, path, icons_dir, canvas, actual_stage, result)
     _check_shape_bounds(root, canvas, result)
     _check_collisions(root, canvas, result)
+    _check_flow_geometry(root, result)
+    _check_component_contracts(root, result)
     for elem in root.iter():
         layout = elem.get("data-layout")
         if layout:

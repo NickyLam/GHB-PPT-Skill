@@ -234,7 +234,7 @@ def build_page(index: int, slide: dict[str, object]) -> str:
     <rect x="88" y="132" width="6" height="40" fill="#AB1F29"/>
     <text x="108" y="162" font-size="30" font-weight="bold" fill="#2B2B2B" font-family="'Arial Black', 'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif">Claude Code 架构解析</text>
     <line x1="88" y1="190" x2="1192" y2="190" stroke="#E0E0E0" stroke-width="1"/>
-    <text x="1192" y="162" text-anchor="end" font-size="14" fill="#AB1F29" font-family="'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif">{slide["part"]}</text>
+    <text id="template-section-label" x="1192" y="162" text-anchor="end" font-size="14" fill="#AB1F29" font-family="'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif">Claude Code 架构解析 · {slide["part"]}</text>
   </g>
   <g id="content-lead">
     <text x="120" y="228" font-size="24" font-weight="bold" fill="#2B2B2B" font-family="'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif">{slide["title"]}</text>

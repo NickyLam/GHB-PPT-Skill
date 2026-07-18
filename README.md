@@ -70,12 +70,20 @@ python3 scripts/ghb_ppt.py build \
   --template templates/GHB_PPT_模板.pptx \
   --cover-plan projects/demo/analysis/cover_fill_plan.json \
   --output projects/demo/exports/final.pptx \
+  --quality-policy release \
+  --target-renderer libreoffice \
   --keep-intermediate \
   --repair-attempts 1
 ```
 
 结果包括最终 PPTX、authored/finalized SVG 报告、最终 JSON/Markdown
 报告，以及渲染器可用时的 PDF、逐页 PNG 和 contact sheet。
+
+正式交付默认使用 `--quality-policy release`，未处理 warning 会返回非零。
+有意接受的警告用 `ghb.warning-waivers.v1` 文件记录，并通过
+`--warning-waivers path/to/warning-waivers.json` 传入。草稿阶段可显式选择
+`--quality-policy draft`。用 `--target-renderer auto|libreoffice|powerpoint|wps`
+声明目标环境；指定 WPS/PowerPoint 时，LibreOffice 渲染不能冒充目标证据。
 
 ## 统一命令
 
@@ -110,7 +118,10 @@ python3 scripts/ghb_ppt.py build --help
 - `--ending-slide N`：指定模板致谢页。
 - `--no-render`：明确跳过渲染。
 - `--review`：在 build 中显式运行已配置的可选视觉评审。
-- `--require-review`：要求可选评审成功；不改变确定性检查结论。
+- `--require-review`：要求可选评审结果为 `passed`；其他结果阻断交付。
+- `--quality-policy draft|release`：选择草稿或阻断式发布判定。
+- `--warning-waivers PATH`：显式接受已审批的逐项 warning。
+- `--target-renderer auto|libreoffice|powerpoint|wps`：声明目标渲染环境。
 - `--repair-attempts 0..3`：限制确定性修复重试次数。
 
 ## 流水线

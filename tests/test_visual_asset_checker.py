@@ -82,6 +82,71 @@ class VisualAssetCheckerTest(unittest.TestCase):
             result = check_svg(path, stage="finalized", icons_dir=ICONS)
             self.assertTrue(result.passed, result.errors)
 
+    def test_rejects_flow_connector_that_is_too_short_or_enters_nodes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_svg(
+                Path(tmp),
+                '<g data-layout="waterfall">'
+                '<g id="step-1" data-flow-node="step-1" data-qa-box="100 200 180 100">'
+                '<rect x="100" y="200" width="180" height="100"/></g>'
+                '<g id="step-2" data-flow-node="step-2" data-qa-box="290 200 180 100">'
+                '<rect x="290" y="200" width="180" height="100"/></g>'
+                '<line id="edge-1" data-flow-from="step-1" data-flow-to="step-2" '
+                'x1="270" y1="250" x2="280" y2="250"/>'
+                '</g>',
+            )
+            result = check_svg(path, stage="authored", icons_dir=ICONS)
+            joined = "\n".join(result.errors)
+            self.assertIn("connector-node-intersection", joined)
+            self.assertIn("connector-visible-length-low", joined)
+
+    def test_rejects_flow_connector_crossing_declared_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_svg(
+                Path(tmp),
+                '<g data-layout="waterfall">'
+                '<g id="step-1" data-flow-node="step-1" data-qa-box="100 200 160 100">'
+                '<rect x="100" y="200" width="160" height="100"/></g>'
+                '<g id="step-2" data-flow-node="step-2" data-qa-box="420 200 160 100">'
+                '<rect x="420" y="200" width="160" height="100"/></g>'
+                '<text id="spill" data-qa-role="text" data-qa-box="270 225 120 50" '
+                'x="270" y="250">AGENTS.md/Rules 约束</text>'
+                '<line id="edge-1" data-flow-from="step-1" data-flow-to="step-2" '
+                'x1="266" y1="250" x2="414" y2="250"/>'
+                '</g>',
+            )
+            result = check_svg(path, stage="authored", icons_dir=ICONS)
+            self.assertTrue(
+                any("connector-text-intersection" in error for error in result.errors),
+                result.errors,
+            )
+
+    def test_rejects_component_slot_overflow_and_pair_imbalance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_svg(
+                Path(tmp),
+                '<g data-layout="matrix">'
+                '<g id="left" data-component="evidence-card" data-component-id="left" '
+                'data-component-pair="comparison-1" data-qa-box="100 180 420 360">'
+                '<rect x="100" y="180" width="420" height="360"/>'
+                '<g id="left-verdict" data-component-parent="left" data-component-slot="verdict" '
+                'data-qa-box="140 470 340 48"><text x="160" y="500">待补充</text></g>'
+                '</g>'
+                '<g id="right" data-component="evidence-card" data-component-id="right" '
+                'data-component-pair="comparison-1" data-qa-box="620 180 420 360">'
+                '<rect x="620" y="180" width="420" height="360"/>'
+                '<g id="right-verdict" data-component-parent="right" data-component-slot="verdict" '
+                'data-qa-box="660 300 340 48"><text x="680" y="330">须查布局</text></g>'
+                '<g id="right-media" data-component-parent="right" data-component-slot="media" '
+                'data-qa-box="980 500 120 80"><rect x="980" y="500" width="120" height="80"/></g>'
+                '</g>'
+                '</g>',
+            )
+            result = check_svg(path, stage="authored", icons_dir=ICONS)
+            joined = "\n".join(result.errors)
+            self.assertIn("component-slot-overflow", joined)
+            self.assertIn("component-balance-outlier", joined)
+
     def test_project_density_and_layout_plan_are_enforced(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)

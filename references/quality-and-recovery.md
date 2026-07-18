@@ -20,6 +20,15 @@ for bleed. A warning that both Source Han Sans SC and Microsoft YaHei are
 missing means geometry can be reviewed, but Chinese visual fidelity cannot be
 claimed.
 
+For user delivery, run with `--quality-policy release`. Every warning must be
+fixed or matched by an explicit `ghb.warning-waivers.v1` row supplied through
+`--warning-waivers`. Draft iteration must opt into `--quality-policy draft`.
+Record the intended application with
+`--target-renderer auto|libreoffice|powerpoint|wps`. A release with a specific
+target fails when the bound render report names a different renderer. External
+WPS/PowerPoint evidence is acceptable only when its report, page PNGs, PPTX
+path, and SHA-256 match the final deck.
+
 ## Visual review
 
 Inspect the contact sheet, then open suspicious page PNGs. Check:
@@ -42,6 +51,26 @@ these values do not rewrite deterministic findings. `completion_status` may be
 `failed` when deterministic delivery failed or the optional review errored. A
 missing adapter remains `skipped` in the offline default. Missing fonts force
 typography review to `limited`.
+
+When `--require-review` is set, only a fresh `passed` result satisfies the
+requirement. `needs-revision`, `limited`, `skipped`, `unavailable`, and `error`
+remain evidence but block delivery.
+
+Example waiver file:
+
+```json
+{
+  "schema": "ghb.warning-waivers.v1",
+  "waivers": [
+    {
+      "code": "template-bleed",
+      "slide": 1,
+      "reason": "Bundled cover decoration intentionally bleeds past the edge.",
+      "approved_by": "presentation-owner"
+    }
+  ]
+}
+```
 
 Treat `needs-revision` as authored-content advice: first preserve semantics and
 remove redundant wording, then choose another catalogued variant or density.

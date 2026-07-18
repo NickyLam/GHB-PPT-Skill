@@ -1302,9 +1302,10 @@ def convert_text(elem: ET.Element, ctx: ConvertContext) -> Optional[ShapeResult]
             'anchor="t" anchorCtr="0">\n<a:spAutoFit/>\n</a:bodyPr>'
         )
 
+    shape_name = elem.get('id') or f'TextBox {shape_id}'
     return ShapeResult(xml=f'''<p:sp>
 <p:nvSpPr>
-<p:cNvPr id="{shape_id}" name="TextBox {shape_id}"/>
+<p:cNvPr id="{shape_id}" name="{_xml_escape(shape_name)}"/>
 <p:cNvSpPr txBox="1"/><p:nvPr/>
 </p:nvSpPr>
 <p:spPr>

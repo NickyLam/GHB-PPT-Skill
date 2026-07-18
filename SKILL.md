@@ -104,8 +104,17 @@ SVG 和备注。
 - 包含一个可安全删除的 `<g id="bg">` 预览白底；
 - 在主内容组写 `data-layout="<layout_archetype>"`；
 - 保留标题、正文、卡片、表格、流程和架构为文本/形状；
+- 将“演示文稿名 · Part/Section”这类页眉文本标记为
+  `id="template-section-label"`；构建时会删除 SVG 中的该文本框，并将文本迁入
+  GHB 模板原生右上标题框。每页最多一个该 id，不要把页面主标题标记为此 id；
 - 使用 `#AB1F29` 主色、`#44546A` 辅色和 GHB 字体规范；
 - 给自由摆放内容提供质量检查所需的边界/角色元数据。
+- 让流程/飞轮连接线在节点外结束，箭头不得穿入卡片；连接空间不足时
+  优先缩窄节点或重排，不得把箭头压成竖直短线。
+- 流程节点必须写 `data-flow-node` 与 `data-qa-box`，连接线必须写
+  `data-flow-from` / `data-flow-to`；比较卡片必须用 `data-component`、
+  `data-component-id`、`data-component-pair`，内部槽位使用
+  `data-component-parent` / `data-component-slot`。
 
 不要用同一种卡片网格伪装版式多样性。长文本依次采用重写、换布局、
 拆页、调间距和小幅字号调整；禁止全局缩成不可读小字。
@@ -120,6 +129,8 @@ python3 scripts/ghb_ppt.py build \
   --template templates/GHB_PPT_模板.pptx \
   --cover-plan projects/<name>/analysis/cover_fill_plan.json \
   --output projects/<name>/exports/final.pptx \
+  --quality-policy release \
+  --target-renderer libreoffice \
   --keep-intermediate \
   --repair-attempts 1
 ```
@@ -127,6 +138,13 @@ python3 scripts/ghb_ppt.py build \
 `build` 依次执行封面、authored SVG 门、正式白底移除、SVG finalized 门、
 可编辑正文导出、碰撞安全 OOXML 合并、预渲染验证、可用时的
 LibreOffice 渲染和最终报告。修复重试仅限 `0..3` 次确定性操作。
+
+真实交付默认使用 `--quality-policy release`：任何未处置 warning 都阻断。
+确需接受的模板异常写入 `ghb.warning-waivers.v1` 文件，并用
+`--warning-waivers <path>` 显式传入。`--target-renderer` 记录实际交付环境；
+若选择 `wps` / `powerpoint` 而当前证据来自 LibreOffice，构建必须失败，
+直到导入与最终 PPTX digest 绑定的目标渲染报告和逐页 PNG。草稿迭代可
+显式使用 `--quality-policy draft`。
 
 需要排查或单步执行时使用：
 
@@ -151,7 +169,9 @@ LibreOffice 渲染和最终报告。修复重试仅限 `0..3` 次确定性操作
 
 默认构建不调用模型。仅当操作者明确提供可信配置时使用 `review` 或
 `build --review`；远程适配器还需要单独的披露授权。`--require-review`
-只提升可选评审的交付要求，不改变确定性检查结果。
+只提升可选评审的交付要求，不改变确定性检查结果；启用后只有
+`outcome=passed` 才满足交付，`needs-revision`、`limited`、`skipped`、
+`unavailable` 和 `error` 均阻断。
 
 ## 验收与修复
 

@@ -14,6 +14,7 @@ from scripts.ghb_ppt import (
     main,
     record_unavailable_render,
     record_review_state,
+    require_completed_review,
     timestamped_candidates,
     validation_error_codes,
     build_evidence_items,
@@ -27,6 +28,12 @@ from scripts.validate_project_contract import confirmation_digest, validate_proj
 
 
 class GhbPptCliTest(unittest.TestCase):
+    def test_required_review_accepts_only_passed_outcome(self):
+        require_completed_review({"outcome": "passed"}, required=True)
+        for outcome in ("needs-revision", "limited", "skipped", "unavailable", "error"):
+            with self.subTest(outcome=outcome), self.assertRaises(PipelineError):
+                require_completed_review({"outcome": outcome}, required=True)
+
     def test_operator_review_config_must_be_explicit_and_outside_project(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

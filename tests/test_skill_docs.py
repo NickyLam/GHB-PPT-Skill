@@ -50,3 +50,23 @@ def test_recovery_docs_separate_deterministic_optional_and_human_review():
     assert "fresh" in recovery
     assert "build --review" in review_contract
     assert "review" in review_contract
+
+
+def test_release_and_semantic_geometry_contracts_are_documented():
+    skill = _read("SKILL.md")
+    readme = _read("README.md")
+    visual = _read("references/visual-quality-rules.md")
+    recovery = _read("references/quality-and-recovery.md")
+
+    for document in (skill, readme, recovery):
+        assert "--quality-policy" in document
+        assert "--target-renderer" in document
+        assert "warning-waivers" in document
+    for token in (
+        "data-flow-node",
+        "data-flow-from",
+        "data-component",
+        "data-component-slot",
+        "header-safe-zone-collision",
+    ):
+        assert token in visual

@@ -283,9 +283,12 @@ def _render_pyramid(spec: LayoutSpec) -> str:
 
 def _render_waterfall(spec: LayoutSpec) -> str:
     count = len(spec.items)
-    gap = _density_value(spec, 34.0, 24.0, 12.0) if _intent_enabled(spec) else 24
+    # GHB intent-aware waterfalls reserve real connector space. The previous
+    # dense 12 px gap was smaller than the connector's 14 px insets, which
+    # reversed the horizontal vector and produced near-vertical arrow stubs.
+    gap = _density_value(spec, 40.0, 36.0, 32.0) if _intent_enabled(spec) else 24
     step_w = (spec.width - gap * (count - 1)) / count
-    block_h = _density_value(spec, 82.0, 92.0, 104.0) if _intent_enabled(spec) else 92
+    block_h = _density_value(spec, 78.0, 84.0, 90.0) if _intent_enabled(spec) else 92
     rise = _density_value(spec, 42.0, 34.0, 26.0) if _intent_enabled(spec) else 34
     base_y = spec.y + spec.height - block_h
     body: list[str] = []
@@ -297,8 +300,15 @@ def _render_waterfall(spec: LayoutSpec) -> str:
         fill = PRIMARY if highlighted else SURFACE
         text_fill = WHITE if highlighted else TEXT
         height_attr = f"{block_h:.1f}" if _intent_enabled(spec) else "92"
+        node_id = f"waterfall-step-{idx + 1}"
+        node_contract = (
+            f' id="{node_id}" data-flow-node="{node_id}" '
+            f'data-qa-box="{x:.1f} {y:.1f} {step_w:.1f} {block_h:.1f}"'
+            if _intent_enabled(spec)
+            else ""
+        )
         body.append(
-            f'<rect x="{x:.1f}" y="{y:.1f}" width="{step_w:.1f}" height="{height_attr}" rx="10"'
+            f'<rect{node_contract} x="{x:.1f}" y="{y:.1f}" width="{step_w:.1f}" height="{height_attr}" rx="10"'
             f'{_focal_attr(spec, idx)} fill="{fill}" '
             f'stroke="{PRIMARY if highlighted and _intent_enabled(spec) else BORDER}" '
             f'stroke-width="{2 if highlighted and _intent_enabled(spec) else 1}"/>'
@@ -311,17 +321,54 @@ def _render_waterfall(spec: LayoutSpec) -> str:
             )
         )
         if idx < count - 1:
-            ax1 = x + step_w + 6
-            ay = y + 46
-            ax2 = x + step_w + gap - 8
+            if _intent_enabled(spec):
+                next_x = spec.x + (idx + 1) * (step_w + gap)
+                next_offset = (
+                    idx + 1
+                    if spec.variant != "waterfall/descending"
+                    else count - 2 - idx
+                )
+                next_y = base_y - next_offset * rise
+                current_cx, current_cy = x + step_w / 2, y + block_h / 2
+                next_cx, next_cy = next_x + step_w / 2, next_y + block_h / 2
+                # Four SVG units of clearance keep the line and explicit
+                # arrowhead outside both rounded cards after PPT conversion.
+                ax1, ay = _edge_point(
+                    current_cx,
+                    current_cy,
+                    next_cx,
+                    next_cy,
+                    step_w / 2 + 4,
+                    block_h / 2 + 4,
+                )
+                ax2, ay2 = _edge_point(
+                    next_cx,
+                    next_cy,
+                    current_cx,
+                    current_cy,
+                    step_w / 2 + 4,
+                    block_h / 2 + 4,
+                )
+            else:
+                ax1 = x + step_w + 6
+                ay = y + 46
+                ax2 = x + step_w + gap - 8
+                ay2 = ay - 20
+            edge_contract = (
+                f' id="waterfall-edge-{idx + 1}" data-flow-from="{node_id}" '
+                f'data-flow-to="waterfall-step-{idx + 2}"'
+                if _intent_enabled(spec)
+                else ""
+            )
             body.append(
-                f'<line x1="{ax1:.1f}" y1="{ay:.1f}" x2="{ax2:.1f}" y2="{ay - 20:.1f}" '
+                f'<line{edge_contract}'
+                f' x1="{ax1:.1f}" y1="{ay:.1f}" x2="{ax2:.1f}" y2="{ay2:.1f}" '
                 f'stroke="{SECONDARY}" stroke-width="2"/>'
             )
             # GHB keeps explicit Office-safe polygons in the vendored SVG path;
             # derive both wings from the connector vector so arrows stay balanced.
             arrow_points = (
-                _arrowhead(ax2, ay - 20, ax1, ay)
+                _arrowhead(ax2, ay2, ax1, ay, size=9)
                 if _intent_enabled(spec)
                 else (
                     f"{ax2:.1f},{ay - 20:.1f} {ax2 - 11:.1f},{ay - 14:.1f} "
@@ -641,8 +688,15 @@ def _render_flywheel(spec: LayoutSpec) -> str:
         highlighted = _highlighted(spec, idx, count - 1)
         fill = PRIMARY if highlighted and _intent_enabled(spec) else (SURFACE if idx < count - 1 else WHITE)
         text_fill = WHITE if highlighted and _intent_enabled(spec) else TEXT
+        node_id = f"flywheel-step-{idx + 1}"
+        node_contract = (
+            f' id="{node_id}" data-flow-node="{node_id}" '
+            f'data-qa-box="{nx - box_w / 2:.1f} {ny - box_h / 2:.1f} {box_w:.1f} {box_h:.1f}"'
+            if _intent_enabled(spec)
+            else ""
+        )
         body.append(
-            f'<rect x="{nx - box_w / 2:.1f}" y="{ny - box_h / 2:.1f}" width="{box_w:.1f}" '
+            f'<rect{node_contract} x="{nx - box_w / 2:.1f}" y="{ny - box_h / 2:.1f}" width="{box_w:.1f}" '
             f'height="{box_h:g}" rx="18"{_focal_attr(spec, idx)} fill="{fill}" stroke="{PRIMARY}" '
             f'stroke-width="{3 if highlighted and _intent_enabled(spec) else 2}"/>'
         )
@@ -654,10 +708,28 @@ def _render_flywheel(spec: LayoutSpec) -> str:
             )
         )
         next_x, next_y, _ = nodes[(idx + 1) % count]
-        sx, sy = _edge_point(nx, ny, next_x, next_y, box_w / 2 - 6, box_h / 2 - 6)
-        ex, ey = _edge_point(next_x, next_y, nx, ny, box_w / 2 - 6, box_h / 2 - 6)
+        if _intent_enabled(spec):
+            # The old half-size-minus-six calculation placed both endpoints
+            # inside the node. Keep a visible clearance outside the bounding
+            # box so diagonal arrows cannot pierce rounded corners.
+            sx, sy = _edge_point(
+                nx, ny, next_x, next_y, box_w / 2 + 4, box_h / 2 + 4
+            )
+            ex, ey = _edge_point(
+                next_x, next_y, nx, ny, box_w / 2 + 4, box_h / 2 + 4
+            )
+        else:
+            sx, sy = _edge_point(nx, ny, next_x, next_y, box_w / 2 - 6, box_h / 2 - 6)
+            ex, ey = _edge_point(next_x, next_y, nx, ny, box_w / 2 - 6, box_h / 2 - 6)
+        edge_contract = (
+            f' id="flywheel-edge-{idx + 1}" data-flow-from="{node_id}" '
+            f'data-flow-to="flywheel-step-{(idx + 1) % count + 1}"'
+            if _intent_enabled(spec)
+            else ""
+        )
         body.append(
-            f'<line x1="{sx:.1f}" y1="{sy:.1f}" x2="{ex:.1f}" y2="{ey:.1f}" '
+            f'<line{edge_contract}'
+            f' x1="{sx:.1f}" y1="{sy:.1f}" x2="{ex:.1f}" y2="{ey:.1f}" '
             f'stroke="{SECONDARY}" stroke-width="2"/>'
         )
         body.append(

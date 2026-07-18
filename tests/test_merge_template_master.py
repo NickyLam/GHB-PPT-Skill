@@ -29,14 +29,26 @@ ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "templates" / "GHB_PPT_模板.pptx"
 
 
-def make_content(path: Path, count: int, *, with_image: bool = False) -> bytes | None:
+def make_content(
+    path: Path,
+    count: int,
+    *,
+    with_image: bool = False,
+    section_labels: list[str] | None = None,
+) -> bytes | None:
     presentation = Presentation()
+    presentation.slide_width = 12192000
+    presentation.slide_height = 6858000
     blank = presentation.slide_layouts[6]
     picture_bytes = None
     for index in range(count):
         slide = presentation.slides.add_slide(blank)
         box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(7), Inches(1))
         box.text = f"Body {index + 1} 可编辑正文"
+        if section_labels is not None:
+            label = slide.shapes.add_textbox(Inches(1), Inches(0.5), Inches(5), Inches(0.3))
+            label.name = "template-section-label"
+            label.text = section_labels[index]
         if with_image and index == 0:
             image_path = path.with_suffix(".png")
             Image.new("RGB", (120, 80), (0, 80, 180)).save(image_path)
@@ -52,6 +64,59 @@ def package(path: Path) -> dict[str, bytes]:
 
 
 class MergeTemplateMasterTest(unittest.TestCase):
+    def test_semantic_section_labels_move_into_native_template_title_frame(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            content = tmp_path / "content.pptx"
+            labels = ["SpaceX 投研叙事 · Part 1 · Thesis", "SpaceX 投研叙事 · Part 2 · Supply"]
+            make_content(content, len(labels), section_labels=labels)
+            result = merge_pptx(
+                content_path=content,
+                template_path=TEMPLATE,
+                cover_path=TEMPLATE,
+                output_path=tmp_path / "final.pptx",
+            )
+
+            parts = package(result.output)
+            ordered = presentation_slide_parts(parts)
+            self.assertEqual(len(ordered[1:-1]), len(labels))
+            for body_part, expected_label in zip(ordered[1:-1], labels):
+                slide = ET.fromstring(parts[body_part])
+                names = [node.get("name") for node in slide.findall(".//p:cNvPr", NS)]
+                self.assertEqual(names.count("GHB Template Section Frame"), 1)
+                self.assertNotIn("template-section-label", names)
+                text = "".join(node.text or "" for node in slide.findall(".//a:t", NS))
+                self.assertIn(expected_label, text)
+                self.assertNotIn("XXX", text)
+                shape_ids = [node.get("id") for node in slide.findall(".//p:cNvPr", NS)]
+                self.assertEqual(len(shape_ids), len(set(shape_ids)))
+                frame = next(
+                    node
+                    for node in slide.findall("p:cSld/p:spTree/p:grpSp", NS)
+                    if node.find("p:nvGrpSpPr/p:cNvPr", NS).get("name") == "GHB Template Section Frame"
+                )
+                off = frame.find("p:grpSpPr/a:xfrm/a:off", NS)
+                ext = frame.find("p:grpSpPr/a:xfrm/a:ext", NS)
+                presentation = ET.fromstring(parts["ppt/presentation.xml"])
+                slide_size = presentation.find("p:sldSz", NS)
+                self.assertLessEqual(int(off.get("x")) + int(ext.get("cx")), int(slide_size.get("cx")))
+
+    def test_body_without_semantic_section_label_does_not_gain_title_frame(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            content = tmp_path / "content.pptx"
+            make_content(content, 1)
+            result = merge_pptx(
+                content_path=content,
+                template_path=TEMPLATE,
+                cover_path=TEMPLATE,
+                output_path=tmp_path / "final.pptx",
+            )
+            parts = package(result.output)
+            body = ET.fromstring(parts[presentation_slide_parts(parts)[1]])
+            names = [node.get("name") for node in body.findall(".//p:cNvPr", NS)]
+            self.assertNotIn("GHB Template Section Frame", names)
+
     def test_body_count_matrix_and_default_ending_mounts_all_roles(self):
         for count in (1, 3, 10):
             with self.subTest(body_count=count), tempfile.TemporaryDirectory() as tmp:

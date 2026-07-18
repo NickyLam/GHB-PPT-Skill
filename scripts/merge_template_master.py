@@ -11,6 +11,7 @@ targets have been checked.
 from __future__ import annotations
 
 import argparse
+import copy
 import mimetypes
 import os
 import posixpath
@@ -51,6 +52,10 @@ MEDIA_TYPES = {
     "emf": "image/x-emf",
     "wmf": "image/x-wmf",
 }
+SECTION_LABEL_SHAPE = "template-section-label"
+SECTION_FRAME_SHAPE = "GHB Template Section Frame"
+SECTION_FRAME_PLACEHOLDER = "XXX"
+SECTION_FRAME_FONT = "Source Han Sans SC"
 
 
 class MergeError(RuntimeError):
@@ -146,6 +151,128 @@ def parse_rels(parts: dict[str, bytes], part: str) -> ET.Element:
         return ET.fromstring(data)
     except ET.ParseError as exc:
         raise MergeError(f"invalid relationships XML: {name}: {exc}") from exc
+
+
+def find_template_section_frame(
+    template: dict[str, bytes], template_slides: list[str], content_layout: str
+) -> ET.Element:
+    """Return the native top-level title-frame group for the content layout."""
+    matches: list[ET.Element] = []
+    for slide_part in template_slides:
+        if slide_layout_part(template, slide_part) != content_layout:
+            continue
+        slide = ET.fromstring(require(template, slide_part))
+        tree = slide.find("p:cSld/p:spTree", NS)
+        if tree is None:
+            continue
+        for shape in list(tree):
+            if shape.tag != qn("p", "grpSp"):
+                continue
+            texts = [node.text or "" for node in shape.findall(".//a:t", NS)]
+            if SECTION_FRAME_PLACEHOLDER in texts:
+                matches.append(shape)
+    if not matches:
+        raise MergeError(
+            f"template content slides have no native section frame containing "
+            f"{SECTION_FRAME_PLACEHOLDER!r}"
+        )
+    frame = copy.deepcopy(matches[0])
+    presentation = ET.fromstring(require(template, "ppt/presentation.xml"))
+    slide_size = presentation.find("p:sldSz", NS)
+    frame_xfrm = frame.find("p:grpSpPr/a:xfrm", NS)
+    frame_off = frame_xfrm.find("a:off", NS) if frame_xfrm is not None else None
+    frame_ext = frame_xfrm.find("a:ext", NS) if frame_xfrm is not None else None
+    if slide_size is None or frame_off is None or frame_ext is None:
+        raise MergeError("template section frame or slide size has no geometry")
+    slide_width = int(slide_size.get("cx", "0"))
+    frame_width = int(frame_ext.get("cx", "0"))
+    frame_x = int(frame_off.get("x", "0"))
+    if frame_x + frame_width > slide_width:
+        # The reference template intentionally bleeds this group a few pixels
+        # past the right edge. Body-slide quality gates treat that as an error,
+        # so preserve its size and appearance while right-aligning it in-frame.
+        frame_off.set("x", str(max(0, slide_width - frame_width)))
+    # PowerPoint attached authoring tags to the placeholder shape. They are
+    # slide-specific metadata, not visual content, so carrying their r:id into
+    # another slide would create a dangling relationship. Remove that metadata
+    # while preserving all geometry, fills, lines, and editable text.
+    frame_parents = {child: parent for parent in frame.iter() for child in parent}
+    for tags in frame.findall(".//p:tags", NS):
+        custom_data = frame_parents.get(tags)
+        while custom_data is not None and custom_data.tag != qn("p", "custDataLst"):
+            custom_data = frame_parents.get(custom_data)
+        custom_data_parent = frame_parents.get(custom_data) if custom_data is not None else None
+        if custom_data is not None and custom_data_parent is not None:
+            custom_data_parent.remove(custom_data)
+    relationship_attrs = [
+        key
+        for node in frame.iter()
+        for key in node.attrib
+        if key.startswith(f"{{{NS['r']}}}")
+    ]
+    if relationship_attrs:
+        raise MergeError("template section frame contains unsupported relationship references")
+    return frame
+
+
+def move_section_label_into_template_frame(slide_payload: bytes, template_frame: ET.Element) -> bytes:
+    """Replace a semantic SVG label with a cloned, editable template title frame."""
+    slide = ET.fromstring(slide_payload)
+    tree = slide.find("p:cSld/p:spTree", NS)
+    if tree is None:
+        raise MergeError("body slide has no shape tree")
+
+    parent_map = {child: parent for parent in slide.iter() for child in parent}
+    markers = [
+        node
+        for node in slide.findall(".//p:cNvPr", NS)
+        if node.get("name") == SECTION_LABEL_SHAPE
+    ]
+    if not markers:
+        return slide_payload
+    if len(markers) != 1:
+        raise MergeError(f"body slide must contain at most one {SECTION_LABEL_SHAPE!r} shape")
+
+    marker = markers[0]
+    shape = parent_map.get(marker)
+    while shape is not None and shape.tag != qn("p", "sp"):
+        shape = parent_map.get(shape)
+    if shape is None:
+        raise MergeError(f"{SECTION_LABEL_SHAPE!r} is not attached to a text shape")
+    label = "".join(node.text or "" for node in shape.findall(".//a:t", NS)).strip()
+    if not label:
+        raise MergeError(f"{SECTION_LABEL_SHAPE!r} has no text")
+    shape_parent = parent_map.get(shape)
+    if shape_parent is None:
+        raise MergeError(f"cannot remove {SECTION_LABEL_SHAPE!r} from body slide")
+    shape_parent.remove(shape)
+
+    frame = copy.deepcopy(template_frame)
+    placeholders = [
+        node for node in frame.findall(".//a:t", NS) if (node.text or "") == SECTION_FRAME_PLACEHOLDER
+    ]
+    if len(placeholders) != 1:
+        raise MergeError("template section frame must contain exactly one title placeholder")
+    placeholders[0].text = label
+    for font in frame.findall(".//a:latin", NS) + frame.findall(".//a:ea", NS) + frame.findall(".//a:cs", NS):
+        font.set("typeface", SECTION_FRAME_FONT)
+
+    top_properties = frame.find("p:nvGrpSpPr/p:cNvPr", NS)
+    if top_properties is None:
+        raise MergeError("template section frame group has no non-visual properties")
+    top_properties.set("name", SECTION_FRAME_SHAPE)
+
+    existing_ids = [
+        int(node.get("id", "0"))
+        for node in slide.findall(".//p:cNvPr", NS)
+        if node.get("id", "").isdigit()
+    ]
+    next_id = max(existing_ids, default=0) + 1
+    for properties in frame.findall(".//p:cNvPr", NS):
+        properties.set("id", str(next_id))
+        next_id += 1
+    tree.append(frame)
+    return xml_bytes(slide)
 
 
 def max_index(parts: dict[str, bytes], pattern: str) -> int:
@@ -460,8 +587,24 @@ def merge_pptx(
         ending_slide, tags = clone_slide(template, ending_source_slide, layout_map[ending_source_layout])
         copied_tags.update(tags)
 
-    # Repoint every original body slide to the injected content layout.
+    # Repoint every original body slide to the injected content layout. When
+    # an SVG author marks its section label semantically, move that text into
+    # the template's native, editable title frame before packaging the slide.
+    template_section_frame: ET.Element | None = None
     for body_slide in body_slides:
+        body_xml = ET.fromstring(require(content, body_slide))
+        has_section_label = any(
+            node.get("name") == SECTION_LABEL_SHAPE
+            for node in body_xml.findall(".//p:cNvPr", NS)
+        )
+        if has_section_label:
+            if template_section_frame is None:
+                template_section_frame = find_template_section_frame(
+                    template, template_slides, template_content_layout
+                )
+            content[body_slide] = move_section_label_into_template_frame(
+                content[body_slide], template_section_frame
+            )
         rels = parse_rels(content, body_slide)
         layouts = [rel for rel in rels if relation_type(rel) == "slideLayout"]
         if len(layouts) != 1:

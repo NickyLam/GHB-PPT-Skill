@@ -749,6 +749,9 @@ def validate_deck(
     freshness: FreshnessResult | None = None,
     review_report_path: Path | None = None,
     review_required: bool = False,
+    quality_policy: str = "draft",
+    warning_waivers: Path | None = None,
+    target_renderer: str = "auto",
 ) -> tuple[Path, Path]:
     if not pptx.is_file() and not run.dry_run:
         raise PipelineError(f"final PPTX not found: {pptx}")
@@ -785,6 +788,10 @@ def validate_deck(
         command.extend(["--review-report", str(review_report_path)])
     if review_required:
         command.append("--review-required")
+    command.extend(["--quality-policy", quality_policy])
+    command.extend(["--target-renderer", target_renderer])
+    if warning_waivers is not None:
+        command.extend(["--warning-waivers", str(warning_waivers)])
     if freshness is not None:
         freshness_path = run.run_dir / "freshness.json"
         freshness_payload = {
@@ -1237,7 +1244,7 @@ def validation_error_codes(report_path: Path) -> set[str]:
     }
 
 
-COMPLETED_REVIEW_OUTCOMES = frozenset({"passed", "needs-revision", "limited"})
+COMPLETED_REVIEW_OUTCOMES = frozenset({"passed"})
 
 
 def require_completed_review(report: dict[str, Any], *, required: bool) -> None:
@@ -1404,6 +1411,15 @@ def parser() -> argparse.ArgumentParser:
         validate.add_argument("--markdown-output", type=Path)
         validate.add_argument("--render-dir", type=Path)
         validate.add_argument("--no-ending", action="store_true")
+        validate.add_argument(
+            "--quality-policy", choices=("draft", "release"), default="release"
+        )
+        validate.add_argument("--warning-waivers", type=Path)
+        validate.add_argument(
+            "--target-renderer",
+            choices=("auto", "libreoffice", "powerpoint", "wps"),
+            default="auto",
+        )
 
     render = sub.add_parser("render", help="Render final PPTX to PDF, page PNGs, and contact sheet")
     add_project(render)
@@ -1418,6 +1434,15 @@ def parser() -> argparse.ArgumentParser:
     review.add_argument("--review-authorization", type=Path)
     review.add_argument("--require-review", action="store_true")
     review.add_argument("--no-ending", action="store_true")
+    review.add_argument(
+        "--quality-policy", choices=("draft", "release"), default="release"
+    )
+    review.add_argument("--warning-waivers", type=Path)
+    review.add_argument(
+        "--target-renderer",
+        choices=("auto", "libreoffice", "powerpoint", "wps"),
+        default="auto",
+    )
 
     build = sub.add_parser("build", help="Run cover, SVG gates/content export, and master merge")
     add_project(build)
@@ -1434,6 +1459,15 @@ def parser() -> argparse.ArgumentParser:
     build.add_argument("--review-config", type=Path)
     build.add_argument("--review-authorization", type=Path)
     build.add_argument("--require-review", action="store_true")
+    build.add_argument(
+        "--quality-policy", choices=("draft", "release"), default="release"
+    )
+    build.add_argument("--warning-waivers", type=Path)
+    build.add_argument(
+        "--target-renderer",
+        choices=("auto", "libreoffice", "powerpoint", "wps"),
+        default="auto",
+    )
     build.add_argument(
         "--repair-attempts",
         type=int,
@@ -1620,6 +1654,11 @@ def main(argv: list[str] | None = None) -> int:
                             project / ".ghb" / "adapter-policy.json"
                         ).get("required", False)
                     ),
+                    quality_policy=args.quality_policy,
+                    warning_waivers=(
+                        args.warning_waivers.resolve() if args.warning_waivers else None
+                    ),
+                    target_renderer=args.target_renderer,
                 )
                 if args.command == "report":
                     run.checkpoint(
@@ -1680,6 +1719,11 @@ def main(argv: list[str] | None = None) -> int:
                     freshness=freshness,
                     review_report_path=review_path if review_path.is_file() else None,
                     review_required=args.require_review,
+                    quality_policy=args.quality_policy,
+                    warning_waivers=(
+                        args.warning_waivers.resolve() if args.warning_waivers else None
+                    ),
+                    target_renderer=args.target_renderer,
                 )
                 require_completed_review(review_report, required=args.require_review)
                 run.checkpoint(
@@ -1742,6 +1786,7 @@ def main(argv: list[str] | None = None) -> int:
                             expect_ending=not args.no_ending,
                             json_output=pre_json,
                             markdown_output=pre_markdown,
+                            quality_policy="draft",
                         )
                         break
                     except PipelineError:
@@ -1838,6 +1883,11 @@ def main(argv: list[str] | None = None) -> int:
                     freshness=review_freshness,
                     review_report_path=review_path if review_path.is_file() else None,
                     review_required=args.require_review,
+                    quality_policy=args.quality_policy,
+                    warning_waivers=(
+                        args.warning_waivers.resolve() if args.warning_waivers else None
+                    ),
+                    target_renderer=args.target_renderer,
                 )
                 require_completed_review(review_report, required=args.require_review)
                 run.checkpoint(

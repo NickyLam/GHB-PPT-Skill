@@ -72,6 +72,46 @@ class GhbSvgQualityTest(unittest.TestCase):
                 any("x=56 y=96" in message for message in payload["files"][0]["visual_errors"])
             )
 
+    def test_title_marker_vertical_misalignment_is_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self.make_project(Path(tmp))
+            path = project / "svg_output" / "01_timeline.svg"
+            svg = path.read_text(encoding="utf-8").replace(
+                '<g id="content"',
+                '<g id="header"><rect x="88" y="132" width="6" height="40" fill="#AB1F29"/>'
+                '<text x="108" y="178" font-size="26">未对齐标题</text></g><g id="content"',
+            )
+            path.write_text(svg, encoding="utf-8")
+            payload = check_project(project, stage="authored")
+            self.assertFalse(payload["passed"])
+            self.assertTrue(
+                any("title marker" in message for message in payload["files"][0]["visual_errors"])
+            )
+
+    def test_header_title_must_respect_native_section_frame_safe_zone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self.make_project(Path(tmp))
+            path = project / "svg_output" / "01_timeline.svg"
+            svg = path.read_text(encoding="utf-8").replace(
+                '<g id="content"',
+                '<g id="header">'
+                '<text id="main-title" data-qa-role="title" data-qa-box="88 124 980 48" '
+                'x="88" y="160" font-size="30">过长主标题侵入右上模板章节框</text>'
+                '<text id="template-section-label" data-qa-role="section-label" '
+                'data-qa-box="930 112 294 64" x="1192" y="154">06 / Skill 定义</text>'
+                '</g><g id="content"',
+            )
+            path.write_text(svg, encoding="utf-8")
+            payload = check_project(project, stage="authored")
+            self.assertFalse(payload["passed"])
+            self.assertTrue(
+                any(
+                    "header-safe-zone-collision" in message
+                    for message in payload["files"][0]["visual_errors"]
+                ),
+                payload["files"][0]["visual_errors"],
+            )
+
     def test_broken_text_fails_and_cli_writes_json(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = self.make_project(Path(tmp), broken=True)

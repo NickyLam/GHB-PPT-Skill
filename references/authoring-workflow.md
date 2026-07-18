@@ -70,6 +70,12 @@ title before rendering.
 
 Use a 1280×720 SVG viewBox and a 16:9 PowerPoint canvas.
 
+For the bundled GHB template, add `id="template-section-label"` to the single
+eyebrow/section label that should appear in the native top-right title frame.
+The SVG-to-DrawingML converter preserves this id as the shape name, and the
+OOXML merger moves its editable text into the cloned template frame. Keep the
+main slide title unmarked. Slides without this semantic id remain unchanged.
+
 - Primary: `#AB1F29`
 - Secondary accent: `#44546A`
 - Text: `#2B2B2B`; secondary: `#6E6E73`

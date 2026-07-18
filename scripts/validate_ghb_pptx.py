@@ -215,6 +215,14 @@ def _iter_shapes(shapes: Iterable[Any]) -> Iterable[Any]:
             yield from _iter_shapes(shape.shapes)
 
 
+def _iter_shapes_with_group_context(shapes: Iterable[Any], *, nested: bool = False) -> Iterable[tuple[Any, bool]]:
+    """Yield shapes and whether their coordinates are local to a parent group."""
+    for shape in shapes:
+        yield shape, nested
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            yield from _iter_shapes_with_group_context(shape.shapes, nested=True)
+
+
 def _shape_text(shape: Any) -> str:
     if not getattr(shape, "has_text_frame", False):
         return ""
@@ -270,7 +278,7 @@ def _summarize_slide(
     text_boxes: list[tuple[int, int, int, int, str]] = []
     font_sizes: list[float] = []
     slide_area = max(slide_width * slide_height, 1)
-    for shape in _iter_shapes(slide.shapes):
+    for shape, nested_in_group in _iter_shapes_with_group_context(slide.shapes):
         if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
             summary.group_objects += 1
         else:
@@ -309,9 +317,14 @@ def _summarize_slide(
         if text:
             text_boxes.append((left, top, width, height, text))
             explicit_sizes = _font_sizes(shape)
-            if explicit_sizes and height / 12700 < min(explicit_sizes) * 1.05:
+            # python-pptx exposes grouped child geometry in the group's local
+            # coordinate system. Comparing that raw height to points creates
+            # false positives for otherwise valid native template groups.
+            if not nested_in_group and explicit_sizes and height / 12700 < min(explicit_sizes) * 1.05:
                 summary.text_boxes_too_small += 1
-        if left < -1 or top < -1 or left + width > slide_width + 1 or top + height > slide_height + 1:
+        if not nested_in_group and (
+            left < -1 or top < -1 or left + width > slide_width + 1 or top + height > slide_height + 1
+        ):
             summary.out_of_bounds_objects += 1
         area_ratio = max(width, 0) * max(height, 0) / slide_area
         if shape.shape_type == MSO_SHAPE_TYPE.PICTURE and area_ratio >= 0.85:
@@ -448,6 +461,101 @@ def _load_layout_plan(path: Path | None, issues: list[Issue]) -> list[dict[str, 
     return [entry for entry in payload if isinstance(entry, dict)]
 
 
+def _load_warning_waivers(
+    path: Path | None, issues: list[Issue]
+) -> list[dict[str, Any]]:
+    if path is None:
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        _issue(issues, "error", "invalid-warning-waivers", str(exc))
+        return []
+    rows = payload.get("waivers") if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema") != "ghb.warning-waivers.v1"
+        or not isinstance(rows, list)
+    ):
+        _issue(
+            issues,
+            "error",
+            "invalid-warning-waivers",
+            "expected ghb.warning-waivers.v1 with a waivers list",
+        )
+        return []
+    accepted: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for index, row in enumerate(rows, 1):
+        if not isinstance(row, dict) or set(row) != {"code", "slide", "reason", "approved_by"}:
+            _issue(
+                issues,
+                "error",
+                "invalid-warning-waivers",
+                f"waiver {index} must contain code, slide, reason, and approved_by",
+            )
+            continue
+        code = row.get("code")
+        slide = row.get("slide")
+        reason = row.get("reason")
+        approved_by = row.get("approved_by")
+        valid_slide = slide is None or (
+            isinstance(slide, int) and not isinstance(slide, bool) and slide > 0
+        ) or (
+            isinstance(slide, str) and bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", slide))
+        )
+        if (
+            not isinstance(code, str)
+            or not re.fullmatch(r"[a-z][a-z0-9-]{2,80}", code)
+            or not valid_slide
+            or not isinstance(reason, str)
+            or not 1 <= len(reason.strip()) <= 512
+            or not isinstance(approved_by, str)
+            or not 1 <= len(approved_by.strip()) <= 128
+            or not is_passive_review_text(reason, maximum=512)
+            or not is_passive_review_text(approved_by, maximum=128)
+        ):
+            _issue(
+                issues,
+                "error",
+                "invalid-warning-waivers",
+                f"waiver {index} contains invalid or unsafe values",
+            )
+            continue
+        key = (code, str(slide))
+        if key in seen:
+            _issue(
+                issues,
+                "error",
+                "invalid-warning-waivers",
+                f"duplicate waiver for {code!r} slide {slide!r}",
+            )
+            continue
+        seen.add(key)
+        accepted.append({
+            "code": code,
+            "slide": slide,
+            "reason": reason.strip(),
+            "approved_by": approved_by.strip(),
+        })
+    return accepted
+
+
+def _renderer_matches(target: str, actual: str | None) -> bool:
+    if target == "auto":
+        return bool(actual)
+    normalized = (actual or "").strip().lower()
+    if target == "libreoffice":
+        return normalized in {"libreoffice", "soffice"}
+    return normalized == target
+
+
+def _waiver_matches(waiver: dict[str, Any], code: str, slide: int | str | None) -> bool:
+    return waiver["code"] == code and (
+        waiver["slide"] is None or str(waiver["slide"]) == str(slide)
+    )
+
+
 def validate_pptx(
     path: Path,
     *,
@@ -463,8 +571,15 @@ def validate_pptx(
     freshness: dict[str, Any] | None = None,
     review_report_path: Path | None = None,
     review_required: bool = False,
+    quality_policy: str = "draft",
+    warning_waivers_path: Path | None = None,
+    target_renderer: str = "auto",
 ) -> ValidationReport:
     issues: list[Issue] = []
+    if quality_policy not in {"draft", "release"}:
+        _issue(issues, "error", "invalid-quality-policy", f"unknown policy {quality_policy!r}")
+    if target_renderer not in {"auto", "libreoffice", "powerpoint", "wps"}:
+        _issue(issues, "error", "invalid-target-renderer", f"unknown renderer {target_renderer!r}")
     if not path.is_file():
         return ValidationReport(
             str(path), False, 0, 0, 0, bool(expect_ending), {},
@@ -977,7 +1092,7 @@ def validate_pptx(
             review_outcome = str(review_payload["outcome"])
             review_freshness = str(review_payload.get("freshness", "stale"))
             review_requirement_satisfied = (
-                review_outcome in {"passed", "needs-revision", "limited"}
+                review_outcome == "passed"
                 and review_freshness == "fresh"
             )
             visual_findings.extend(safe_findings)
@@ -1077,6 +1192,67 @@ def validate_pptx(
             "freshness evidence is not valid: " + ", ".join(codes or ["stale"]),
         )
 
+    waivers = _load_warning_waivers(warning_waivers_path, issues)
+    render_evidence_bound = (
+        render_status == "passed"
+        and package_info.get("rendered_pages") == len(slides)
+    )
+    actual_renderer = (
+        str(render_provenance.get("renderer") or "") or None
+        if render_evidence_bound
+        else None
+    )
+    if quality_policy == "release" and not _renderer_matches(target_renderer, actual_renderer):
+        code = "target-renderer-unverified" if actual_renderer is None else "target-renderer-mismatch"
+        _issue(
+            issues,
+            "error",
+            code,
+            f"release target renderer {target_renderer!r} does not match "
+            f"validated renderer {actual_renderer or 'unavailable'!r}",
+        )
+
+    warning_rows: list[tuple[str, int | str | None]] = [
+        (issue.code, issue.slide) for issue in issues if issue.severity == "warning"
+    ] + [
+        (str(item.get("code")), item.get("slide_id"))
+        for item in visual_findings
+        if item.get("severity") == "warning" and item.get("code")
+    ]
+    resolved_warning_rows = [
+        (code, slide)
+        for code, slide in warning_rows
+        if any(_waiver_matches(waiver, code, slide) for waiver in waivers)
+    ]
+    unresolved_warning_rows = [
+        (code, slide)
+        for code, slide in warning_rows
+        if not any(_waiver_matches(waiver, code, slide) for waiver in waivers)
+    ]
+    if quality_policy == "release" and unresolved_warning_rows:
+        _issue(
+            issues,
+            "error",
+            "release-unresolved-warnings",
+            f"release policy has {len(unresolved_warning_rows)} unresolved warning(s); "
+            "fix them or provide explicit warning waivers",
+        )
+
+    release_policy = {
+        "policy": quality_policy,
+        "target_renderer": target_renderer,
+        "actual_renderer": actual_renderer,
+        "render_evidence_bound": render_evidence_bound,
+        "target_renderer_satisfied": _renderer_matches(target_renderer, actual_renderer),
+        "waiver_file": str(warning_waivers_path) if warning_waivers_path else None,
+        "waiver_count": len(waivers),
+        "resolved_warning_count": len(resolved_warning_rows),
+        "unresolved_warning_count": len(unresolved_warning_rows),
+        "unresolved_warnings": [
+            {"code": code, "slide": slide} for code, slide in unresolved_warning_rows
+        ],
+    }
+
     report = ValidationReport(
         pptx=str(path.resolve()),
         passed=not any(issue.severity == "error" for issue in issues),
@@ -1153,6 +1329,7 @@ def validate_pptx(
             "limitations": list(known_limitations),
             "provenance": render_provenance,
         },
+        "release_policy": release_policy,
         "blocking_findings": blocking,
         "advisory_findings": advisory,
         "per_slide_evidence": per_slide,
@@ -1187,6 +1364,7 @@ def markdown_report(report: ValidationReport) -> str:
     quality = report.quality
     freshness = quality.get("freshness", {})
     reviewability = quality.get("reviewability", {})
+    release_policy = quality.get("release_policy", {})
     lines = [
         "# GHB PPTX Quality Report",
         "",
@@ -1215,6 +1393,16 @@ def markdown_report(report: ValidationReport) -> str:
     ]
     lines.extend(f"- Limitation: {item}" for item in reviewability.get("limitations", []))
     lines.extend([
+        "",
+        "## Release policy",
+        "",
+        f"- Policy: `{release_policy.get('policy', 'draft')}`",
+        f"- Target renderer: `{release_policy.get('target_renderer', 'auto')}`",
+        f"- Actual renderer: `{release_policy.get('actual_renderer') or 'unavailable'}`",
+        f"- Render evidence bound to final PPTX: `{str(release_policy.get('render_evidence_bound', False)).lower()}`",
+        f"- Renderer requirement satisfied: `{str(release_policy.get('target_renderer_satisfied', True)).lower()}`",
+        f"- Warning waivers: {release_policy.get('waiver_count', 0)}",
+        f"- Unresolved warnings: {release_policy.get('unresolved_warning_count', 0)}",
         "",
         "## Blocking findings",
         "",
@@ -1292,6 +1480,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--freshness-json", type=Path)
     parser.add_argument("--review-report", type=Path)
     parser.add_argument("--review-required", action="store_true")
+    parser.add_argument("--quality-policy", choices=("draft", "release"), default="draft")
+    parser.add_argument("--warning-waivers", type=Path)
+    parser.add_argument(
+        "--target-renderer",
+        choices=("auto", "libreoffice", "powerpoint", "wps"),
+        default="auto",
+    )
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--json-output", type=Path)
     parser.add_argument("--markdown-output", type=Path)
@@ -1325,6 +1520,9 @@ def main(argv: list[str] | None = None) -> int:
         freshness=freshness,
         review_report_path=args.review_report,
         review_required=args.review_required,
+        quality_policy=args.quality_policy,
+        warning_waivers_path=args.warning_waivers,
+        target_renderer=args.target_renderer,
     )
     payload = report_dict(report)
     reviewability = report.quality.get("reviewability", {})

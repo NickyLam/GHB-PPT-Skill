@@ -32,6 +32,112 @@ def _ghb_chrome_errors(path: Path, *, stage: str) -> list[str]:
         errors.append("authored SVG must contain one preview background group id='bg'")
     if stage == "finalized" and "bg" in groups:
         errors.append("finalized SVG still contains preview background group id='bg'")
+    header = groups.get("header")
+    if header is not None:
+        def numeric(node: ET.Element, name: str) -> float | None:
+            try:
+                return float(node.get(name, ""))
+            except (TypeError, ValueError):
+                return None
+
+        def qa_box(node: ET.Element) -> tuple[float, float, float, float] | None:
+            raw = (node.get("data-qa-box") or "").replace(",", " ").split()
+            if len(raw) == 4:
+                try:
+                    return tuple(float(value) for value in raw)
+                except ValueError:
+                    return None
+            if node.tag.rsplit("}", 1)[-1] != "text":
+                return None
+            try:
+                x = float(node.get("x", "nan"))
+                y = float(node.get("y", "nan"))
+                size = float(node.get("font-size", "nan"))
+            except ValueError:
+                return None
+            text = "".join(node.itertext()).strip()
+            if not text or not all(value == value for value in (x, y, size)):
+                return None
+            units = sum(
+                1.0 if "\u3400" <= char <= "\u9fff" else 0.58
+                for char in text
+            )
+            width = units * size * 1.05
+            anchor = node.get("text-anchor", "start")
+            left = x - width if anchor == "end" else x - width / 2 if anchor == "middle" else x
+            return left, y - size * 0.9, width, size * 1.3
+
+        main_title = next(
+            (
+                node for node in header.iter()
+                if node.get("data-qa-role") == "title"
+                and node.get("id") != "template-section-label"
+            ),
+            None,
+        )
+        if main_title is None:
+            authored_titles = [
+                node for node in header.iter()
+                if node.tag.rsplit("}", 1)[-1] == "text"
+                and node.get("id") != "template-section-label"
+                and numeric(node, "font-size") is not None
+            ]
+            if authored_titles:
+                main_title = max(
+                    authored_titles, key=lambda node: numeric(node, "font-size") or 0.0
+                )
+        section_label = next(
+            (node for node in header.iter() if node.get("id") == "template-section-label"),
+            None,
+        )
+        if main_title is not None and section_label is not None:
+            title_box = qa_box(main_title)
+            section_box = qa_box(section_label)
+            if title_box is None or section_box is None:
+                errors.append(
+                    "header-safe-zone-contract: main title and template section label "
+                    "must declare data-qa-box"
+                )
+            else:
+                tx, ty, tw, th = title_box
+                # The semantic label is replaced by the native GHB frame at
+                # merge time. Reserve that full template footprint rather than
+                # only the short source text's glyph box.
+                sx, sy, sw, sh = (930.0, 96.0, 294.0, 80.0)
+                overlap_w = max(0.0, min(tx + tw, sx + sw) - max(tx, sx))
+                overlap_h = max(0.0, min(ty + th, sy + sh) - max(ty, sy))
+                if overlap_w > 0 and overlap_h > 0:
+                    errors.append(
+                        "header-safe-zone-collision: main title overlaps the native "
+                        "template section-frame reservation"
+                    )
+        marker_candidates = [
+            node
+            for node in header.iter()
+            if node.tag.rsplit("}", 1)[-1] == "rect"
+            and numeric(node, "width") is not None
+            and numeric(node, "height") is not None
+            and (numeric(node, "width") or 0.0) <= 12
+            and (numeric(node, "height") or 0.0) >= 20
+        ]
+        title_candidates = [
+            node
+            for node in header.iter()
+            if node.tag.rsplit("}", 1)[-1] == "text"
+            and node.get("id") != "template-section-label"
+            and numeric(node, "font-size") is not None
+            and numeric(node, "y") is not None
+        ]
+        if marker_candidates and title_candidates:
+            marker = marker_candidates[0]
+            title = max(title_candidates, key=lambda node: numeric(node, "font-size") or 0.0)
+            marker_center = (numeric(marker, "y") or 0.0) + (numeric(marker, "height") or 0.0) / 2
+            title_center = (numeric(title, "y") or 0.0) - (numeric(title, "font-size") or 0.0) * 0.35
+            if abs(marker_center - title_center) > 4:
+                errors.append(
+                    "GHB title marker must be vertically centered with the main title "
+                    f"(delta={abs(marker_center - title_center):.1f}px)"
+                )
     surface = groups.get("bg-surface")
     if surface is None:
         errors.append("missing GHB content surface group id='bg-surface'")

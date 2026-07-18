@@ -34,6 +34,52 @@
 - 有意叠放（如图片上的标题遮罩）必须在参与叠放的元素上写 `data-allow-overlap="true"`。
 - 装饰性背景不要标 `data-qa-role`；它不参与碰撞检查。
 - 基础结构形状（rect/circle/ellipse/line/polygon/polyline）必须完整位于画布内；有意出血时给形状写 `data-allow-overflow="true"`。
+- `header` 组内的红色竖杠必须与主标题字面垂直居中，中心偏差不得超过 4 px；
+  页眉迁入右上模板标题框后，不得继续沿用包含旧页眉高度的竖条坐标。
+- 流程、飞轮和状态图的连接线起终点必须位于节点轮廓之外；显式箭头尖端
+  与目标边框保留 3–6 px 安全间隙，不能进入节点填充区域。
+- 相邻流程节点至少预留 24 px 可见连接空间。若连接段不足，先缩窄节点、
+  增大间距或换行布局；禁止把连接线压缩成反向线段或近似竖直的箭头短桩。
+
+### 3.1 页眉保留区合同
+
+- 主标题建议使用 `id="main-title" data-qa-role="title" data-qa-box="..."`；
+- 模板章节文本必须使用 `id="template-section-label"`，可同时声明
+  `data-qa-role="section-label" data-qa-box="..."`；
+- 校验器按 GHB 原生章节框的完整 footprint 检查，不以短占位文本宽度代替；
+- 主标题进入章节框保留区时产生 `header-safe-zone-collision` error。
+
+### 3.2 流程节点与连接线合同
+
+```xml
+<rect id="step-1" data-flow-node="step-1"
+      data-qa-box="100 220 180 100" x="100" y="220" width="180" height="100"/>
+<line id="edge-1" data-flow-from="step-1" data-flow-to="step-2"
+      x1="286" y1="270" x2="314" y2="270"/>
+```
+
+- `data-flow-node` 在一页内唯一，且必须有正数 `data-qa-box`；
+- 每条语义连接线必须同时声明 `data-flow-from` / `data-flow-to`；
+- 节点端点相交报 `connector-node-intersection`；
+- 连接线端点之间的实际可见长度低于 24 px 报 `connector-visible-length-low`；
+- 连接段穿过 `data-qa-role="text|title|label"` 的 QA 框时报
+  `connector-text-intersection`。
+
+### 3.3 卡片组件与槽位合同
+
+```xml
+<g data-component="evidence-card" data-component-id="left"
+   data-component-pair="comparison-1" data-qa-box="100 180 420 360">
+  <g data-component-parent="left" data-component-slot="verdict"
+     data-qa-box="140 470 340 48">...</g>
+</g>
+```
+
+- 组件必须同时声明 `data-component`、唯一 `data-component-id` 和 QA 框；
+- 子槽位必须同时声明 `data-component-parent`、`data-component-slot` 和 QA 框；
+- 槽位越出父卡片时报 `component-slot-overflow`；
+- 相同 `data-component-pair` 必须恰有两张同类卡片；槽位缺失、顶部或高度
+  偏差超过 24 px 时，报 `component-balance-outlier`。
 
 ## 4. 乱码与文本负载
 
