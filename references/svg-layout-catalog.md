@@ -1,6 +1,10 @@
 # SVG Layout Catalog
 
-Use this catalog after content confirmation and before writing body-slide SVG. Pick a `layout_archetype` for every body slide, write it into `layout_plan.json`, and put the same value on the main SVG content group as `data-layout="<layout_archetype>"`.
+Use this catalog after content confirmation and before writing body-slide SVG.
+Pick a semantic `layout_archetype` for every body slide, write it into
+`layout_plan.json`, and put the same value on the main SVG content group as
+`data-layout="<layout_archetype>"`. The value describes the composition; it
+does not require a built-in renderer.
 
 ## Layout Plan Contract
 
@@ -36,10 +40,35 @@ Required fields:
 
 ## Diversity Rules
 
-- Do not use the same `layout_archetype` on three consecutive body slides.
-- For decks with 8+ body slides, use at least four distinct structural archetypes when the source content supports it.
+- Content semantics always take precedence over visual variety. Never choose a
+  pyramid, matrix, timeline, flywheel, funnel, or other diagram only to satisfy
+  a diversity target.
+- Three consecutive uses of one `layout_archetype` are an advisory review
+  signal, not a build error.
+- For decks with 8+ body slides, fewer than four distinct structures are an
+  advisory review signal, not a build error.
 - Keep repeated layouts only when the repetition itself is meaningful, such as a deliberate section-by-section comparison.
 - Prefer structure changes over decorative changes. Changing colors/icons while keeping the same card grid does not count as real layout variety.
+
+The checker still fails when a slide omits `data-layout`, because the metadata
+must reflect the composition that was actually authored. It reports repetition
+and low variety as warnings so a release build cannot force unsuitable diagrams.
+
+## Neutral hand-authored patterns
+
+Use these when the content does not contain a genuine diagram relationship.
+They are valid `data-layout` values and must remain editable SVG text/shapes:
+
+| Pattern | Best fit |
+|---|---|
+| `editorial` | One conclusion with supporting prose or callouts |
+| `evidence_stack` | Screenshot or evidence with explanation and source boundary |
+| `file_tree` | Directory, package, or ownership hierarchy expressed as a tree |
+| `simple_list` | Ordered or unordered points without a structural claim |
+| `native_table` | Shared-column comparison better expressed as a table |
+
+Do not replace these neutral patterns with a built-in diagram solely because a
+renderer exists.
 
 ## Page-purpose patterns
 
@@ -67,7 +96,7 @@ same `data-layout` and planning contract.
 | Risk and response | `risk_response` | Pair every risk with owner, mitigation, and status |
 | Summary | `flywheel`, `pyramid`, or `summary_grid` | Recombine the deck's actual conclusions; do not add new claims |
 
-Built-in renderers currently cover `pyramid`, `waterfall`, `staircase`,
+Optional built-in renderers currently cover `pyramid`, `waterfall`, `staircase`,
 `layered_arch`, `matrix`, `timeline`, `funnel`, `flywheel`, `swimlane`, and
 `iceberg`. For other named patterns, hand-author the SVG and use the semantic
 pattern name in `data-layout`; add a reusable renderer only after the pattern
@@ -119,7 +148,8 @@ archetype with `matrix/comparison`; it never emits a new `data-layout` value.
 remain equal width and height with fixed gaps; focal prominence uses fill,
 border, and font hierarchy only, never unequal card area.
 
-Run the checker after SVGs exist:
+Run the checker after SVGs exist. Missing metadata fails; diversity advice
+prints `WARN` and exits successfully:
 
 ```bash
 python3 "$PM/check_layout_diversity.py" "$PROJECT"

@@ -102,7 +102,9 @@ SVG 和备注。
 
 - 使用 `viewBox="0 0 1280 720"`；
 - 包含一个可安全删除的 `<g id="bg">` 预览白底；
-- 在主内容组写 `data-layout="<layout_archetype>"`；
+- 在主内容组写 `data-layout="<layout_archetype>"`；该值描述实际构图，
+  可以是手工编排的 `editorial`、`evidence_stack`、`file_tree`、
+  `simple_list` 或 `native_table`，不要求调用内置结构图渲染器；
 - 保留标题、正文、卡片、表格、流程和架构为文本/形状；
 - 将“演示文稿名 · Part/Section”这类页眉文本标记为
   `id="template-section-label"`；构建时会删除 SVG 中的该文本框，并将文本迁入
@@ -116,8 +118,19 @@ SVG 和备注。
   `data-component-id`、`data-component-pair`，内部槽位使用
   `data-component-parent` / `data-component-slot`。
 
-不要用同一种卡片网格伪装版式多样性。长文本依次采用重写、换布局、
-拆页、调间距和小幅字号调整；禁止全局缩成不可读小字。
+内容语义优先于版式多样性。只有层级、顺序、循环、双轴或收窄关系真实
+存在时，才使用对应的 pyramid、timeline、flywheel、matrix 或 funnel；
+禁止为了凑版式数量强套内置结构图。连续重复和版式种类不足只作为人工
+复核建议，不得阻断构建。不要用同一种卡片网格伪装版式多样性。长文本
+依次采用重写、换布局、拆页、调间距和小幅字号调整；禁止全局缩成不可读
+小字。
+
+真实项目不得用一个通用 `neutral_body`、卡片网格或表格函数批量决定整套
+正文构图。脚本可以负责文件输出和确定性后处理，但结论页、章节锚点页、
+用户明确指出的问题页必须逐页设计专属构图。删除不合适的 SVG、图标或
+结构图后，必须用字号、对比、分栏、证据、重点数字或编辑式留白重新建立
+视觉焦点；不得退化成连续清单和表格。每轮修复都要把新 contact sheet 与
+上一版或用户指定基准并排复核，不能只凭 0 error 宣告视觉改善。
 
 ## 构建
 
@@ -198,7 +211,7 @@ LibreOffice 渲染和最终报告。修复重试仅限 `0..3` 次确定性操作
 
 ## 可选配图
 
-默认使用无图或内置图标。只有用户确认后再选择：
+默认不使用图片或图标；内置图标库只是可选资源。只有用户确认后再选择：
 
 - 源材料提取或用户自备：读
   [references/svg-image-embedding.md](references/svg-image-embedding.md)；

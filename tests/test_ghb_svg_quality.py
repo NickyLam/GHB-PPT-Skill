@@ -169,6 +169,45 @@ class GhbSvgQualityTest(unittest.TestCase):
             self.assertEqual(payload["error_count"], 0)
             self.assertGreaterEqual(payload["warning_count"], 2)
 
+    def test_layout_diversity_advice_does_not_block_an_otherwise_valid_deck(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self.make_project(Path(tmp))
+            base_svg = (project / "svg_output" / "01_timeline.svg").read_text(encoding="utf-8")
+            plan = json.loads((project / "layout_plan.json").read_text(encoding="utf-8"))
+            for number in range(2, 9):
+                (project / "svg_output" / f"{number:02d}_editorial.svg").write_text(
+                    base_svg.replace("稳定交付需要验证闭环", f"稳定交付需要验证闭环 {number}"),
+                    encoding="utf-8",
+                )
+                plan.append({"slide": number, "layout_archetype": "timeline", "density": "anchor"})
+            (project / "layout_plan.json").write_text(json.dumps(plan), encoding="utf-8")
+
+            payload = check_project(project, stage="authored")
+
+            self.assertTrue(payload["passed"], payload)
+            self.assertEqual(payload["error_count"], 0)
+            self.assertGreaterEqual(payload["warning_count"], 2)
+            self.assertTrue(any("content-appropriate" in issue for issue in payload["layout_issues"]))
+            self.assertTrue(any("semantically justified" in issue for issue in payload["layout_issues"]))
+
+    def test_missing_layout_metadata_remains_a_blocking_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self.make_project(Path(tmp))
+            path = project / "svg_output" / "01_timeline.svg"
+            path.write_text(
+                path.read_text(encoding="utf-8").replace(' data-layout="timeline"', ""),
+                encoding="utf-8",
+            )
+
+            payload = check_project(project, stage="authored")
+
+            self.assertFalse(payload["passed"])
+            self.assertGreater(payload["error_count"], 0)
+            self.assertTrue(
+                any("data-layout" in message for message in payload["files"][0]["visual_errors"]),
+                payload["files"][0]["visual_errors"],
+            )
+
     def test_empty_project_returns_a_stable_failure_in_text_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)

@@ -4,8 +4,9 @@
 
 Treat a deck as deliverable only when all available gates complete:
 
-1. Authored SVG gate: upstream SVG rules, layout diversity, and visual asset
-   checks report zero errors.
+1. Authored SVG gate: upstream SVG rules and visual asset checks report zero
+   errors. Missing layout metadata is an error; repetition and low layout
+   variety remain non-blocking design advice.
 2. Finalized SVG gate: embedded images/icons, geometry, text, and content load
    report zero errors.
 3. PPTX structure gate: ZIP, Content Types, relationships, IDs, masters,

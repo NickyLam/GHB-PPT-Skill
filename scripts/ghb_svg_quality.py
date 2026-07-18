@@ -285,8 +285,11 @@ def check_project(project: Path, *, stage: str) -> dict[str, object]:
     layout_issues = analyze_layout_sequence(layouts)
     measurable_pages = [page for page in page_quality_results if page.get("measurements")]
     deck_quality = analyze_deck_quality(measurable_pages, profile=profile)
-    error_count = len(project_errors) + len(layout_issues)
-    warning_count = len(deck_quality["findings"])
+    # Layout variety is design advice, not evidence that the authored deck is
+    # invalid. Keep it visible without forcing content into an unsuitable
+    # built-in diagram merely to satisfy an archetype quota.
+    error_count = len(project_errors)
+    warning_count = len(layout_issues) + len(deck_quality["findings"])
     for payload in file_payloads:
         error_count += len(payload["svg_quality_errors"]) + len(payload["visual_errors"])
         warning_count += len(payload["svg_quality_warnings"]) + len(payload["visual_warnings"])
@@ -347,7 +350,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  WARN {Path(item['file']).name}: {message}")
             for finding in item["visual_findings"]:
                 print(f"  {finding['severity'].upper()} {Path(item['file']).name}: {finding['code']}")
-        for message in payload["layout_issues"] + payload["project_errors"]:
+        for message in payload["layout_issues"]:
+            print(f"  WARN project: {message}")
+        for message in payload["project_errors"]:
             print(f"  ERROR project: {message}")
         for finding in payload["visual_quality"]["deck_findings"]:
             print(f"  WARN deck: {finding['code']}")

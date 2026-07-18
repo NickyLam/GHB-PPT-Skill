@@ -96,14 +96,27 @@ top template decoration visible. Include exactly one preview-only
   text/shapes that convert to editable DrawingML.
 - Do not use a full-slide image or screenshot as body content.
 - Put `data-layout="<archetype>"` on the main content group.
-- Use at least four genuine structures for decks with eight or more body pages
-  when content supports them; never count recolored card grids as diversity.
+- Let content semantics choose the structure. Never select a built-in
+  archetype merely to reach a diversity quota. For decks with eight or more
+  body pages, fewer than four structures and three-page repetition are
+  advisory review signals only; they do not invalidate an otherwise correct
+  deck. Never count recolored card grids as diversity.
 - Handle long text in this order: rewrite, change layout, split the slide,
   tighten spacing, then make a small bounded font adjustment.
 - Use explicit Office-safe SVG geometry. See
   [visual-quality-rules.md](visual-quality-rules.md) for the complete banned
   feature and QA contract.
-- Choose page structures from [svg-layout-catalog.md](svg-layout-catalog.md).
+- Choose page structures from [svg-layout-catalog.md](svg-layout-catalog.md),
+  including its neutral hand-authored patterns when no diagram relationship
+  is present. Built-in renderers are optional.
+- Keep deterministic scripts responsible for output and post-processing, not
+  for making every page share one generic composition. Hand-author a distinct
+  composition for anchor pages and any page the user identifies as visually
+  weak. Removing an unsuitable diagram is incomplete until the replacement
+  restores a visible focal point and useful information hierarchy.
+- During a visual repair, compare the new contact sheet side by side with the
+  previous render or the user's named benchmark. A passing structural gate is
+  necessary evidence, but not proof of aesthetic improvement.
 - For images, icons, attribution, and optional online paths, read
   [svg-image-embedding.md](svg-image-embedding.md),
   [image-searcher.md](image-searcher.md), or

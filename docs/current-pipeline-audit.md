@@ -201,8 +201,9 @@ command, contact sheet, or final-PPTX object-layout analysis.
 - Template master is assumed to be `slideMaster1` and template theme `theme1`.
 - The docs' “33 body slides” sentence is sample-specific; implementation uses
   the actual counted body-slide parts and is not itself fixed to 33.
-- Layout diversity thresholds: no three identical consecutive layouts; ≥8
-  slides requires ≥4 distinct types.
+- Layout diversity review signals: three identical consecutive layouts or
+  fewer than four types in an 8+ slide deck are reported as non-blocking
+  advice; missing `data-layout` metadata remains an error.
 - SVG text density thresholds and collision overlap ratio are fixed heuristic
   constants, not PPTX layout measurements.
 

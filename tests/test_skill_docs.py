@@ -36,6 +36,18 @@ def test_authoring_docs_require_semantic_focal_coherence():
         assert "focal_target" in document
 
 
+def test_layout_docs_make_builtin_diagrams_optional_and_diversity_non_blocking():
+    skill = _read("SKILL.md")
+    workflow = _read("references/authoring-workflow.md")
+    catalog = _read("references/svg-layout-catalog.md")
+
+    assert "禁止为了凑版式数量强套内置结构图" in skill
+    assert "Built-in renderers are optional" in workflow
+    assert "advisory review signal, not a build error" in catalog
+    assert "editorial" in catalog
+    assert "file_tree" in catalog
+
+
 def test_recovery_docs_separate_deterministic_optional_and_human_review():
     recovery = _read("references/quality-and-recovery.md")
     review_contract = _read("references/visual-review-contract.md")
