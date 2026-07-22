@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <g id="bg"><rect width="1280" height="720" fill="#fff"/></g>
+  <g id="bg-surface"><rect x="56" y="96" width="1168" height="608" fill="#fff"/></g>
+  <g id="header">
+    <rect x="88" y="124" width="8" height="48" fill="#AB1F29"/>
+    <text id="main-title" data-qa-role="title" data-qa-box="112 112 980 64" x="112" y="160" font-size="40">过长主标题侵入右上模板章节框</text>
+    <text id="template-section-label" data-qa-role="section-label" data-qa-box="930 112 294 64" x="1192" y="154" font-size="24">06 / Skill</text>
+  </g>
+  <g id="content" data-layout="editorial"><rect x="112" y="240" width="600" height="240"/></g>
+</svg>

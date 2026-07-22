@@ -171,6 +171,28 @@ def write_project(case_dir: Path, scenario: dict[str, object], slides: list[dict
         json.dumps(default_visual_profile(), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    layout_variants = sorted({str(slide["layout_type"]) for slide in slides} | {"editorial"})
+    (case_dir / "art_direction.json").write_text(
+        json.dumps(
+            {
+                "schema": "ghb.art-direction.v1",
+                "design_mode": "instructional",
+                "visual_thesis": "Use editable GHB-native structures to make each fixture claim scannable.",
+                "narrative_arc": ["frame", "explain", "close"],
+                "page_families": ["editorial", "evidence", "process"],
+                "surface_strategy": {
+                    "variants": layout_variants,
+                    "max_same_variant_streak": 3,
+                },
+                "focal_strategy": {"max_distributed_streak": 3},
+                "anchor_slide_ids": ["body-01"],
+                "imagery": {"strategy": "none", "max_images_per_page": 0},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
     (case_dir / "design_spec.md").write_text(
         f"# Design Spec\n\nAudience: {scenario['audience']}\n\nOffline fixture: true\n",
         encoding="utf-8",
@@ -215,9 +237,27 @@ def write_project(case_dir: Path, scenario: dict[str, object], slides: list[dict
 def write_svg(path: Path, index: int, total: int, slide: dict[str, object]) -> None:
     title = xml_text(str(slide["key_message"]))
     items = [str(item) for item in slide["items"]]
-    content_xml = render_layout(
-        LayoutSpec(str(slide["layout_type"]), items, x=100, y=240, width=1080, height=390)
-    )
+    if "density" in slide:
+        schema = page_schema(slide, f"body-{index:02d}", items)
+        emphasis = str(schema["emphasis"])
+        layout_spec = LayoutSpec(
+                str(slide["layout_type"]),
+                items,
+                x=100,
+                y=240,
+                width=1080,
+                height=390,
+                density=str(schema["density"]),
+                variant=str(schema["layout_variant"]).replace("comparison/", "matrix/"),
+                emphasis=emphasis,
+                focal_index=0 if emphasis == "single-focal" else None,
+        )
+    else:
+        # Preserve the pre-contract fixture seam used by byte-stability tests.
+        layout_spec = LayoutSpec(
+            str(slide["layout_type"]), items, x=100, y=240, width=1080, height=390
+        )
+    content_xml = render_layout(layout_spec)
     if slide.get("use_icon"):
         content_xml += (
             '<use id="fixture-icon" data-icon="tabler-outline/target" '
@@ -446,6 +486,7 @@ def build_case_unified(
         "--cover-plan", str(plan),
         "--output", str(case_dir / "exports" / "final.pptx"),
         "--render-dpi", "96",
+        "--quality-policy", "draft",
         *(["--no-render"] if no_render else []),
         *merge_args,
     ]

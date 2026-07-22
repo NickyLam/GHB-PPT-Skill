@@ -96,6 +96,7 @@ class PageEvidence:
     height: int
     run_id: str
     sha256: str
+    context: Mapping[str, Any] | None = None
 
 
 def _sha256(path: Path) -> str:
@@ -304,8 +305,7 @@ def _snapshot_pages(
         shutil.copyfile(source, destination, follow_symlinks=False)
         if _sha256(destination) != digest:
             raise ReviewSecurityError("evidence snapshot digest mismatch")
-        request_pages.append(
-            {
+        request_page = {
                 "slide_id": page.slide_id,
                 "role": page.role,
                 "image": {
@@ -316,7 +316,10 @@ def _snapshot_pages(
                     "height": page.height,
                 },
             }
-        )
+        if page.context is not None:
+            _bounded_json(page.context)
+            request_page["context"] = dict(page.context)
+        request_pages.append(request_page)
         protected.append(source)
     return request_pages, protected
 

@@ -25,7 +25,7 @@ import argparse
 from pathlib import Path
 
 from xml.etree import ElementTree as ET
-from typing import Any, List, Tuple
+from typing import List, Tuple
 
 
 def rect_to_rounded_path(
@@ -143,6 +143,15 @@ def process_svg(content: str, verbose: bool = False) -> Tuple[str, int]:
                 if width > 0 and height > 0:
                     # Generate path
                     path_d = rect_to_rounded_path(x, y, width, height, rx, ry)
+
+                    # The rounded path no longer has x/y/width/height. Preserve
+                    # its known envelope so finalized-stage geometry remains
+                    # measurable without attempting to approximate path data.
+                    if elem.get('data-qa-box') is None:
+                        elem.set(
+                            'data-qa-box',
+                            ' '.join(format(value, 'g') for value in (x, y, width, height)),
+                        )
                     
                     # rect-specific attributes
                     rect_attrs = {'x', 'y', 'width', 'height', 'rx', 'ry'}
@@ -283,7 +292,7 @@ What it does:
             if not quiet:
                 print(f"[DONE] Saved: {output_path}")
         else:
-            print(f"[FAIL] Processing failed")
+            print("[FAIL] Processing failed")
             sys.exit(1)
     
     else:

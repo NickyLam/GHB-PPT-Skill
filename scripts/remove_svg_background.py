@@ -113,12 +113,15 @@ def remove_background(path: Path, *, backup_dir: Path | None = None, dry_run: bo
 def remove_project_backgrounds(
     project: Path,
     *,
+    svg_dir_name: str = "svg_output",
     backup_dir: Path | None = None,
     dry_run: bool = False,
 ) -> list[RemovalResult]:
-    svg_dir = project / "svg_output"
+    if not svg_dir_name or Path(svg_dir_name).name != svg_dir_name:
+        raise BackgroundRemovalError("svg_dir_name must be one project-local directory name")
+    svg_dir = project / svg_dir_name
     if not svg_dir.is_dir():
-        raise BackgroundRemovalError(f"svg_output directory not found: {svg_dir}")
+        raise BackgroundRemovalError(f"{svg_dir_name} directory not found: {svg_dir}")
     files = sorted(svg_dir.glob("*.svg"))
     if not files:
         raise BackgroundRemovalError(f"no SVG files found: {svg_dir}")
@@ -129,6 +132,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("target", type=Path, help="SVG file or project directory")
     parser.add_argument("--backup-dir", type=Path)
+    parser.add_argument(
+        "--svg-dir-name",
+        default="svg_output",
+        help="Project-local SVG directory to modify (default: svg_output)",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
@@ -138,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             results = remove_project_backgrounds(
                 args.target,
+                svg_dir_name=args.svg_dir_name,
                 backup_dir=args.backup_dir,
                 dry_run=args.dry_run,
             )

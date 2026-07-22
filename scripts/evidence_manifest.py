@@ -18,24 +18,33 @@ from pathlib import Path, PureWindowsPath
 from typing import Any, Iterable, Mapping
 
 
-MANIFEST_SCHEMA = "ghb.evidence-manifest.v1"
+MANIFEST_SCHEMA = "ghb.evidence-manifest.v2"
 CANONICALIZATION_SCHEMA = "ghb.canonical-json.v1"
 
 # The dependency graph is part of the evidence contract, not caller folklore.
 # Ordered keys also make serialized manifests easy to inspect and diff.
 DEFAULT_DEPENDENCY_DAG: dict[str, tuple[str, ...]] = {
     "visual-profile": (),
+    "art-direction": (),
     "layout-plan": (),
     "rule-contract": (),
-    "svg-bundle": ("visual-profile", "layout-plan"),
-    "pptx": ("svg-bundle",),
+    "authored-svg-bundle": (
+        "visual-profile",
+        "art-direction",
+        "layout-plan",
+        "rule-contract",
+    ),
+    "finalized-svg-bundle": ("authored-svg-bundle",),
+    "pptx": ("finalized-svg-bundle",),
     "render-environment": (),
     "render-evidence": ("pptx", "render-environment"),
     "deterministic-report": (
         "visual-profile",
+        "art-direction",
         "layout-plan",
         "rule-contract",
-        "svg-bundle",
+        "authored-svg-bundle",
+        "finalized-svg-bundle",
         "pptx",
     ),
     "adapter-policy": (),
@@ -45,6 +54,7 @@ DEFAULT_DEPENDENCY_DAG: dict[str, tuple[str, ...]] = {
 
 _INPUT_IDENTITIES = {
     "visual-profile",
+    "art-direction",
     "layout-plan",
     "rule-contract",
     "render-environment",

@@ -147,6 +147,157 @@ class VisualAssetCheckerTest(unittest.TestCase):
             self.assertIn("component-slot-overflow", joined)
             self.assertIn("component-balance-outlier", joined)
 
+    def test_rejects_fixed_text_fit_without_an_explicit_positive_box(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_svg(
+                Path(tmp),
+                '<g data-layout="editorial">'
+                '<text id="unsafe-fixed" data-text-fit="fixed" '
+                'x="100" y="160" font-size="32">WorkBuddy</text>'
+                '</g>',
+            )
+            result = check_svg(path, stage="authored", icons_dir=ICONS)
+            self.assertTrue(
+                any("text-fit-contract" in error for error in result.errors),
+                result.errors,
+            )
+
+    def test_near_capacity_text_estimate_does_not_create_false_overflow(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_svg(
+                Path(tmp),
+                '<g data-layout="editorial">'
+                '<text id="near-capacity" data-qa-box="100 120 248 40" '
+                'x="100" y="154" font-size="24">十个中文字符刚好容纳</text>'
+                '<text id="title-line" data-qa-box="100 70 760 40" '
+                'x="100" y="106" font-size="40">第二行标题</text>'
+                '</g>',
+            )
+            result = check_svg(path, stage="authored", icons_dir=ICONS)
+        self.assertFalse(
+            any("text-component-overflow" in error for error in result.errors),
+            result.errors,
+        )
+
+    def test_component_inset_contract_rejects_uneven_and_accepts_balanced_slots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            uneven = self.write_svg(
+                root,
+                '<g data-layout="flywheel">'
+                '<g id="uneven" data-component="skill-loop-card" '
+                'data-component-id="uneven" data-component-balance="insets" '
+                'data-qa-box="100 100 320 112">'
+                '<rect x="100" y="100" width="320" height="112"/>'
+                '<g data-component-parent="uneven" data-component-slot="icon" '
+                'data-qa-box="124 132 48 48"/>'
+                '<g data-component-parent="uneven" data-component-slot="copy" '
+                'data-qa-box="188 124 208 82"/>'
+                '</g></g>',
+                name="01_uneven.svg",
+            )
+            balanced = self.write_svg(
+                root,
+                '<g data-layout="flywheel">'
+                '<g id="balanced" data-component="skill-loop-card" '
+                'data-component-id="balanced" data-component-balance="insets" '
+                'data-qa-box="100 100 320 112">'
+                '<rect x="100" y="100" width="320" height="112"/>'
+                '<g data-component-parent="balanced" data-component-slot="icon" '
+                'data-qa-box="124 132 48 48"/>'
+                '<g data-component-parent="balanced" data-component-slot="copy" '
+                'data-qa-box="188 112 208 88"/>'
+                '</g></g>',
+                name="02_balanced.svg",
+            )
+            inconsistent = self.write_svg(
+                root,
+                '<g data-layout="flywheel">'
+                '<g data-component="skill-loop-card" data-component-id="card-a" '
+                'data-component-balance="insets" data-qa-box="100 100 320 112">'
+                '<rect x="100" y="100" width="320" height="112"/>'
+                '<g data-component-parent="card-a" data-component-slot="icon" '
+                'data-qa-box="124 132 48 48"/>'
+                '<g data-component-parent="card-a" data-component-slot="copy" '
+                'data-qa-box="188 112 208 88"/>'
+                '</g>'
+                '<g data-component="skill-loop-card" data-component-id="card-b" '
+                'data-component-balance="insets" data-qa-box="500 100 320 112">'
+                '<rect x="500" y="100" width="320" height="112"/>'
+                '<g data-component-parent="card-b" data-component-slot="icon" '
+                'data-qa-box="532 132 48 48"/>'
+                '<g data-component-parent="card-b" data-component-slot="copy" '
+                'data-qa-box="588 120 200 72"/>'
+                '</g></g>',
+                name="03_inconsistent.svg",
+            )
+
+            uneven_result = check_svg(uneven, stage="authored", icons_dir=ICONS)
+            balanced_result = check_svg(balanced, stage="authored", icons_dir=ICONS)
+            inconsistent_result = check_svg(inconsistent, stage="authored", icons_dir=ICONS)
+            self.assertTrue(
+                any("component-inset-outlier" in error for error in uneven_result.errors),
+                uneven_result.errors,
+            )
+            self.assertFalse(
+                any("component-inset-outlier" in error for error in balanced_result.errors),
+                balanced_result.errors,
+            )
+            self.assertTrue(
+                any("component-inset-outlier" in error for error in inconsistent_result.errors),
+                inconsistent_result.errors,
+            )
+
+    def test_content_inset_contract_centers_variable_width_copy_per_card(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = self.write_svg(
+                root,
+                '<g data-layout="flywheel">'
+                '<g data-component="skill-loop-card" data-component-id="wide" '
+                'data-component-balance="content-insets" data-qa-box="100 100 320 112">'
+                '<rect x="100" y="100" width="320" height="112"/>'
+                '<g data-component-parent="wide" data-component-slot="icon" '
+                'data-qa-box="133 132 48 48"/>'
+                '<g data-component-parent="wide" data-component-slot="copy" '
+                'data-qa-box="197 112 190 88"/>'
+                '</g>'
+                '<g data-component="skill-loop-card" data-component-id="narrow" '
+                'data-component-balance="content-insets" data-qa-box="500 100 320 112">'
+                '<rect x="500" y="100" width="320" height="112"/>'
+                '<g data-component-parent="narrow" data-component-slot="icon" '
+                'data-qa-box="547.5 132 48 48"/>'
+                '<g data-component-parent="narrow" data-component-slot="copy" '
+                'data-qa-box="611.5 112 161 88"/>'
+                '</g></g>',
+                name="01_centered-content.svg",
+            )
+            off_center = self.write_svg(
+                root,
+                '<g data-layout="flywheel">'
+                '<g data-component="skill-loop-card" data-component-id="off-center" '
+                'data-component-balance="content-insets" data-qa-box="100 100 320 112">'
+                '<rect x="100" y="100" width="320" height="112"/>'
+                '<g data-component-parent="off-center" data-component-slot="icon" '
+                'data-qa-box="124 132 48 48"/>'
+                '<g data-component-parent="off-center" data-component-slot="copy" '
+                'data-qa-box="188 112 161 88"/>'
+                '</g></g>',
+                name="02_off-center-content.svg",
+            )
+
+            result = check_svg(path, stage="authored", icons_dir=ICONS)
+            off_center_result = check_svg(off_center, stage="authored", icons_dir=ICONS)
+
+            self.assertTrue(result.passed, result.errors)
+            self.assertTrue(
+                any(
+                    "component-inset-outlier" in error
+                    for error in off_center_result.errors
+                ),
+                off_center_result.errors,
+            )
+
     def test_project_density_and_layout_plan_are_enforced(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)

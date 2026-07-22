@@ -1,0 +1,13 @@
+{
+  "schema": "ghb.render-metrics-baseline.v1",
+  "fixture": "D_01_body_default_ending/render/slide-02.png",
+  "renderer": "LibreOffice at 96 DPI with a Source Han Sans SC-compatible font",
+  "width": {"min": 1280, "max": 1282},
+  "height": {"min": 719, "max": 721},
+  "ranges": {
+    "non_background_ratio": {"min": 0.20, "max": 0.32},
+    "brand_red_ratio": {"min": 0.004, "max": 0.03},
+    "dark_ratio": {"min": 0.01, "max": 0.06},
+    "mean_luma": {"min": 232.0, "max": 250.0}
+  }
+}

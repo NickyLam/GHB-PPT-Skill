@@ -1,0 +1,26 @@
+{
+  "schema": "ghb.template-profile.v1",
+  "source_pptx": "templates/GHB_PPT_模板.pptx",
+  "source_sha256": "86ed82a9ba838f8d1175e83afa845dace05751c6cb56259db90ad8575f2cfe50",
+  "profile_source": "reviewed-sidecar",
+  "canvas": {"width": 1280, "height": 720},
+  "cover_slots": {"title": "s01_sh8", "subtitle": "s01_sh6", "date": "s01_sh4"},
+  "header_safe_zones": {
+    "logo": [56, 96, 250, 80],
+    "title": [88, 96, 812, 96],
+    "section": [930, 96, 294, 80]
+  },
+  "body_surface": [56, 96, 1168, 608],
+  "brand": {"primary": "#AB1F29", "secondary": "#44546A"},
+  "master_naming": {
+    "masters": ["ppt/slideMasters/slideMaster1.xml"],
+    "themes": ["ppt/theme/theme1.xml", "ppt/theme/theme2.xml", "ppt/theme/theme3.xml"]
+  },
+  "content_layout_index": 2,
+  "ending_slide_index": 4,
+  "inference": {
+    "cover_slots": "geometry-and-font-analysis",
+    "safe_zones": "reviewed against native GHB title frame and authored SVG surface",
+    "brand": "reviewed from explicit template slide colors and theme dark color"
+  }
+}

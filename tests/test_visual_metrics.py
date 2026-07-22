@@ -24,6 +24,52 @@ PREFERENCES = json.loads(
 
 
 class VisualMetricsTest(unittest.TestCase):
+    def test_separates_container_box_occupancy_from_inner_content(self):
+        svg = (
+            '<svg viewBox="0 0 1280 720">'
+            '<g data-layout="comparison">'
+            '<rect data-component="card" data-qa-peer-group="cards" '
+            'x="100" y="100" width="900" height="500"/>'
+            '<rect x="140" y="140" width="100" height="60"/>'
+            '</g></svg>'
+        )
+        metrics = measure_svg(svg)
+        self.assertGreater(
+            metrics["box-occupancy"]["value"],
+            metrics["content-occupancy"]["value"],
+        )
+
+    def test_use_geometry_is_measured_from_its_declared_extent(self):
+        svg = '''<svg viewBox="0 0 200 100">
+        <g data-layout="icon-row">
+          <use data-qa-role="icon" href="#icon" x="20" y="20" width="40" height="40"/>
+        </g></svg>'''
+        metrics = measure_svg(svg)
+        self.assertEqual(metrics["coverage"]["status"], "supported")
+        self.assertAlmostEqual(metrics["occupancy"]["value"], 0.08, places=6)
+
+    def test_title_body_scale_uses_explicit_title_outside_body_layout(self):
+        svg = '''<svg viewBox="0 0 200 100">
+        <g id="header">
+          <text data-qa-role="title" data-qa-box="10 5 180 30" font-size="40">Title</text>
+        </g>
+        <g data-layout="editorial">
+          <text data-qa-role="body" data-qa-box="10 45 180 30" font-size="24">Body</text>
+        </g></svg>'''
+        metrics = measure_svg(svg)
+        self.assertAlmostEqual(metrics["title-body-scale"]["value"], 40 / 24, places=6)
+
+    def test_peer_gap_ignores_nested_text_boxes_and_compares_declared_siblings(self):
+        svg = '''<svg viewBox="0 0 240 120">
+        <g data-layout="comparison">
+          <rect x="10" y="20" width="90" height="80" data-qa-peer-group="cards"/>
+          <g data-qa-role="body" data-qa-box="20 35 70 30"><text font-size="18">Left</text></g>
+          <rect x="120" y="20" width="90" height="80" data-qa-peer-group="cards"/>
+          <g data-qa-role="body" data-qa-box="130 35 70 30"><text font-size="18">Right</text></g>
+        </g></svg>'''
+        metrics = measure_svg(svg)
+        self.assertEqual(metrics["minimum-component-gap"]["value"], 20.0)
+
     def test_metrics_are_measured_from_svg_geometry_not_layout_marker(self):
         fragment = render_layout(
             LayoutSpec(

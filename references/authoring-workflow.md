@@ -1,5 +1,9 @@
 # Authoring Workflow
 
+Phase ownership and evidence hand-offs are defined in
+[authoring-roles.md](authoring-roles.md). These roles are sequential boundaries;
+they do not authorize subagent use.
+
 Use this reference after the skill triggers and before creating body SVGs.
 
 ## Content confirmation gate
@@ -42,6 +46,8 @@ Create these before `build`:
 - `spec_lock.md`: GHB canvas, colors, typography, and image policy.
 - `content_model.json`: traceable claims, evidence, importance, and required
   content before page planning.
+- `art_direction.json`: deck-level visual thesis, narrative arc, page
+  families, surface rhythm, anchor slides, and imagery policy.
 - `visual_profile.json`: project-wide typography, spacing, composition, focal,
   rhythm, and content-budget policy.
 - `layout_plan.json`: one record per body slide.
@@ -57,6 +63,13 @@ diversity checker.
 Map every page to `content_model.json` using `claim_ids`. Add the semantic
 evidence fields required by [project-contract.md](project-contract.md) for
 timeline, matrix, swimlane, flywheel, and comparison layouts.
+
+Before page geometry, complete `art_direction.json` from the confirmed mode
+and outline. Its anchor IDs must name real planned body slides. Use it to vary
+surface, focal placement, and page family across the narrative; it is not a
+decorative mood-board and cannot remain at the `init` scaffold defaults.
+Keep `design_mode` identical to the confirmed presentation mode; changing the
+mode or any anchor slide requires updating the plan and renewing confirmation.
 
 Density is not emphasis. Choose `page_schema.emphasis` from the conclusion in
 `key_message`, never from density or the legacy `anchor` rhythm. Use
@@ -96,6 +109,14 @@ top template decoration visible. Include exactly one preview-only
   text/shapes that convert to editable DrawingML.
 - Do not use a full-slide image or screenshot as body content.
 - Put `data-layout="<archetype>"` on the main content group.
+- Give every visible text element an inherited `data-qa-role` or a stable
+  role-oriented ID. Use at least 38 px for a 28 pt title floor and 24 px for an
+  18 pt body floor; reserve smaller sizes only for explicit caption, source,
+  or footer roles within their own profile floors.
+- Add purpose-specific semantic markers described in
+  [visual-quality-rules.md](visual-quality-rules.md); a matching
+  `data-layout` name alone is not proof that a process, comparison, metric, or
+  evidence page is structurally complete.
 - Let content semantics choose the structure. Never select a built-in
   archetype merely to reach a diversity quota. For decks with eight or more
   body pages, fewer than four structures and three-page repetition are
@@ -117,6 +138,9 @@ top template decoration visible. Include exactly one preview-only
 - During a visual repair, compare the new contact sheet side by side with the
   previous render or the user's named benchmark. A passing structural gate is
   necessary evidence, but not proof of aesthetic improvement.
+- Treat `svg_output/` as immutable authored evidence. Finalization writes
+  `svg_final/`; preview-background removal and any asset inlining happen only
+  there before the finalized gate and PPTX conversion.
 - For images, icons, attribution, and optional online paths, read
   [svg-image-embedding.md](svg-image-embedding.md),
   [image-searcher.md](image-searcher.md), or

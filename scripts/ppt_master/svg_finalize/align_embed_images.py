@@ -45,6 +45,7 @@ crops can no longer accumulate across re-runs.
 from __future__ import annotations
 
 import base64
+import argparse
 import io
 import os
 import re
@@ -53,7 +54,7 @@ from pathlib import Path
 
 from urllib.parse import unquote
 from xml.etree import ElementTree as ET
-from typing import List, Optional, TYPE_CHECKING, Union
+from typing import List, Optional, TYPE_CHECKING
 
 if __package__ in {None, ''}:
     import types
@@ -327,6 +328,11 @@ def _process_one_image(
     image.set('y', _format_number(new_y))
     image.set('width', _format_number(new_w))
     image.set('height', _format_number(new_h))
+    if image.get('data-qa-box') is not None:
+        image.set(
+            'data-qa-box',
+            ' '.join(_format_number(value) for value in (new_x, new_y, new_w, new_h)),
+        )
     if 'preserveAspectRatio' in image.attrib:
         del image.attrib['preserveAspectRatio']
 
@@ -426,7 +432,6 @@ def align_and_embed_images_in_svg(
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the standalone diagnostic parser."""
-    import argparse
     parser = argparse.ArgumentParser(
         description='Align (slice/meet) and Base64-embed all <image> refs in an SVG.',
     )

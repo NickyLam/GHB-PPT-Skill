@@ -22,7 +22,25 @@ CONFIRMATION_FIELDS = (
 )
 MODES = {"instructional", "briefing", "narrative"}
 SOURCES = {"user", "fixture"}
-PAGE_PURPOSES = {"architecture", "process", "comparison", "timeline", "metrics", "summary"}
+PAGE_PURPOSES = {
+    "architecture",
+    "process",
+    "comparison",
+    "timeline",
+    "metrics",
+    "summary",
+    "hero",
+    "section-anchor",
+    "evidence",
+    "case-study",
+    "instruction",
+    "decision",
+    "risk",
+    "screenshot",
+    "data-story",
+    "recommendation",
+    "closing",
+}
 PAGE_DENSITIES = {"breathing", "balanced", "dense"}
 RHYTHM_ROLES = {"anchor", "continuity", "transition"}
 EMPHASIS_INTENTS = {"single-focal", "ranked", "distributed"}
@@ -75,8 +93,12 @@ def default_visual_profile() -> dict[str, Any]:
             "surface": "#FFFFFF",
         },
         "typography": {
+            "enforcement": "strict",
             "min_title_pt": 28,
             "min_body_pt": 18,
+            "min_caption_pt": 12,
+            "min_source_pt": 10,
+            "min_footer_pt": 9,
             "min_title_body_ratio": 1.5,
         },
         "spacing": {"base_unit": 8, "min_component_gap": 16},
@@ -89,6 +111,79 @@ def default_visual_profile() -> dict[str, Any]:
         "deck_rhythm": {"default_role": "continuity", "max_same_role_streak": 3},
         "budgets": {"max_text_chars": 240, "max_nodes": 8},
     }
+
+
+def default_art_direction() -> dict[str, Any]:
+    """Return a scaffold that must be completed after content confirmation."""
+    return {
+        "schema": "ghb.art-direction.v1",
+        "design_mode": "instructional",
+        "visual_thesis": None,
+        "narrative_arc": ["orient", "explain", "prove", "decide"],
+        "page_families": ["editorial", "evidence", "comparison", "process", "decision"],
+        "surface_strategy": {
+            "variants": ["light", "contrast", "evidence"],
+            "max_same_variant_streak": 2,
+        },
+        "focal_strategy": {
+            "max_distributed_streak": 4,
+        },
+        "anchor_slide_ids": [],
+        "imagery": {
+            "strategy": "evidence-first",
+            "max_images_per_page": 2,
+        },
+    }
+
+
+def validate_art_direction(path: Path) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    payload = read_json(path, issues)
+    if not isinstance(payload, dict):
+        return issues or [issue("invalid-art-direction", "art_direction.json must be an object", path)]
+    if payload.get("schema") != "ghb.art-direction.v1":
+        issues.append(issue(
+            "invalid-art-direction-schema",
+            "schema major must be ghb.art-direction.v1",
+            path,
+        ))
+    surface = payload.get("surface_strategy")
+    variants = surface.get("variants") if isinstance(surface, dict) else None
+    focal = payload.get("focal_strategy")
+    imagery = payload.get("imagery")
+    anchors = payload.get("anchor_slide_ids")
+    incomplete = (
+        payload.get("design_mode") not in MODES
+        or not _nonempty(payload.get("visual_thesis"))
+        or not isinstance(payload.get("narrative_arc"), list)
+        or len(payload.get("narrative_arc", [])) < 3
+        or any(not isinstance(item, str) or not item.strip() for item in payload.get("narrative_arc", []))
+        or not isinstance(payload.get("page_families"), list)
+        or len(payload.get("page_families", [])) < 3
+        or any(not isinstance(item, str) or not item.strip() for item in payload.get("page_families", []))
+        or not isinstance(variants, list)
+        or any(not isinstance(item, str) or not item.strip() for item in variants)
+        or len(set(variants)) < 2
+        or not isinstance(surface.get("max_same_variant_streak") if isinstance(surface, dict) else None, int)
+        or (surface.get("max_same_variant_streak", 0) if isinstance(surface, dict) else 0) <= 0
+        or not isinstance(focal, dict)
+        or not isinstance(focal.get("max_distributed_streak"), int)
+        or focal.get("max_distributed_streak", 0) <= 0
+        or not isinstance(anchors, list)
+        or not anchors
+        or any(not isinstance(item, str) or not item.strip() for item in anchors)
+        or not isinstance(imagery, dict)
+        or imagery.get("strategy") not in {"none", "evidence-first", "editorial", "data-led"}
+        or not isinstance(imagery.get("max_images_per_page"), int)
+        or not 0 <= imagery.get("max_images_per_page", -1) <= 2
+    )
+    if incomplete:
+        issues.append(issue(
+            "incomplete-art-direction",
+            "art direction requires a visual thesis, narrative arc, page families, surface rhythm, anchors, and imagery policy",
+            path,
+        ))
+    return issues
 
 
 def _positive_number(value: Any) -> bool:
@@ -112,16 +207,32 @@ def validate_visual_profile(path: Path) -> list[dict[str, str]]:
         issues.append(issue("invalid-visual-profile-brand", "brand must preserve the GHB primary, text, and surface constants", path))
 
     typography = payload.get("typography")
-    if not isinstance(typography, dict) or any(
+    typography_fields = (
+        "min_title_pt",
+        "min_body_pt",
+        "min_caption_pt",
+        "min_source_pt",
+        "min_footer_pt",
+        "min_title_body_ratio",
+    )
+    if not isinstance(typography, dict) or typography.get("enforcement") != "strict" or any(
         not _positive_number(typography.get(field))
-        for field in ("min_title_pt", "min_body_pt", "min_title_body_ratio")
+        for field in typography_fields
     ) or (
         isinstance(typography, dict)
         and _positive_number(typography.get("min_title_pt"))
         and _positive_number(typography.get("min_body_pt"))
-        and typography["min_title_pt"] < typography["min_body_pt"]
+        and not (
+            typography["min_title_pt"] >= typography["min_body_pt"]
+            >= typography["min_caption_pt"] >= typography["min_source_pt"]
+            >= typography["min_footer_pt"]
+        )
     ):
-        issues.append(issue("invalid-visual-profile-typography", "typography floors and title/body ratio must be positive and ordered", path))
+        issues.append(issue(
+            "invalid-visual-profile-typography",
+            "strict typography role floors and title/body ratio must be positive and ordered",
+            path,
+        ))
 
     spacing = payload.get("spacing")
     if not isinstance(spacing, dict) or any(
@@ -182,7 +293,7 @@ def validate_page_schema(
     if schema.get("slide_id") != row.get("slide_id"):
         issues.append(issue("page-schema-slide-id-drift", f"slide {label}: page_schema.slide_id must match the layout row", path))
     if schema.get("page_purpose") not in PAGE_PURPOSES:
-        issues.append(issue("invalid-page-schema-purpose", f"slide {label}: page_purpose must use the six-purpose v1 taxonomy", path))
+        issues.append(issue("invalid-page-schema-purpose", f"slide {label}: page_purpose is not in the supported presentation taxonomy", path))
     if schema.get("density") not in PAGE_DENSITIES:
         issues.append(issue("invalid-page-schema-density", f"slide {label}: density must be breathing, balanced, or dense", path))
     legacy_density = row.get("density") or row.get("content_density")
@@ -242,6 +353,45 @@ def validate_page_schema(
         if not valid:
             issues.append(issue("invalid-page-schema-bounds-override", f"slide {label}: bounds_override must fit the 1280x720 canvas", path))
     return issues
+
+
+def find_scaffold_markers(project: Path) -> list[str]:
+    """Return relative paths of scaffold drafts that must be finalized before release.
+
+    ``plan`` writes deterministic drafts marked with ``needs_review``/``draft``/
+    ``origin: scaffold``. These are fine for iteration but must be cleared before a
+    release build so a scaffold cannot masquerade as finished authoring.
+    """
+    project = project.resolve()
+    markers: list[str] = []
+    for relative in (
+        "content_model.json",
+        "layout_plan.json",
+        "art_direction.json",
+        "visual_profile.json",
+    ):
+        path = project / relative
+        if not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if _payload_has_scaffold_marker(payload):
+            markers.append(relative)
+    return markers
+
+
+def _payload_has_scaffold_marker(payload: Any) -> bool:
+    if isinstance(payload, dict):
+        if payload.get("needs_review") is True or payload.get("draft") is True:
+            return True
+        if payload.get("origin") == "scaffold":
+            return True
+        return any(_payload_has_scaffold_marker(value) for value in payload.values())
+    if isinstance(payload, list):
+        return any(_payload_has_scaffold_marker(value) for value in payload)
+    return False
 
 
 def read_json(path: Path, issues: list[dict[str, str]]) -> Any | None:
@@ -529,7 +679,9 @@ def validate_project_contract(
             issues.append(issue("missing-authored-svg", "svg_output must contain authored SVG files", svg_dir))
     layout_path = project / "layout_plan.json"
     profile_path = project / "visual_profile.json"
+    art_direction_path = project / "art_direction.json"
     profile: dict[str, Any] | None = None
+    art_direction: dict[str, Any] | None = None
     if profile_path.is_file():
         issues.extend(validate_visual_profile(profile_path))
         profile_payload = read_json(profile_path, issues)
@@ -540,6 +692,34 @@ def validate_project_contract(
             "visual_profile.json is required by the explicit visual-contract gate",
             profile_path,
         ))
+    if art_direction_path.is_file():
+        issues.extend(validate_art_direction(art_direction_path))
+        art_payload = read_json(art_direction_path, issues)
+        art_direction = art_payload if isinstance(art_payload, dict) else None
+        confirmation_path = project / "confirmation.json"
+        if art_direction is not None and confirmation_path.is_file():
+            try:
+                confirmation_payload = json.loads(confirmation_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                confirmation_payload = None
+            decisions = (
+                confirmation_payload.get("decisions")
+                if isinstance(confirmation_payload, dict)
+                else None
+            )
+            confirmed_mode = decisions.get("mode") if isinstance(decisions, dict) else None
+            if confirmed_mode in MODES and art_direction.get("design_mode") != confirmed_mode:
+                issues.append(issue(
+                    "art-direction-mode-drift",
+                    "art_direction.json design_mode no longer matches the confirmed presentation mode",
+                    art_direction_path,
+                ))
+    elif require_visual_contract:
+        issues.append(issue(
+            "missing-art-direction",
+            "art_direction.json is required by the visual-contract gate",
+            art_direction_path,
+        ))
     if layout_path.is_file():
         issues.extend(validate_layout_semantics(layout_path))
         issues.extend(validate_confirmation_plan_alignment(project))
@@ -548,6 +728,20 @@ def validate_project_contract(
         slide_ids = [row.get("slide_id") for row in visual_rows if _nonempty(row.get("slide_id"))]
         if len(slide_ids) != len(set(slide_ids)):
             issues.append(issue("duplicate-slide-id", "layout_plan.json slide_id values must be unique", layout_path))
+        if art_direction is not None:
+            anchors = art_direction.get("anchor_slide_ids")
+            if isinstance(anchors, list):
+                missing_anchors = sorted(
+                    anchor
+                    for anchor in anchors
+                    if isinstance(anchor, str) and anchor not in set(slide_ids)
+                )
+                if missing_anchors:
+                    issues.append(issue(
+                        "art-direction-anchor-missing-slide",
+                        f"art direction anchor IDs are absent from layout_plan.json: {missing_anchors}",
+                        art_direction_path,
+                    ))
         for row in visual_rows:
             if "page_schema" in row or require_visual_contract:
                 issues.extend(validate_page_schema(
@@ -562,7 +756,127 @@ def validate_project_contract(
     content_model = project / "content_model.json"
     if content_model.is_file():
         issues.extend(validate_content_model(content_model, layout_path))
+    if not confirmation_only:
+        markers = find_scaffold_markers(project)
+        if markers:
+            issues.append(issue(
+                "plan-draft-not-finalized",
+                "scaffold drafts still carry needs_review/draft/origin markers; finalize "
+                f"and remove them before build: {', '.join(markers)}",
+                project,
+            ))
     return issues
+
+
+def validate_plan(project: Path) -> list[dict[str, str]]:
+    """Guidance-level check run by ``check-plan`` before authoring SVGs.
+
+    Structural drift (dangling claim references, missing anchors) is reported as
+    ``error``; unfinalized scaffold drafts are reported as ``advisory`` so an
+    author can iterate. A release build still blocks on the drafts via
+    :func:`validate_project_contract`.
+    """
+    project = project.resolve()
+    issues: list[dict[str, str]] = []
+    layout_path = project / "layout_plan.json"
+    content_path = project / "content_model.json"
+    if content_path.is_file() and layout_path.is_file():
+        drift = [
+            item
+            for item in validate_content_model(content_path, layout_path)
+            if item.get("code")
+            in {"unknown-claim-reference", "invalid-page-claim-mapping", "unmapped-required-claims"}
+        ]
+        for item in drift:
+            issues.append(issue("plan-contract-drift", item["message"], layout_path))
+    art_path = project / "art_direction.json"
+    if art_path.is_file() and layout_path.is_file():
+        art_payload = read_json(art_path, issues)
+        layout_payload = read_json(layout_path, issues)
+        anchors = art_payload.get("anchor_slide_ids") if isinstance(art_payload, dict) else None
+        slide_ids = {
+            row.get("slide_id")
+            for row in _plan_rows(layout_payload)
+            if _nonempty(row.get("slide_id"))
+        }
+        if isinstance(anchors, list):
+            missing = sorted(
+                anchor
+                for anchor in anchors
+                if isinstance(anchor, str) and anchor and anchor not in slide_ids
+            )
+            if missing:
+                issues.append(issue(
+                    "plan-contract-drift",
+                    f"art direction anchor IDs are absent from layout_plan.json: {missing}",
+                    art_path,
+                ))
+    for relative in find_scaffold_markers(project):
+        result = {
+            "severity": "advisory",
+            "code": "plan-draft-not-finalized",
+            "message": f"{relative} still carries scaffold markers; refine and remove them before build",
+            "path": str(project / relative),
+        }
+        issues.append(result)
+    if layout_path.is_file():
+        layout_payload = read_json(layout_path, issues)
+        for row in _plan_rows(layout_payload):
+            fit = score_layout_fit(row)
+            if fit is not None and fit["score"] < 70:
+                issues.append({
+                    "severity": "advisory",
+                    "code": "layout-fit-score-low",
+                    "message": (
+                        f"slide {row.get('slide_id') or row.get('slide')}: "
+                        f"{fit['archetype']} fit score {fit['score']}/100; "
+                        f"{fit['suggestion']}"
+                    ),
+                    "path": str(layout_path),
+                    "score": str(fit["score"]),
+                })
+    return issues
+
+
+def score_layout_fit(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Return an explainable semantic-fit score for constrained archetypes."""
+
+    schema = row.get("page_schema") if isinstance(row.get("page_schema"), dict) else {}
+    variant = str(schema.get("layout_variant") or row.get("layout_archetype") or "")
+    archetype = variant.split("/", 1)[0]
+    if archetype == "comparison":
+        archetype = "matrix"
+    if archetype == "timeline":
+        sequence = row.get("time_order") or row.get("sequence")
+        if isinstance(sequence, list) and len(sequence) >= 2:
+            return {"archetype": archetype, "score": 100, "suggestion": "time order is explicit"}
+        return {
+            "archetype": archetype,
+            "score": 35,
+            "suggestion": "declare at least two ordered time/sequence markers or choose a non-timeline layout",
+        }
+    if archetype == "matrix":
+        criteria = row.get("comparison_criteria")
+        axes = row.get("axes")
+        if isinstance(criteria, list) and len(criteria) >= 2:
+            return {"archetype": archetype, "score": 100, "suggestion": "shared comparison criteria are explicit"}
+        if isinstance(axes, dict) and all(str(axes.get(key) or "").strip() for key in ("x", "y")):
+            return {"archetype": archetype, "score": 100, "suggestion": "both matrix axes are explicit"}
+        return {
+            "archetype": archetype,
+            "score": 40,
+            "suggestion": "declare two shared comparison criteria or explicit x/y axes",
+        }
+    if archetype == "flywheel":
+        closure = row.get("loop_closure")
+        if isinstance(closure, str) and closure.strip():
+            return {"archetype": archetype, "score": 100, "suggestion": "loop closure is explicit"}
+        return {
+            "archetype": archetype,
+            "score": 30,
+            "suggestion": "state how the last stage feeds the first, or choose a linear process layout",
+        }
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -570,12 +884,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("project", type=Path)
     parser.add_argument("--confirmation-only", action="store_true")
     parser.add_argument(
+        "--plan-only",
+        action="store_true",
+        help="Run the guidance-level plan check (advisory scaffold drafts, structural drift)",
+    )
+    parser.add_argument(
         "--require-visual-contract",
         action="store_true",
         help="Require visual_profile.json and a valid nested page_schema on every layout row",
     )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.plan_only:
+        issues = validate_plan(args.project)
+        blocking = [item for item in issues if item.get("severity") != "advisory"]
+        payload = {"passed": not blocking, "issues": issues}
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print("PASS" if not blocking else "FAIL")
+            for item in issues:
+                level = item.get("severity", "error").upper()
+                print(f"{level} [{item['code']}] {item['message']}")
+        return 0 if not blocking else 1
     issues = validate_project_contract(
         args.project,
         confirmation_only=args.confirmation_only,

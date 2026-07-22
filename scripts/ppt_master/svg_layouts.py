@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from html import escape
 import math
-from typing import Callable
+from typing import Any, Callable
 
 
 PRIMARY = "#AB1F29"
@@ -22,6 +22,7 @@ BORDER = "#E0E0E0"
 SURFACE = "#F6F6F7"
 WHITE = "#FFFFFF"
 FONT = "'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif"
+LAYOUT_SCHEMA = "ghb.layout-schema.v1"
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,159 @@ class LayoutSpec:
     focal_target: str | None = None
     max_items: int | None = None
     max_text_chars: int | None = None
+
+
+def validate_layout_schema(payload: dict[str, Any]) -> list[dict[str, str]]:
+    """Validate a deterministic JSON page schema before rendering geometry.
+
+    The returned issues include an actionable suggestion so callers can shorten,
+    split, or select a better layout before any SVG is emitted.
+    """
+
+    issues: list[dict[str, str]] = []
+
+    def add(code: str, message: str, suggestion: str) -> None:
+        issues.append({"code": code, "message": message, "suggestion": suggestion})
+
+    if not isinstance(payload, dict) or payload.get("schema") != LAYOUT_SCHEMA:
+        add(
+            "invalid-layout-schema",
+            f"schema must be {LAYOUT_SCHEMA!r}",
+            "set the schema field and regenerate the page plan",
+        )
+        return issues
+    archetype = payload.get("archetype")
+    normalized_archetype = "matrix" if archetype == "comparison" else archetype
+    if normalized_archetype not in LAYOUT_CONTRACTS:
+        add(
+            "unsupported-layout-archetype",
+            f"unsupported archetype: {archetype!r}",
+            "choose one of the documented built-in layout families",
+        )
+        return issues
+
+    title_payload = payload.get("title", {})
+    if isinstance(title_payload, str):
+        title_payload = {"text": title_payload}
+    if not isinstance(title_payload, dict):
+        add(
+            "invalid-layout-schema-title",
+            "title must be a string or object",
+            "use title.text and an optional positive title.max_chars",
+        )
+        title_payload = {}
+    title = str(title_payload.get("text") or "").strip()
+    title_limit = title_payload.get("max_chars", 32)
+    if isinstance(title_limit, bool) or not isinstance(title_limit, int) or title_limit < 1:
+        add(
+            "invalid-layout-schema-title-budget",
+            "title.max_chars must be a positive integer",
+            "set a positive title character budget, normally 24-32",
+        )
+    elif len(title) > title_limit:
+        add(
+            "layout-schema-title-too-long",
+            f"title has {len(title)} characters; budget is {title_limit}",
+            "rewrite the title as a shorter conclusion or move detail into a node",
+        )
+
+    nodes = payload.get("nodes")
+    if not isinstance(nodes, list) or not nodes:
+        add(
+            "invalid-layout-schema-nodes",
+            "nodes must be a non-empty list",
+            "add one node per visible component before rendering",
+        )
+        return issues
+    contract = LAYOUT_CONTRACTS[normalized_archetype]
+    if len(nodes) < contract.min_items:
+        add(
+            "layout-budget-items-below-minimum",
+            f"{archetype} requires at least {contract.min_items} nodes",
+            "add the missing semantic stages or choose a simpler editorial layout",
+        )
+    if len(nodes) > contract.max_items:
+        add(
+            "layout-budget-items-exceeded",
+            f"{archetype} supports at most {contract.max_items} nodes",
+            "split the page or use a phased 4+N structure",
+        )
+    for index, node in enumerate(nodes, start=1):
+        if not isinstance(node, dict) or not str(node.get("id") or "").strip():
+            add(
+                "invalid-layout-schema-node",
+                f"node {index} requires an id",
+                "assign a stable node id for QA and editability",
+            )
+            continue
+        heading = str(node.get("heading") or "").strip()
+        body = str(node.get("body") or "").strip()
+        body_limit = node.get("max_body_chars", contract.max_chars_per_item)
+        if isinstance(body_limit, bool) or not isinstance(body_limit, int) or body_limit < 1:
+            add(
+                "invalid-layout-schema-node-budget",
+                f"node {index} max_body_chars must be a positive integer",
+                "set a positive body budget no larger than the layout contract",
+            )
+        elif len(body) > min(body_limit, contract.max_chars_per_item):
+            add(
+                "layout-schema-node-body-too-long",
+                f"node {index} body has {len(body)} characters; budget is "
+                f"{min(body_limit, contract.max_chars_per_item)}",
+                "shorten the copy, split the node, or move evidence to speaker notes",
+            )
+        if not heading and not body:
+            add(
+                "invalid-layout-schema-node-copy",
+                f"node {index} has no visible copy",
+                "provide a heading or body instead of rendering an empty component",
+            )
+    return issues
+
+
+def layout_spec_from_schema(payload: dict[str, Any]) -> LayoutSpec:
+    """Convert a validated ``ghb.layout-schema.v1`` payload to ``LayoutSpec``."""
+
+    issues = validate_layout_schema(payload)
+    if issues:
+        first = issues[0]
+        raise ValueError(
+            f"{first['code']}: {first['message']}; suggestion: {first['suggestion']}"
+        )
+    title_payload = payload.get("title", {})
+    if isinstance(title_payload, str):
+        title_payload = {"text": title_payload}
+    nodes = payload["nodes"]
+    items = []
+    for node in nodes:
+        heading = str(node.get("heading") or "").strip()
+        body = str(node.get("body") or "").strip()
+        items.append("｜".join(part for part in (heading, body) if part))
+    emphasis = payload.get("emphasis", {})
+    if isinstance(emphasis, str):
+        emphasis = {"mode": emphasis}
+    geometry = payload.get("geometry", {})
+    if not isinstance(geometry, dict):
+        geometry = {}
+    return LayoutSpec(
+        archetype=str(payload["archetype"]),
+        items=items,
+        title=str(title_payload.get("text") or "").strip(),
+        x=int(geometry.get("x", 120)),
+        y=int(geometry.get("y", 220)),
+        width=int(geometry.get("width", 1040)),
+        height=int(geometry.get("height", 400)),
+        density=payload.get("density", "balanced"),
+        variant=payload.get("variant"),
+        emphasis=emphasis.get("mode", "distributed") if isinstance(emphasis, dict) else "distributed",
+        focal_target=(emphasis.get("focal_target") if isinstance(emphasis, dict) else None),
+    )
+
+
+def render_layout_schema(payload: dict[str, Any]) -> str:
+    """Validate and render a constrained page schema as Office-safe SVG."""
+
+    return render_layout(layout_spec_from_schema(payload))
 
 
 def render_layout(spec: LayoutSpec) -> str:
@@ -233,11 +387,28 @@ def _focal_attr(spec: LayoutSpec, item_index: int) -> str:
     return ""
 
 
+def _body_font(spec: LayoutSpec, requested: int) -> int:
+    """Apply the strict 18 pt / 24 px body floor to intent-aware output."""
+    return max(requested, 24) if _intent_enabled(spec) else requested
+
+
+def _body_text_id(spec: LayoutSpec, token: str) -> str | None:
+    """Return a stable DrawingML-readable role ID for intent-aware text."""
+    return f"body-{spec.archetype}-{token}" if _intent_enabled(spec) else None
+
+
+def _body_text_attr(spec: LayoutSpec, token: str) -> str:
+    identity = _body_text_id(spec, token)
+    return f' id="{identity}"' if identity else ""
+
+
 def _title(spec: LayoutSpec) -> str:
     if not spec.title:
         return ""
+    size = 24 if _intent_enabled(spec) else 20
+    identity = _body_text_attr(spec, "title")
     return (
-        f'<text x="{spec.x}" y="{spec.y - 28}" font-size="20" font-weight="bold" '
+        f'<text{identity} x="{spec.x}" y="{spec.y - 28}" font-size="{size}" font-weight="bold" '
         f'fill="{TEXT}">{_xml(spec.title)}</text>'
     )
 
@@ -274,8 +445,10 @@ def _render_pyramid(spec: LayoutSpec) -> str:
         body.extend(
             _wrapped_text(
                 label, cx, (y1 + y2) / 2, min(top_w, bottom_w) - 32,
-                20 if highlighted and _intent_enabled(spec) else 18, text_fill,
+                _body_font(spec, 20 if highlighted and _intent_enabled(spec) else 18), text_fill,
                 max_height=(y2 - y1 - 12) if _intent_enabled(spec) else None,
+                min_font_size=24 if _intent_enabled(spec) else 13,
+                id_prefix=_body_text_id(spec, f"item-{item_index + 1}"),
             )
         )
     return _group(spec, body)
@@ -316,8 +489,10 @@ def _render_waterfall(spec: LayoutSpec) -> str:
         body.extend(
             _wrapped_text(
                 label, x + step_w / 2, y + block_h / 2, step_w - 24,
-                19 if highlighted and _intent_enabled(spec) else 17, text_fill,
+                _body_font(spec, 19 if highlighted and _intent_enabled(spec) else 17), text_fill,
                 max_height=(block_h - 20) if _intent_enabled(spec) else None,
+                min_font_size=24 if _intent_enabled(spec) else 13,
+                id_prefix=_body_text_id(spec, f"item-{idx + 1}"),
             )
         )
         if idx < count - 1:
@@ -396,21 +571,37 @@ def _render_staircase(spec: LayoutSpec) -> str:
         highlighted = _highlighted(spec, idx, count - 1)
         fill = PRIMARY if highlighted else SURFACE
         text_fill = WHITE if highlighted else TEXT
+        step_contract = (
+            f' id="staircase-step-{idx + 1}" data-step="staircase-step-{idx + 1}"'
+            if _intent_enabled(spec)
+            else ""
+        )
+        caption_contract = (
+            f' id="caption-step-{idx + 1}" data-qa-role="caption" '
+            f'data-qa-box="{x + 12:.1f} {y + 10:.1f} 48 24"'
+            if _intent_enabled(spec)
+            else ""
+        )
         body.append(
-            f'<rect x="{x:.1f}" y="{y:.1f}" width="{step_w:.1f}" height="{h:.1f}" rx="10"'
+            f'<rect{step_contract} x="{x:.1f}" y="{y:.1f}" width="{step_w:.1f}" height="{h:.1f}" rx="10"'
             f'{_focal_attr(spec, idx)} fill="{fill}" '
             f'stroke="{PRIMARY if highlighted and _intent_enabled(spec) else BORDER}" '
             f'stroke-width="{2 if highlighted and _intent_enabled(spec) else 1}"/>'
         )
         body.append(
-            f'<text x="{x + 18:.1f}" y="{y + 32:.1f}" font-size="15" fill="{TEXT_SECONDARY}">'
+            f'<text x="{x + 18:.1f}" y="{y + 32:.1f}" '
+            f'font-size="{16 if _intent_enabled(spec) else 15}"'
+            f'{caption_contract} '
+            f'fill="{TEXT_SECONDARY}">'
             f'{idx + 1:02d}</text>'
         )
         body.extend(
             _wrapped_text(
                 label, x + step_w / 2, y + h / 2 + 4, step_w - 24,
-                19 if highlighted and _intent_enabled(spec) else 17, text_fill,
+                _body_font(spec, 19 if highlighted and _intent_enabled(spec) else 17), text_fill,
                 max_height=(h - 48) if _intent_enabled(spec) else None,
+                min_font_size=24 if _intent_enabled(spec) else 13,
+                id_prefix=_body_text_id(spec, f"item-{idx + 1}"),
             )
         )
     return _group(spec, body)
@@ -431,8 +622,13 @@ def _render_layered_arch(spec: LayoutSpec) -> str:
         highlighted = _highlighted(spec, item_index, 0)
         fill = PRIMARY if highlighted else SURFACE
         text_fill = WHITE if highlighted else TEXT
+        layer_contract = (
+            f' id="architecture-layer-{item_index + 1}" data-layer="architecture-layer-{item_index + 1}"'
+            if _intent_enabled(spec)
+            else ""
+        )
         body.append(
-            f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{layer_h:.1f}" rx="12"'
+            f'<rect{layer_contract} x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{layer_h:.1f}" rx="12"'
             f'{_focal_attr(spec, item_index)} fill="{fill}" '
             f'stroke="{PRIMARY if highlighted and _intent_enabled(spec) else BORDER}" '
             f'stroke-width="{2 if highlighted and _intent_enabled(spec) else 1}"/>'
@@ -440,8 +636,10 @@ def _render_layered_arch(spec: LayoutSpec) -> str:
         body.extend(
             _wrapped_text(
                 label, x + 28, y + layer_h / 2, w - 56,
-                20 if highlighted and _intent_enabled(spec) else 18, text_fill, anchor="start",
+                _body_font(spec, 20 if highlighted and _intent_enabled(spec) else 18), text_fill, anchor="start",
                 max_height=(layer_h - 12) if _intent_enabled(spec) else None,
+                min_font_size=24 if _intent_enabled(spec) else 13,
+                id_prefix=_body_text_id(spec, f"item-{item_index + 1}"),
             )
         )
     return _group(spec, body)
@@ -498,9 +696,19 @@ def _render_matrix_pilot(spec: LayoutSpec) -> str:
         fill = PRIMARY if highlighted else SURFACE
         text_fill = WHITE if highlighted and _intent_enabled(spec) else TEXT
         focal_attr = _focal_attr(spec, idx)
+        component_id = f"matrix-card-{idx + 1}"
+        semantic_contract = (
+            f' id="{component_id}" data-component="matrix-card" '
+            f'data-component-id="{component_id}" '
+            f'data-qa-box="{x:.1f} {y:.1f} {w:.1f} {h:.1f}" '
+            f'data-qa-peer-group="matrix-cards"'
+        )
+        if spec.variant == "matrix/metric-callout":
+            semantic_contract += f' data-metric="metric-{idx + 1}"'
         body.append(
             f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="12"'
-            f'{focal_attr} fill="{fill}" stroke="{PRIMARY if highlighted else BORDER}" stroke-width="{2 if highlighted else 1}"/>'
+            f'{semantic_contract}{focal_attr} fill="{fill}" stroke="{PRIMARY if highlighted else BORDER}" '
+            f'stroke-width="{2 if highlighted else 1}"/>'
         )
         if label:
             comparison_parts: list[str] = []
@@ -518,10 +726,12 @@ def _render_matrix_pilot(spec: LayoutSpec) -> str:
                         x + w / 2,
                         y + h * 0.36,
                         w - 40,
-                        22 if highlighted else 20,
+                        _body_font(spec, 22 if highlighted else 20),
                         text_fill,
                         max_lines=1,
                         max_height=h * 0.24,
+                        min_font_size=24,
+                        id_prefix=_body_text_id(spec, f"item-{idx + 1}-heading"),
                     )
                 )
                 body.extend(
@@ -530,23 +740,27 @@ def _render_matrix_pilot(spec: LayoutSpec) -> str:
                         x + w / 2,
                         y + h * 0.64,
                         w - 40,
-                        16 if highlighted else 15,
+                        _body_font(spec, 16 if highlighted else 15),
                         text_fill,
                         max_lines=2,
                         max_height=h * 0.34,
+                        min_font_size=24,
+                        id_prefix=_body_text_id(spec, f"item-{idx + 1}-detail"),
                     )
                 )
                 continue
             if spec.variant == "matrix/metric-callout":
-                size = 26 if highlighted else 22
+                size = 26 if highlighted else 24
             elif spec.variant == "matrix/spotlight":
-                size = 24 if highlighted else 17
+                size = 24
             else:
-                size = 21 if highlighted else 17
+                size = 24
             body.extend(
                 _wrapped_text(
                     label, x + w / 2, y + h / 2, w - 40, size, text_fill,
                     max_height=h - 24,
+                    min_font_size=24,
+                    id_prefix=_body_text_id(spec, f"item-{idx + 1}"),
                 )
             )
     return _group(spec, body)
@@ -603,13 +817,16 @@ def _render_timeline_pilot(spec: LayoutSpec) -> str:
         fill = PRIMARY if highlighted else WHITE
         text_fill = WHITE if highlighted else PRIMARY
         focal_attr = _focal_attr(spec, idx)
+        step_contract = f' id="timeline-step-{idx + 1}" data-step="timeline-step-{idx + 1}"'
         body.append(
             f'<rect x="{x - size / 2:.1f}" y="{y_line - size / 2:.1f}" '
-            f'width="{size:.1f}" height="{size:.1f}" rx="{size / 2:.1f}"{focal_attr} '
+            f'width="{size:.1f}" height="{size:.1f}" rx="{size / 2:.1f}"{step_contract}{focal_attr} '
             f'fill="{fill}" stroke="{PRIMARY}" stroke-width="{3 if highlighted else 2}"/>'
         )
         body.append(
-            f'<text x="{x:.1f}" y="{y_line + 6:.1f}" text-anchor="middle" font-size="16" '
+            f'<text id="caption-timeline-{idx + 1}" data-qa-role="caption" '
+            f'data-qa-box="{x - size / 2:.1f} {y_line - size / 2:.1f} {size:.1f} {size:.1f}" '
+            f'x="{x:.1f}" y="{y_line + 6:.1f}" text-anchor="middle" font-size="16" '
             f'font-weight="bold" fill="{text_fill}">{idx + 1}</text>'
         )
         alternating = spec.variant != "timeline/phased"
@@ -617,7 +834,8 @@ def _render_timeline_pilot(spec: LayoutSpec) -> str:
         body.extend(
             _wrapped_text(
                 label, x, label_y, min(210, max(120, step * 0.82)),
-                17 if highlighted else 16, TEXT, max_height=88,
+                24, TEXT, max_height=88, min_font_size=24,
+                id_prefix=_body_text_id(spec, f"item-{idx + 1}"),
             )
         )
     return _group(spec, body)
@@ -647,16 +865,23 @@ def _render_funnel(spec: LayoutSpec) -> str:
             (cx + bottom_w / 2, y2),
             (cx - bottom_w / 2, y2),
         ]
+        step_contract = (
+            f' id="funnel-step-{idx + 1}" data-step="funnel-step-{idx + 1}"'
+            if _intent_enabled(spec)
+            else ""
+        )
         body.append(
-            f'<polygon points="{_points(points)}"{_focal_attr(spec, idx)} fill="{fill}" '
+            f'<polygon{step_contract} points="{_points(points)}"{_focal_attr(spec, idx)} fill="{fill}" '
             f'stroke="{PRIMARY if highlighted and _intent_enabled(spec) else BORDER}" '
             f'stroke-width="{2 if highlighted and _intent_enabled(spec) else 1}"/>'
         )
         body.extend(
             _wrapped_text(
                 label, cx, (y1 + y2) / 2, min(top_w, bottom_w) - 36,
-                20 if highlighted and _intent_enabled(spec) else 18, text_fill,
+                _body_font(spec, 20 if highlighted and _intent_enabled(spec) else 18), text_fill,
                 max_height=(segment_h - 12) if _intent_enabled(spec) else None,
+                min_font_size=24 if _intent_enabled(spec) else 13,
+                id_prefix=_body_text_id(spec, f"item-{idx + 1}"),
             )
         )
     return _group(spec, body)
@@ -670,7 +895,7 @@ def _render_flywheel(spec: LayoutSpec) -> str:
     radius_x = spec.width * radius_scale
     radius_y = spec.height * (radius_scale - 0.02)
     box_w = min(_density_value(spec, 154.0, 170.0, 184.0), spec.width * 0.24) if _intent_enabled(spec) else min(170, spec.width * 0.24)
-    box_h = _density_value(spec, 52.0, 58.0, 64.0) if _intent_enabled(spec) else 58
+    box_h = _density_value(spec, 76.0, 82.0, 88.0) if _intent_enabled(spec) else 58
     nodes: list[tuple[float, float, str]] = []
     for idx, label in enumerate(spec.items):
         angle = -math.pi / 2 + idx * (2 * math.pi / count)
@@ -681,7 +906,9 @@ def _render_flywheel(spec: LayoutSpec) -> str:
     body = [
         f'<rect x="{cx - hub_w / 2:.1f}" y="{cy - hub_h / 2:.1f}" width="{hub_w:g}" height="{hub_h:g}" rx="{hub_h / 2:g}" '
         f'fill="{PRIMARY}" stroke="{PRIMARY}" stroke-width="1"/>',
-        f'<text x="{cx:.1f}" y="{cy + 7:.1f}" text-anchor="middle" font-size="18" '
+        f'<text{_body_text_attr(spec, "hub")} '
+        f'x="{cx:.1f}" y="{cy + (8 if _intent_enabled(spec) else 7):.1f}" text-anchor="middle" '
+        f'font-size="{24 if _intent_enabled(spec) else 18}" '
         f'font-weight="bold" fill="{WHITE}">正向循环</text>',
     ]
     for idx, (nx, ny, label) in enumerate(nodes):
@@ -703,8 +930,10 @@ def _render_flywheel(spec: LayoutSpec) -> str:
         body.extend(
             _wrapped_text(
                 label, nx, ny, box_w - 20,
-                19 if highlighted and _intent_enabled(spec) else 17, text_fill, max_lines=2,
+                _body_font(spec, 19 if highlighted and _intent_enabled(spec) else 17), text_fill, max_lines=2,
                 max_height=(box_h - 14) if _intent_enabled(spec) else None,
+                min_font_size=24 if _intent_enabled(spec) else 13,
+                id_prefix=_body_text_id(spec, f"item-{idx + 1}"),
             )
         )
         next_x, next_y, _ = nodes[(idx + 1) % count]
@@ -753,8 +982,13 @@ def _render_swimlane(spec: LayoutSpec) -> str:
         y = spec.y + row * (lane_h + lane_gap)
         highlighted = _highlighted(spec, row, 0)
         header_fill = SECONDARY if highlighted else SURFACE
+        lane_contract = (
+            f' id="swimlane-{row + 1}" data-lane="swimlane-{row + 1}"'
+            if _intent_enabled(spec)
+            else ""
+        )
         body.append(
-            f'<rect x="{spec.x:.1f}" y="{y:.1f}" width="{header_w:g}" height="{lane_h:.1f}" rx="12"'
+            f'<rect{lane_contract} x="{spec.x:.1f}" y="{y:.1f}" width="{header_w:g}" height="{lane_h:.1f}" rx="12"'
             f'{_focal_attr(spec, row)} fill="{header_fill}" '
             f'stroke="{PRIMARY if highlighted and _intent_enabled(spec) else BORDER}" '
             f'stroke-width="{2 if highlighted and _intent_enabled(spec) else 1}"/>'
@@ -765,21 +999,32 @@ def _render_swimlane(spec: LayoutSpec) -> str:
                 spec.x + header_w / 2,
                 y + lane_h / 2,
                 header_w - 20,
-                19 if highlighted and _intent_enabled(spec) else 17,
+                _body_font(spec, 19 if highlighted and _intent_enabled(spec) else 17),
                 WHITE if highlighted else TEXT,
                 max_lines=2,
                 max_height=(lane_h - 16) if _intent_enabled(spec) else None,
+                min_font_size=24 if _intent_enabled(spec) else 13,
+                id_prefix=_body_text_id(spec, f"item-{row + 1}"),
             )
         )
         for col, stage in enumerate(stage_labels):
             x = spec.x + header_w + gap + col * (cell_w + gap)
             fill = PRIMARY if col == len(stage_labels) - 1 and highlighted else WHITE
+            stage_contract = (
+                f' id="caption-lane-{row + 1}-stage-{col + 1}" data-qa-role="caption" '
+                f'data-qa-box="{x + 12:.1f} {y + 8:.1f} {max(cell_w - 24, 1):.1f} 24"'
+                if _intent_enabled(spec)
+                else ""
+            )
             body.append(
                 f'<rect x="{x:.1f}" y="{y:.1f}" width="{cell_w:.1f}" height="{lane_h:.1f}" rx="12" '
                 f'fill="{fill}" stroke="{BORDER}" stroke-width="1"/>'
             )
             body.append(
-                f'<text x="{x + 18:.1f}" y="{y + 28:.1f}" font-size="13" fill="{TEXT_SECONDARY if fill == WHITE else WHITE}">'
+                f'<text{stage_contract} '
+                f'x="{x + 18:.1f}" y="{y + 28:.1f}" '
+                f'font-size="{16 if _intent_enabled(spec) else 13}" '
+                f'fill="{TEXT_SECONDARY if fill == WHITE else WHITE}">'
                 f'{stage}</text>'
             )
             body.append(
@@ -799,7 +1044,7 @@ def _render_iceberg(spec: LayoutSpec) -> str:
     cx = spec.x + spec.width / 2
     top_peak_y = water_y - 92
     pill_w = min(spec.width * _density_value(spec, 0.30, 0.34, 0.38), 380) if _intent_enabled(spec) else min(spec.width * 0.34, 340)
-    pill_h = _density_value(spec, 50.0, 54.0, 60.0) if _intent_enabled(spec) else 54
+    pill_h = _density_value(spec, 68.0, 74.0, 80.0) if _intent_enabled(spec) else 54
     outline = [
         (spec.x + spec.width * 0.30, water_y + 4),
         (spec.x + spec.width * 0.43, water_y - 40),
@@ -813,11 +1058,21 @@ def _render_iceberg(spec: LayoutSpec) -> str:
         (spec.x + spec.width * 0.36, spec.y + spec.height * 0.85),
         (spec.x + spec.width * 0.27, spec.y + spec.height * 0.57),
     ]
+    water_caption_contract = ' data-qa-role="caption"' if _intent_enabled(spec) else ""
+    water_caption_size = 16 if _intent_enabled(spec) else 15
     body = [
         f'<line x1="{spec.x:.1f}" y1="{water_y:.1f}" x2="{spec.x + spec.width:.1f}" y2="{water_y:.1f}" '
         f'stroke="{SECONDARY}" stroke-width="2"/>',
-        f'<text x="{spec.x + 6:.1f}" y="{water_y - 12:.1f}" font-size="15" fill="{TEXT_SECONDARY}">水面以上</text>',
-        f'<text x="{spec.x + 6:.1f}" y="{water_y + 28:.1f}" font-size="15" fill="{TEXT_SECONDARY}">水面以下</text>',
+        f'<text id="caption-water-above"{water_caption_contract} '
+        f'data-qa-box="{spec.x + 6:.1f} {water_y - 34:.1f} 120 24" x="{spec.x + 6:.1f}" '
+        f'y="{water_y - 12:.1f}" font-size="{water_caption_size}" fill="{TEXT_SECONDARY}">水面以上</text>'
+        if _intent_enabled(spec)
+        else f'<text x="{spec.x + 6:.1f}" y="{water_y - 12:.1f}" font-size="15" fill="{TEXT_SECONDARY}">水面以上</text>',
+        f'<text id="caption-water-below"{water_caption_contract} '
+        f'data-qa-box="{spec.x + 6:.1f} {water_y + 6:.1f} 120 24" x="{spec.x + 6:.1f}" '
+        f'y="{water_y + 28:.1f}" font-size="{water_caption_size}" fill="{TEXT_SECONDARY}">水面以下</text>'
+        if _intent_enabled(spec)
+        else f'<text x="{spec.x + 6:.1f}" y="{water_y + 28:.1f}" font-size="15" fill="{TEXT_SECONDARY}">水面以下</text>',
         f'<polygon points="{_points(outline)}" fill="{SURFACE}" stroke="{BORDER}" stroke-width="1.5"/>',
         f'<line x1="{cx:.1f}" y1="{top_peak_y + 6:.1f}" x2="{spec.x + spec.width * 0.44:.1f}" y2="{water_y - 20:.1f}" '
         f'stroke="{BORDER}" stroke-width="1"/>',
@@ -835,14 +1090,20 @@ def _render_iceberg(spec: LayoutSpec) -> str:
     body.extend(
         _wrapped_text(
             surface_label, cx, pill_y + pill_h / 2, pill_w - 28,
-            20 if surface_highlighted and _intent_enabled(spec) else 18,
+            _body_font(spec, 20 if surface_highlighted and _intent_enabled(spec) else 18),
             WHITE if surface_highlighted else TEXT, max_lines=2,
             max_height=(pill_h - 12) if _intent_enabled(spec) else None,
+            min_font_size=24 if _intent_enabled(spec) else 13,
+            id_prefix=_body_text_id(spec, "item-1"),
         )
     )
     layer_top = water_y + 34
     layer_gap = _density_value(spec, 20.0, 14.0, 8.0) if _intent_enabled(spec) else 14
-    layer_h = min(56, (spec.y + spec.height - 26 - layer_top - layer_gap * (len(hidden_labels) - 1)) / len(hidden_labels))
+    layer_h = min(
+        72 if _intent_enabled(spec) else 56,
+        (spec.y + spec.height - 26 - layer_top - layer_gap * (len(hidden_labels) - 1))
+        / len(hidden_labels),
+    )
     layer_widths = [spec.width * 0.46, spec.width * 0.38, spec.width * 0.30]
     layer_fills = [WHITE, SURFACE, PRIMARY]
     for idx, label in enumerate(hidden_labels[:3]):
@@ -862,8 +1123,10 @@ def _render_iceberg(spec: LayoutSpec) -> str:
         body.extend(
             _wrapped_text(
                 label, cx, y + layer_h / 2, width - 24,
-                19 if highlighted and _intent_enabled(spec) else 17, text_fill, max_lines=2,
+                _body_font(spec, 19 if highlighted and _intent_enabled(spec) else 17), text_fill, max_lines=2,
                 max_height=(layer_h - 12) if _intent_enabled(spec) else None,
+                min_font_size=24 if _intent_enabled(spec) else 13,
+                id_prefix=_body_text_id(spec, f"item-{item_index + 1}"),
             )
         )
     return _group(spec, body)
@@ -922,6 +1185,8 @@ def _wrapped_text(
     anchor: str = "middle",
     max_lines: int = 3,
     max_height: float | None = None,
+    min_font_size: int = 13,
+    id_prefix: str | None = None,
 ) -> list[str]:
     """Return separate editable SVG text nodes for a centered multiline label."""
     size = font_size
@@ -930,7 +1195,7 @@ def _wrapped_text(
         line_height = size + 6
         occupied_height = size + max(0, len(lines) - 1) * line_height
         fits_height = max_height is None or occupied_height <= max_height
-        if (len(lines) <= max_lines and fits_height) or size <= 13:
+        if (len(lines) <= max_lines and fits_height) or size <= min_font_size:
             break
         size -= 1
     line_height = size + 6
@@ -941,11 +1206,16 @@ def _wrapped_text(
         )
     first_baseline = center_y - (len(lines) - 1) * line_height / 2 + size * 0.34
     return [
-        f'<text x="{x:.1f}" y="{first_baseline + index * line_height:.1f}" '
+        f'<text{_line_text_attr(id_prefix, index)} '
+        f'x="{x:.1f}" y="{first_baseline + index * line_height:.1f}" '
         f'text-anchor="{anchor}" font-size="{size}" font-weight="bold" fill="{fill}">'
         f'{_xml(line)}</text>'
         for index, line in enumerate(lines)
     ]
+
+
+def _line_text_attr(id_prefix: str | None, index: int) -> str:
+    return f' id="{id_prefix}-line-{index + 1}"' if id_prefix else ""
 
 
 def _points(points: list[tuple[float, float]]) -> str:

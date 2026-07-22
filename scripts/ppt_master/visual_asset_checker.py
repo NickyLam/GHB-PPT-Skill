@@ -234,6 +234,29 @@ def measure_visible_geometry(svg_text: str) -> dict[str, Any]:
         for child in elem:
             collect_declared_text(child, child_role, hidden)
 
+    def collect_explicit_titles(
+        elem: ET.Element,
+        inherited_role: str = "content",
+        hidden: bool = False,
+    ) -> None:
+        """Include page titles that live outside the body layout scope."""
+        hidden = _hidden(elem, hidden)
+        if hidden:
+            return
+        role = _semantic_role(elem)
+        if role == "content":
+            role = inherited_role
+        if (
+            role == "title"
+            and _local_name(elem.tag) in {"text", "tspan"}
+            and "".join(elem.itertext()).strip()
+        ):
+            size = _number(elem.get("font-size"))
+            if size is not None and size > 0:
+                text_sizes.append({"role": "title", "font_size": size})
+        for child in elem:
+            collect_explicit_titles(child, role, hidden)
+
     def walk(
         elem: ET.Element,
         *,
@@ -288,6 +311,15 @@ def measure_visible_geometry(svg_text: str) -> dict[str, Any]:
                 "focal": elem.get("data-focal", "").lower() == "true",
                 "fill": (elem.get("fill") or "").strip().upper(),
                 "tag": tag,
+                "container": bool(
+                    elem.get("data-component")
+                    or elem.get("data-qa-peer-group")
+                    or (elem.get("id") or "") in {"bg-surface", "content-field"}
+                ),
+                # GHB-owned additive metadata: authors can explicitly identify
+                # the sibling components whose whitespace should be measured.
+                # This avoids treating a card's internal text box as its peer.
+                "peer_group": (elem.get("data-qa-peer-group") or "").strip() or None,
             }
             raw_observations.append(
                 shared | {"box": [box.x, box.y, box.width, box.height]}
@@ -314,6 +346,7 @@ def measure_visible_geometry(svg_text: str) -> dict[str, Any]:
             )
 
     walk(scope)
+    collect_explicit_titles(root)
     measured = len(raw_observations)
     if measured == 0:
         status = "not-measurable"
@@ -322,18 +355,48 @@ def measure_visible_geometry(svg_text: str) -> dict[str, Any]:
     else:
         status = "supported"
     boxes = [Box(*item["box"]) for item in observations]
+    content_boxes = [
+        Box(*item["box"])
+        for item in observations
+        if not item.get("container")
+    ]
     positive_boxes = [box for box in boxes if box.area > 0]
     gaps: list[float] = []
-    for index, left in enumerate(positive_boxes):
-        distances = []
-        for right_index, right in enumerate(positive_boxes):
-            if index == right_index:
-                continue
-            dx = max(left.x - (right.x + right.width), right.x - (left.x + left.width), 0.0)
-            dy = max(left.y - (right.y + right.height), right.y - (left.y + left.height), 0.0)
-            distances.append(math.hypot(dx, dy))
-        if distances:
-            gaps.append(min(distances))
+    grouped = {
+        str(item["peer_group"])
+        for item in observations
+        if item.get("peer_group") and Box(*item["box"]).area > 0
+    }
+    if grouped:
+        peer_sets = [
+            [
+                Box(*item["box"])
+                for item in observations
+                if item.get("peer_group") == group and Box(*item["box"]).area > 0
+            ]
+            for group in sorted(grouped)
+        ]
+    else:
+        peer_sets = [positive_boxes]
+
+    for peers in peer_sets:
+        for index, left in enumerate(peers):
+            distances = []
+            for right_index, right in enumerate(peers):
+                if index == right_index:
+                    continue
+                # Without an explicit peer group, intersecting boxes are most
+                # often parent/child geometry (card plus internal text). They
+                # are not sibling whitespace and must not collapse the metric
+                # to zero. Collision validation remains responsible for real
+                # unintended overlap.
+                if not grouped and left.intersection(right) > 0:
+                    continue
+                dx = max(left.x - (right.x + right.width), right.x - (left.x + left.width), 0.0)
+                dy = max(left.y - (right.y + right.height), right.y - (left.y + left.height), 0.0)
+                distances.append(math.hypot(dx, dy))
+            if distances:
+                gaps.append(min(distances))
     return {
         "schema": "svg.geometry-observations.v1",
         "canvas": [canvas.x, canvas.y, canvas.width, canvas.height],
@@ -350,6 +413,7 @@ def measure_visible_geometry(svg_text: str) -> dict[str, Any]:
             "limitations": sorted(limitations),
         },
         "occupied_area": _union_area(boxes),
+        "content_occupied_area": _union_area(content_boxes),
     }
 
 
@@ -405,10 +469,24 @@ def _qa_item(elem: ET.Element, index: int) -> Optional[QAItem]:
 
 def _check_text(root: ET.Element, result: Result) -> None:
     content_root = next((elem for elem in root.iter() if elem.get("data-layout")), root)
+
     def walk(elem: ET.Element, hidden: bool = False, in_content: bool = False) -> None:
         hidden = _hidden(elem, hidden)
         in_content = in_content or elem is content_root
         if _local_name(elem.tag) == "text" and not hidden:
+            text_fit = (elem.get("data-text-fit") or "").strip().lower()
+            if text_fit and text_fit != "fixed":
+                result.errors.append(
+                    f"text-fit-contract: {elem.get('id') or 'text'} uses unsupported "
+                    f"data-text-fit={text_fit!r}"
+                )
+            elif text_fit == "fixed":
+                box = _box_from_element(elem)
+                if box is None or box.width <= 0 or box.height <= 0:
+                    result.errors.append(
+                        f"text-fit-contract: {elem.get('id') or 'text'} requires a "
+                        "positive data-qa-box when data-text-fit='fixed'"
+                    )
             text = "".join(elem.itertext()).strip()
             if not text:
                 result.warnings.append("empty <text> element")
@@ -509,6 +587,8 @@ def _check_icons(root: ET.Element, path: Path, icons_dir: Path, canvas: Box, sta
 
 def _shape_box(elem: ET.Element) -> Optional[Box]:
     tag = _local_name(elem.tag)
+    if tag in {"image", "use"}:
+        return _box_from_element(elem)
     if tag == "rect":
         x = _number(elem.get("x"))
         y = _number(elem.get("y"))
@@ -595,6 +675,42 @@ def _check_collisions(root: ET.Element, canvas: Box, result: Result) -> None:
                     f"collision: {left.label} ({left.role}) overlaps {right.label} ({right.role}); "
                     "move one box or mark intentional layering with data-allow-overlap='true'"
                 )
+
+
+def _check_text_component_overflow(root: ET.Element, result: Result) -> None:
+    """Reject declared single-line text whose visible copy cannot fit its QA box."""
+
+    for index, elem in enumerate(root.iter(), start=1):
+        if _local_name(elem.tag) != "text" or not elem.get("data-qa-box"):
+            continue
+        text = "".join(elem.itertext()).strip()
+        if not text or list(elem):
+            # Multiline tspan layouts are measured by their individual boxes.
+            continue
+        box = _box_from_element(elem)
+        font_size = _number(elem.get("font-size"))
+        if box is None or font_size is None or font_size <= 0:
+            continue
+        units = sum(
+            1.0 if "\u3400" <= char <= "\u9fff" else (0.35 if char.isspace() else 0.58)
+            for char in text
+        )
+        estimated_width = units * font_size * 1.05
+        # Font metrics differ across Source Han Sans, Microsoft YaHei, WPS and
+        # PowerPoint. A 1-2% estimate excess is normal and previously caused
+        # near-capacity labels (for example 252px estimated in a 248px box) to
+        # fail every real project. Reserve this deterministic error for a
+        # material overflow: >5% (and >4px) horizontally, or a font size that
+        # itself exceeds the declared single-line height by >8%.
+        width_overflow = estimated_width > max(box.width * 1.05, box.width + 4.0)
+        height_overflow = font_size > max(box.height * 1.08, box.height + 2.0)
+        if width_overflow or height_overflow:
+            label = elem.get("id") or f"text#{index}"
+            result.errors.append(
+                f"text-component-overflow: {label} needs approximately "
+                f"{estimated_width:.1f}x{font_size:.1f}px inside "
+                f"{box.width:.1f}x{box.height:.1f}px; shorten, wrap, or enlarge the slot"
+            )
 
 
 def _point_inside(box: Box, point: tuple[float, float], tolerance: float = 0.5) -> bool:
@@ -724,6 +840,7 @@ def _check_component_contracts(root: ET.Element, result: Result) -> None:
     components: dict[str, tuple[ET.Element, Box]] = {}
     pair_members: dict[tuple[str, str], list[str]] = {}
     slots: dict[str, dict[str, Box]] = {}
+    balance_modes: dict[str, str] = {}
     for elem in root.iter():
         component_kind = (elem.get("data-component") or "").strip()
         component_id = (elem.get("data-component-id") or "").strip()
@@ -745,6 +862,14 @@ def _check_component_contracts(root: ET.Element, result: Result) -> None:
             continue
         components[component_id] = (elem, box)
         slots[component_id] = {}
+        balance_mode = (elem.get("data-component-balance") or "").strip().lower()
+        if balance_mode and balance_mode not in {"insets", "content-insets"}:
+            result.errors.append(
+                f"component-contract: {component_id!r} uses unsupported "
+                f"data-component-balance={balance_mode!r}"
+            )
+        elif balance_mode:
+            balance_modes[component_id] = balance_mode
         pair = (elem.get("data-component-pair") or "").strip()
         if pair:
             pair_members.setdefault((component_kind, pair), []).append(component_id)
@@ -799,6 +924,57 @@ def _check_component_contracts(root: ET.Element, result: Result) -> None:
                     f"component-balance-outlier: pair {pair!r} slot {slot!r} differs by more than 24px"
                 )
 
+    # GHB-owned opt-in contract for repeated cards. The union of declared
+    # internal slots must be centered inside each card. ``insets`` additionally
+    # requires a shared grid across peers; ``content-insets`` intentionally
+    # permits widths to follow measured copy so each icon+copy group can be
+    # centered independently. Explicit slot geometry is used instead of
+    # guessing glyph ink bounds, which vary across Office renderers.
+    inset_tolerance = 4.0
+    inset_groups: dict[str, list[tuple[str, tuple[float, float, float, float]]]] = {}
+    for component_id, balance_mode in balance_modes.items():
+        if balance_mode not in {"insets", "content-insets"}:
+            continue
+        slot_boxes = list(slots[component_id].values())
+        if not slot_boxes:
+            result.errors.append(
+                f"component-inset-outlier: {component_id!r} declares inset balance "
+                "but has no component slots"
+            )
+            continue
+        component_elem, component_box = components[component_id]
+        content_left = min(box.x for box in slot_boxes)
+        content_top = min(box.y for box in slot_boxes)
+        content_right = max(box.x + box.width for box in slot_boxes)
+        content_bottom = max(box.y + box.height for box in slot_boxes)
+        insets = (
+            content_left - component_box.x,
+            component_box.x + component_box.width - content_right,
+            content_top - component_box.y,
+            component_box.y + component_box.height - content_bottom,
+        )
+        left, right, top, bottom = insets
+        if abs(left - right) > inset_tolerance or abs(top - bottom) > inset_tolerance:
+            result.errors.append(
+                f"component-inset-outlier: {component_id!r} has "
+                f"left/right/top/bottom insets {left:.1f}/{right:.1f}/{top:.1f}/{bottom:.1f}px"
+            )
+        if balance_mode == "insets":
+            component_kind = (component_elem.get("data-component") or "").strip()
+            inset_groups.setdefault(component_kind, []).append((component_id, insets))
+
+    for component_kind, records in inset_groups.items():
+        reference_id, reference = records[0]
+        for component_id, insets in records[1:]:
+            if any(
+                abs(current - expected) > inset_tolerance
+                for current, expected in zip(insets, reference)
+            ):
+                result.errors.append(
+                    f"component-inset-outlier: {component_kind} components "
+                    f"{reference_id!r} and {component_id!r} use inconsistent inset grids"
+                )
+
 
 def check_svg(path: Path, *, stage: str, icons_dir: Path) -> Result:
     result = Result(path=path, errors=[], warnings=[])
@@ -821,6 +997,7 @@ def check_svg(path: Path, *, stage: str, icons_dir: Path) -> Result:
     _check_icons(root, path, icons_dir, canvas, actual_stage, result)
     _check_shape_bounds(root, canvas, result)
     _check_collisions(root, canvas, result)
+    _check_text_component_overflow(root, result)
     _check_flow_geometry(root, result)
     _check_component_contracts(root, result)
     for elem in root.iter():

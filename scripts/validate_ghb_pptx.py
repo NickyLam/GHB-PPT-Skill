@@ -19,6 +19,7 @@ from xml.etree import ElementTree as ET
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.enum.text import MSO_AUTO_SIZE
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.merge_template_master import (  # noqa: E402
@@ -72,6 +73,7 @@ class SlideSummary:
     table_objects: int = 0
     chart_objects: int = 0
     min_font_pt: float | None = None
+    min_font_by_role: dict[str, float] = field(default_factory=dict)
     title: str = ""
     full_slide_pictures: int = 0
     out_of_bounds_objects: int = 0
@@ -246,6 +248,50 @@ def _font_sizes(shape: Any) -> list[float]:
     return values
 
 
+def _shape_typography_role(shape: Any) -> str | None:
+    """Map stable SVG/DrawingML shape names back to typography roles."""
+    name = str(getattr(shape, "name", "") or "").strip().lower().replace("_", "-")
+    if name == "main-title" or name.startswith("main-title-"):
+        return "title"
+    for role in ("body", "caption", "source", "footer"):
+        if name == role or name.startswith(f"{role}-"):
+            return role
+    return None
+
+
+def _effective_text_box(
+    shape: Any,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    text: str,
+) -> tuple[int, int, int, int, str]:
+    """Approximate the visible ink band for converter-made single lines."""
+    try:
+        frame = shape.text_frame
+        is_single_line = len(frame.paragraphs) == 1 and "\n" not in text
+        is_converter_frame = (
+            frame.word_wrap is False
+            and frame.auto_size == MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
+        )
+    except Exception:
+        return left, top, width, height, text
+    sizes = _font_sizes(shape)
+    if not is_single_line or not is_converter_frame or not sizes:
+        return left, top, width, height, text
+
+    # The SVG converter deliberately gives a single-line frame roughly 1.6em
+    # of vertical room so glyphs do not clip across Office renderers. Treating
+    # that transparent safety area as visible text creates false overlap
+    # warnings for stacked value/unit and number/label typography.
+    ink_height = int(round(max(sizes) * 12700))
+    if ink_height <= 0 or ink_height >= height:
+        return left, top, width, height, text
+    ink_top = top + min(int(round(ink_height * 0.05)), height - ink_height)
+    return left, ink_top, width, ink_height, text
+
+
 def _is_white_fill(shape: Any) -> bool:
     try:
         color = shape.fill.fore_color.rgb
@@ -272,11 +318,14 @@ def _summarize_slide(
     slide_width: int,
     slide_height: int,
     issues: list[Issue],
+    typography: dict[str, Any] | None = None,
 ) -> SlideSummary:
     summary = SlideSummary(index, role, layout_part, master_part)
     positioned_text: list[tuple[int, int, str]] = []
+    named_title_text: list[tuple[int, int, str]] = []
     text_boxes: list[tuple[int, int, int, int, str]] = []
     font_sizes: list[float] = []
+    font_sizes_by_role: dict[str, list[float]] = {}
     slide_area = max(slide_width * slide_height, 1)
     for shape, nested_in_group in _iter_shapes_with_group_context(slide.shapes):
         if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
@@ -296,7 +345,15 @@ def _summarize_slide(
             summary.text_objects += 1
             summary.text_chars += len(re.sub(r"\s+", "", text))
             positioned_text.append((int(getattr(shape, "top", 0) or 0), int(getattr(shape, "left", 0) or 0), text))
-            font_sizes.extend(_font_sizes(shape))
+            explicit_font_sizes = _font_sizes(shape)
+            font_sizes.extend(explicit_font_sizes)
+            typography_role = _shape_typography_role(shape)
+            if typography_role == "title":
+                named_title_text.append(
+                    (int(getattr(shape, "top", 0) or 0), int(getattr(shape, "left", 0) or 0), text)
+                )
+            if typography_role and explicit_font_sizes:
+                font_sizes_by_role.setdefault(typography_role, []).extend(explicit_font_sizes)
             for marker in MOJIBAKE:
                 if marker in text:
                     _issue(issues, "error", "mojibake", f"corrupt text marker {marker!r}: {text[:80]}", index)
@@ -315,7 +372,7 @@ def _summarize_slide(
         width = int(getattr(shape, "width", 0) or 0)
         height = int(getattr(shape, "height", 0) or 0)
         if text:
-            text_boxes.append((left, top, width, height, text))
+            text_boxes.append(_effective_text_box(shape, left, top, width, height, text))
             explicit_sizes = _font_sizes(shape)
             # python-pptx exposes grouped child geometry in the group's local
             # coordinate system. Comparing that raw height to points creates
@@ -331,7 +388,12 @@ def _summarize_slide(
             summary.full_slide_pictures += 1
         if area_ratio >= 0.90 and _is_white_fill(shape):
             summary.full_white_rectangles += 1
-    if positioned_text:
+    if named_title_text:
+        summary.title = " ".join(
+            re.sub(r"\s+", " ", text).strip()
+            for _top, _left, text in sorted(named_title_text)
+        )
+    elif positioned_text:
         summary.title = sorted(positioned_text)[0][2].splitlines()[0].strip()
     summary.page_number_found = any(
         re.search(r"\b\d{1,2}\s*/\s*\d{1,2}\b", text)
@@ -353,6 +415,11 @@ def _summarize_slide(
                 summary.possible_text_overlaps += 1
     if font_sizes:
         summary.min_font_pt = min(font_sizes)
+    summary.min_font_by_role = {
+        role: min(values)
+        for role, values in sorted(font_sizes_by_role.items())
+        if values
+    }
     summary.notes_chars = len(re.sub(r"\s+", "", _notes_text(slide)))
 
     if summary.shape_objects + summary.group_objects == 0:
@@ -373,6 +440,24 @@ def _summarize_slide(
         _issue(issues, "error", "full-white-rectangle", "body slide contains a near-full-slide white rectangle", index)
     if summary.min_font_pt is not None and summary.min_font_pt < 9:
         _issue(issues, "warning", "small-font", f"minimum explicit font size is {summary.min_font_pt:g} pt", index)
+    if role == "body" and isinstance(typography, dict) and typography.get("enforcement") == "strict":
+        floor_fields = {
+            "title": "min_title_pt",
+            "body": "min_body_pt",
+            "caption": "min_caption_pt",
+            "source": "min_source_pt",
+            "footer": "min_footer_pt",
+        }
+        for typography_role, observed in summary.min_font_by_role.items():
+            floor = typography.get(floor_fields[typography_role])
+            if isinstance(floor, (int, float)) and not isinstance(floor, bool) and observed < float(floor):
+                _issue(
+                    issues,
+                    "error",
+                    f"typography-{typography_role}-below-min",
+                    f"final PPTX {typography_role} text is {observed:g} pt; requires {float(floor):g} pt",
+                    index,
+                )
     if role == "body" and summary.empty_text_boxes:
         _issue(issues, "warning", "empty-text-box", f"{summary.empty_text_boxes} empty text box(es)", index)
     if role == "body" and summary.text_boxes_too_small:
@@ -574,12 +659,28 @@ def validate_pptx(
     quality_policy: str = "draft",
     warning_waivers_path: Path | None = None,
     target_renderer: str = "auto",
+    visual_profile_path: Path | None = None,
+    font_embed_report_path: Path | None = None,
 ) -> ValidationReport:
     issues: list[Issue] = []
     if quality_policy not in {"draft", "release"}:
         _issue(issues, "error", "invalid-quality-policy", f"unknown policy {quality_policy!r}")
     if target_renderer not in {"auto", "libreoffice", "powerpoint", "wps"}:
         _issue(issues, "error", "invalid-target-renderer", f"unknown renderer {target_renderer!r}")
+    visual_profile: dict[str, Any] = {}
+    if visual_profile_path is not None:
+        try:
+            loaded_profile = json.loads(visual_profile_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            _issue(issues, "error", "invalid-visual-profile", str(exc))
+        else:
+            if isinstance(loaded_profile, dict):
+                visual_profile = loaded_profile
+            else:
+                _issue(issues, "error", "invalid-visual-profile", "visual profile must be an object")
+    typography = visual_profile.get("typography")
+    if not isinstance(typography, dict):
+        typography = {}
     if not path.is_file():
         return ValidationReport(
             str(path), False, 0, 0, 0, bool(expect_ending), {},
@@ -594,6 +695,72 @@ def validate_pptx(
         if required_part not in parts:
             _issue(issues, "error", "missing-required-part", f"missing required part: {required_part}")
     package_info = {"part_count": len(names), **_check_relationships(parts, issues), **_check_content_types(parts, issues)}
+    presentation_xml = parts.get("ppt/presentation.xml", b"").decode(
+        "utf-8", errors="ignore"
+    )
+    font_parts = sorted(
+        name
+        for name in names
+        if name.startswith("ppt/fonts/") and name.endswith(".fntdata")
+    )
+    embedded_font_count = presentation_xml.count("<p:embeddedFont>")
+    save_subset_fonts = (
+        True if 'saveSubsetFonts="1"' in presentation_xml
+        else False if 'saveSubsetFonts="0"' in presentation_xml
+        else None
+    )
+    embedding_enabled = (
+        'embedTrueTypeFonts="1"' in presentation_xml
+        and save_subset_fonts is not None
+    )
+    font_embedding: dict[str, Any] = {
+        "fonts_embedded": len(font_parts),
+        "embedded_font_names": [],
+        "fsType_ok": None,
+        "embedding_enabled": embedding_enabled,
+        "save_subset_fonts": save_subset_fonts,
+        "font_parts": font_parts,
+    }
+    if font_parts and (not embedding_enabled or embedded_font_count != len(font_parts)):
+        _issue(
+            issues,
+            "error",
+            "invalid-embedded-font-contract",
+            "embedded font parts, presentation flags, and embeddedFontLst entries disagree",
+        )
+    if font_embed_report_path is not None:
+        try:
+            font_report = json.loads(font_embed_report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            _issue(issues, "error", "invalid-font-embed-report", str(exc))
+        else:
+            valid_font_report = (
+                isinstance(font_report, dict)
+                and font_report.get("schema") == "ghb.font-embed-report.v1"
+                and isinstance(font_report.get("fonts_embedded"), int)
+                and isinstance(font_report.get("embedded_font_names"), list)
+                and isinstance(font_report.get("fsType_ok"), bool)
+            )
+            if not valid_font_report:
+                _issue(
+                    issues,
+                    "error",
+                    "invalid-font-embed-report",
+                    "font embed report does not match ghb.font-embed-report.v1",
+                )
+            else:
+                font_embedding.update({
+                    "embedded_font_names": font_report["embedded_font_names"],
+                    "fsType_ok": font_report["fsType_ok"],
+                })
+                if font_report["fonts_embedded"] != len(font_parts):
+                    _issue(
+                        issues,
+                        "error",
+                        "font-embed-report-mismatch",
+                        "font embed report count does not match PPTX font parts",
+                    )
+    package_info["font_embedding"] = font_embedding
 
     ordered_slides: list[str] = []
     if all(name in parts for name in required[1:]):
@@ -663,6 +830,7 @@ def validate_pptx(
                     slide_width=width,
                     slide_height=height,
                     issues=issues,
+                    typography=typography,
                 )
             )
             slide_full_texts.append(
@@ -731,6 +899,17 @@ def validate_pptx(
     for left, right in zip(slides, slides[1:]):
         if left.title and left.title == right.title:
             _issue(issues, "warning", "adjacent-duplicate-title", f"adjacent slides repeat title {left.title!r}", right.slide)
+
+    min_font_by_role: dict[str, float] = {}
+    for summary in slides:
+        if summary.role != "body":
+            continue
+        for typography_role, value in summary.min_font_by_role.items():
+            min_font_by_role[typography_role] = min(
+                value,
+                min_font_by_role.get(typography_role, value),
+            )
+    package_info["min_font_by_role"] = min_font_by_role
 
     known_limitations: list[str] = []
     manual_review = [
@@ -1287,6 +1466,7 @@ def validate_pptx(
                     "text_objects": slide.text_objects,
                     "shape_objects": slide.shape_objects,
                     "min_font_pt": slide.min_font_pt,
+                    "min_font_by_role": slide.min_font_by_role,
                     "out_of_bounds_objects": slide.out_of_bounds_objects,
                 },
                 "actions": [],
@@ -1330,6 +1510,7 @@ def validate_pptx(
             "provenance": render_provenance,
         },
         "release_policy": release_policy,
+        "font_embedding": font_embedding,
         "blocking_findings": blocking,
         "advisory_findings": advisory,
         "per_slide_evidence": per_slide,
@@ -1365,6 +1546,7 @@ def markdown_report(report: ValidationReport) -> str:
     freshness = quality.get("freshness", {})
     reviewability = quality.get("reviewability", {})
     release_policy = quality.get("release_policy", {})
+    font_embedding = quality.get("font_embedding", {})
     lines = [
         "# GHB PPTX Quality Report",
         "",
@@ -1403,6 +1585,13 @@ def markdown_report(report: ValidationReport) -> str:
         f"- Renderer requirement satisfied: `{str(release_policy.get('target_renderer_satisfied', True)).lower()}`",
         f"- Warning waivers: {release_policy.get('waiver_count', 0)}",
         f"- Unresolved warnings: {release_policy.get('unresolved_warning_count', 0)}",
+        "",
+        "## Font embedding",
+        "",
+        f"- Fonts embedded: `{font_embedding.get('fonts_embedded', 0)}`",
+        f"- Names: `{json.dumps(font_embedding.get('embedded_font_names', []), ensure_ascii=False)}`",
+        f"- Embedding flags enabled: `{str(font_embedding.get('embedding_enabled', False)).lower()}`",
+        f"- License fsType accepted: `{font_embedding.get('fsType_ok')}`",
         "",
         "## Blocking findings",
         "",
@@ -1471,6 +1660,8 @@ def build_parser() -> argparse.ArgumentParser:
     ending.add_argument("--expect-ending", action="store_true")
     ending.add_argument("--no-ending", action="store_true")
     parser.add_argument("--source-svg-dir", type=Path)
+    parser.add_argument("--visual-profile", type=Path)
+    parser.add_argument("--font-embed-report", type=Path)
     parser.add_argument("--layout-plan", type=Path)
     parser.add_argument("--cover-text", action="append", default=[])
     parser.add_argument("--render-dir", type=Path)
@@ -1523,6 +1714,8 @@ def main(argv: list[str] | None = None) -> int:
         quality_policy=args.quality_policy,
         warning_waivers_path=args.warning_waivers,
         target_renderer=args.target_renderer,
+        visual_profile_path=args.visual_profile,
+        font_embed_report_path=args.font_embed_report,
     )
     payload = report_dict(report)
     reviewability = report.quality.get("reviewability", {})

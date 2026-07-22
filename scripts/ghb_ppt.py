@@ -51,6 +51,7 @@ from scripts.font_policy import (  # noqa: E402
     PRIMARY_CJK_FONT,
     detect_cjk_fonts,
     preferred_cjk_font,
+    resolve_font_file,
 )
 
 
@@ -249,6 +250,14 @@ def ensure_project(project: Path, *, create: bool = False, dry_run: bool = False
                     json.dumps(default_visual_profile(), ensure_ascii=False, indent=2) + "\n",
                     encoding="utf-8",
                 )
+            art_direction = project / "art_direction.json"
+            if not art_direction.exists():
+                from scripts.validate_project_contract import default_art_direction
+
+                art_direction.write_text(
+                    json.dumps(default_art_direction(), ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
         return
     if not project.is_dir():
         raise PipelineError(f"project directory not found: {project}")
@@ -273,17 +282,20 @@ def _file_digest(path: Path) -> str | None:
     return digest.hexdigest()
 
 
-def _svg_bundle(project: Path) -> dict[str, Any]:
+def _svg_bundle(project: Path, directory: str) -> dict[str, Any]:
     files = []
-    for directory in ("svg_output", "svg_final"):
-        for path in sorted((project / directory).glob("*.svg")):
-            files.append(
-                {
-                    "path": str(path.relative_to(project)),
-                    "sha256": _file_digest(path),
-                }
-            )
-    return {"schema": "ghb.svg-bundle-evidence.v1", "files": files}
+    for path in sorted((project / directory).glob("*.svg")):
+        files.append(
+            {
+                "path": str(path.relative_to(project)),
+                "sha256": _file_digest(path),
+            }
+        )
+    return {
+        "schema": "ghb.svg-bundle-evidence.v2",
+        "stage": "authored" if directory == "svg_output" else "finalized",
+        "files": files,
+    }
 
 
 def _render_environment(render_payload: Any) -> dict[str, Any]:
@@ -329,10 +341,17 @@ def build_evidence_items(
 
     project = project.resolve()
     profile = project / "visual_profile.json"
+    art_direction = project / "art_direction.json"
     layout = project / "layout_plan.json"
     rules = ROOT / "references" / "visual-quality-rules.md"
     items = [
         EvidenceItem("visual-profile", "json", _load_json_evidence(profile), profile if profile.is_file() else None),
+        EvidenceItem(
+            "art-direction",
+            "json",
+            _load_json_evidence(art_direction),
+            art_direction if art_direction.is_file() else None,
+        ),
         EvidenceItem("layout-plan", "json", _load_json_evidence(layout), layout if layout.is_file() else None),
         EvidenceItem(
             "rule-contract",
@@ -345,17 +364,27 @@ def build_evidence_items(
         "check-svg": 1,
         "check-project": 0,
         "build-cover": 0,
-        "build-content": 1,
-        "merge": 2,
-        "validate": 3,
-        "render": 4,
-        "build": 5,
+        "build-content": 2,
+        "merge": 3,
+        "validate": 4,
+        "render": 5,
+        "build": 6,
     }
     level = stage_order.get(stage, 0)
     if level >= 1 or include_final:
-        items.append(EvidenceItem("svg-bundle", "svg-bundle", _svg_bundle(project)))
-    pptx = (pptx_path or project / "exports" / "final.pptx").resolve()
+        items.append(EvidenceItem(
+            "authored-svg-bundle",
+            "svg-bundle",
+            _svg_bundle(project, "svg_output"),
+        ))
     if level >= 2 or include_final:
+        items.append(EvidenceItem(
+            "finalized-svg-bundle",
+            "svg-bundle",
+            _svg_bundle(project, "svg_final"),
+        ))
+    pptx = (pptx_path or project / "exports" / "final.pptx").resolve()
+    if level >= 3 or include_final:
         items.append(
             EvidenceItem(
                 "pptx",
@@ -371,7 +400,7 @@ def build_evidence_items(
     final_markdown_path = (
         final_markdown_path or project / "reports" / "quality-report.md"
     ).resolve()
-    if level >= 3 or include_final:
+    if level >= 4 or include_final:
         items.append(
             EvidenceItem(
                 "deterministic-report",
@@ -382,9 +411,9 @@ def build_evidence_items(
         )
     render_path = project / "render" / "render-report.json"
     render_payload = (
-        _load_json_evidence(render_path) if level >= 4 or include_final else None
+        _load_json_evidence(render_path) if level >= 5 or include_final else None
     )
-    if level >= 4 or include_final:
+    if level >= 5 or include_final:
         items.extend(
             [
                 EvidenceItem(
@@ -483,7 +512,8 @@ def _report_input_freshness(result: FreshnessResult) -> FreshnessResult:
 
 def _review_input_freshness(result: FreshnessResult) -> FreshnessResult:
     required = {
-        "visual-profile", "layout-plan", "rule-contract", "svg-bundle", "pptx",
+        "visual-profile", "art-direction", "layout-plan", "rule-contract",
+        "authored-svg-bundle", "finalized-svg-bundle", "pptx",
         "render-environment", "render-evidence", "deterministic-report",
     }
     return FreshnessResult(
@@ -581,7 +611,19 @@ def replace_output(source: Path, destination: Path, run: RunContext) -> None:
     os.replace(source, destination)
 
 
-def _write_cover_plan(path: Path, title: str, subtitle: str, date: str) -> None:
+def _write_cover_plan(
+    path: Path,
+    title: str,
+    subtitle: str,
+    date: str,
+    *,
+    cover_slots: dict[str, str] | None = None,
+) -> None:
+    slots = cover_slots or {
+        "title": "s01_sh8",
+        "subtitle": "s01_sh6",
+        "date": "s01_sh4",
+    }
     payload = {
         "schema": "template_fill_pptx_plan.v1",
         "slides": [
@@ -589,9 +631,9 @@ def _write_cover_plan(path: Path, title: str, subtitle: str, date: str) -> None:
                 "source_slide": 1,
                 "purpose": "封面",
                 "replacements": [
-                    {"slot_id": "s01_sh8", "text": title},
-                    {"slot_id": "s01_sh6", "text": subtitle},
-                    {"slot_id": "s01_sh4", "text": date},
+                    {"slot_id": slots["title"], "text": title},
+                    {"slot_id": slots["subtitle"], "text": subtitle},
+                    {"slot_id": slots["date"], "text": date},
                 ],
             }
         ],
@@ -613,18 +655,36 @@ def build_cover(
     if not template.is_file():
         raise PipelineError(f"template not found: {template}")
     analysis = run.project / "analysis" / "slide_library.json"
+    template_profile_path = run.project / "analysis" / "template_profile.json"
     resolved_plan = plan or run.project / "analysis" / "cover_fill_plan.json"
+    run.run("analyze-template", [sys.executable, str(PM / "template_fill_pptx.py"), "analyze", str(template), "-o", str(analysis)])
+    if not run.dry_run:
+        from scripts.template_profile import write_template_profile
+
+        write_template_profile(analysis, template, template_profile_path)
     if plan is None:
         if not all((title, subtitle, date)):
             raise PipelineError("build-cover needs --plan or all of --title/--subtitle/--date")
         if run.dry_run:
             run.plan("cover-plan", f"write {resolved_plan}")
         else:
-            _write_cover_plan(resolved_plan, title or "", subtitle or "", date or "")
+            profile = _load_json_evidence(template_profile_path)
+            profile_slots = profile.get("cover_slots") if isinstance(profile, dict) else None
+            if not (
+                isinstance(profile_slots, dict)
+                and all(isinstance(profile_slots.get(key), str) for key in ("title", "subtitle", "date"))
+            ):
+                profile_slots = None
+            _write_cover_plan(
+                resolved_plan,
+                title or "",
+                subtitle or "",
+                date or "",
+                cover_slots=profile_slots,
+            )
     elif not plan.is_file():
         raise PipelineError(f"cover plan not found: {plan}")
 
-    run.run("analyze-template", [sys.executable, str(PM / "template_fill_pptx.py"), "analyze", str(template), "-o", str(analysis)])
     run.run("check-cover-plan", [sys.executable, str(PM / "template_fill_pptx.py"), "check-plan", str(analysis), str(resolved_plan)])
     before = timestamped_candidates(output) if not run.dry_run else set()
     run.run(
@@ -671,18 +731,41 @@ def check_project_contract(run: RunContext, *, require_visual_contract: bool = F
 
 
 def check_svg(run: RunContext) -> None:
-    check_project_contract(run)
+    check_project_contract(run, require_visual_contract=True)
     run_svg_gate(run, stage="authored")
+
+
+def check_plan(run: RunContext) -> None:
+    run.run(
+        "plan-contract",
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "validate_project_contract.py"),
+            str(run.project),
+            "--plan-only",
+        ],
+    )
 
 
 def build_content(run: RunContext, *, output: Path) -> Path:
     check_svg(run)
-    backup_dir = run.run_dir / "authored-svg"
+    backup_dir = run.run_dir / "finalized-svg-with-preview-background"
+    total_notes = run.project / "notes" / "total.md"
+    if total_notes.exists() or run.dry_run:
+        run.run("split-notes", [sys.executable, str(PM / "total_md_split.py"), str(run.project)])
+    run.run("finalize-svg", [sys.executable, str(PM / "finalize_svg.py"), str(run.project)])
     if run.dry_run:
-        run.plan("remove-background", f"validate/remove GHB preview backgrounds; backup -> {backup_dir}")
+        run.plan(
+            "remove-background",
+            f"validate/remove GHB preview backgrounds from svg_final; backup -> {backup_dir}",
+        )
     else:
         try:
-            results = remove_project_backgrounds(run.project, backup_dir=backup_dir)
+            results = remove_project_backgrounds(
+                run.project,
+                svg_dir_name="svg_final",
+                backup_dir=backup_dir,
+            )
         except (OSError, BackgroundRemovalError) as exc:
             raise PipelineError(str(exc)) from exc
         run.record.stages.append(
@@ -690,14 +773,22 @@ def build_content(run: RunContext, *, output: Path) -> Path:
         )
         run._write_record()
 
-    total_notes = run.project / "notes" / "total.md"
-    if total_notes.exists() or run.dry_run:
-        run.run("split-notes", [sys.executable, str(PM / "total_md_split.py"), str(run.project)])
-    run.run("finalize-svg", [sys.executable, str(PM / "finalize_svg.py"), str(run.project)])
     run_svg_gate(run, stage="finalized")
     run.run(
         "svg-to-pptx",
-        [sys.executable, str(PM / "svg_to_pptx.py"), str(run.project), "-o", str(output), "--animation", "none", "--transition", "none"],
+        [
+            sys.executable,
+            str(PM / "svg_to_pptx.py"),
+            str(run.project),
+            "-s",
+            "final",
+            "-o",
+            str(output),
+            "--animation",
+            "none",
+            "--transition",
+            "none",
+        ],
     )
     run.output(output)
     run.checkpoint("build-content", [output])
@@ -735,6 +826,69 @@ def merge_deck(
     run.output(output)
     run.checkpoint("merge", [output])
     return output
+
+
+def _profiled_merge_values(
+    project: Path,
+    *,
+    content_layout: int | None,
+    ending_slide: int | None,
+) -> tuple[int, int | None]:
+    """Resolve merge defaults from template_profile while honoring explicit CLI values."""
+
+    profile = _load_json_evidence(project / "analysis" / "template_profile.json")
+    if not isinstance(profile, dict) or profile.get("schema") != "ghb.template-profile.v1":
+        return content_layout or 2, ending_slide
+    resolved_layout = content_layout
+    if resolved_layout is None:
+        candidate = profile.get("content_layout_index")
+        resolved_layout = candidate if isinstance(candidate, int) and candidate > 0 else 2
+    resolved_ending = ending_slide
+    if resolved_ending is None:
+        candidate = profile.get("ending_slide_index")
+        resolved_ending = candidate if isinstance(candidate, int) and candidate > 0 else None
+    return resolved_layout, resolved_ending
+
+
+def _resolve_embed_font_paths(explicit: list[Path]) -> list[Path]:
+    """Resolve fonts to embed: explicit paths win, else the installed CJK font."""
+    if explicit:
+        return [path.resolve() for path in explicit]
+    fc_list = shutil.which("fc-list")
+    if not fc_list:
+        raise PipelineError(
+            "--embed-fonts needs a font file; fc-list is unavailable, pass --embed-font PATH"
+        )
+    completed = subprocess.run([fc_list], capture_output=True, text=True, errors="replace")
+    cjk = detect_cjk_fonts(completed.stdout.lower())
+    target = preferred_cjk_font(cjk)
+    font_file = resolve_font_file(target, completed.stdout) if target else None
+    if not font_file:
+        raise PipelineError(
+            "--embed-fonts could not resolve an installed CJK font file; pass --embed-font PATH"
+        )
+    return [Path(font_file)]
+
+
+def embed_deck(run: RunContext, *, pptx: Path, font_paths: list[Path]) -> Path:
+    """Embed subsetted fonts into ``pptx`` in place and record a report."""
+    from scripts.embed_fonts import FontEmbedError, embed_fonts
+
+    report_path = run.project / "reports" / "font-embed-report.json"
+    if run.dry_run:
+        resolved = ", ".join(str(path) for path in font_paths) or "auto-resolved CJK font"
+        print(f"[DRY-RUN] embed fonts into {pptx} ({resolved})")
+        return pptx
+    fonts = _resolve_embed_font_paths(font_paths)
+    try:
+        report = embed_fonts(pptx, font_paths=fonts, output_path=pptx, subset=True)
+    except FontEmbedError as exc:
+        raise PipelineError(f"font embedding failed: {exc}") from exc
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    run.output(report_path)
+    run.checkpoint("embed-fonts", [pptx, report_path])
+    return pptx
 
 
 def validate_deck(
@@ -781,6 +935,12 @@ def validate_deck(
     layout_plan = run.project / "layout_plan.json"
     if layout_plan.exists() or run.dry_run:
         command.extend(["--layout-plan", str(layout_plan)])
+    visual_profile = run.project / "visual_profile.json"
+    if visual_profile.exists() or run.dry_run:
+        command.extend(["--visual-profile", str(visual_profile)])
+    font_embed_report = run.project / "reports" / "font-embed-report.json"
+    if font_embed_report.exists() or run.dry_run:
+        command.extend(["--font-embed-report", str(font_embed_report)])
     command.append("--expect-ending" if expect_ending else "--no-ending")
     if render_dir is not None:
         command.extend(["--render-dir", str(render_dir)])
@@ -1152,6 +1312,38 @@ def run_optional_review(
             run, deterministic_status=deterministic_status, required=required
         )
     pages = []
+    layout_rows = _load_json_evidence(run.project / "layout_plan.json")
+    if not isinstance(layout_rows, list):
+        layout_rows = []
+    svg_summaries: dict[str, list[dict[str, Any]]] = {}
+    for report_name in ("svg-authored.json", "svg-finalized.json"):
+        svg_payload = _load_json_evidence(run.project / "reports" / report_name)
+        if not isinstance(svg_payload, dict):
+            continue
+        for item in svg_payload.get("files", []):
+            if not isinstance(item, dict):
+                continue
+            slide_id = item.get("slide_id")
+            if isinstance(slide_id, str):
+                svg_summaries.setdefault(slide_id, []).append({
+                    "stage": svg_payload.get("stage"),
+                    "error_count": len(item.get("errors", [])),
+                    "warning_count": len(item.get("warnings", [])),
+                    "visual_findings": item.get("visual_findings", []),
+                })
+    quality_payload = (
+        deterministic_payload.get("quality", {})
+        if isinstance(deterministic_payload, dict)
+        else {}
+    )
+    structure_findings = [
+        item
+        for item in [
+            *quality_payload.get("blocking_findings", []),
+            *quality_payload.get("advisory_findings", []),
+        ]
+        if isinstance(item, dict)
+    ]
     for index, page in enumerate(page_paths, 1):
         try:
             from PIL import Image
@@ -1162,15 +1354,48 @@ def run_optional_review(
             return _record_unavailable_review(
                 run, deterministic_status=deterministic_status, required=required
             )
+        layout_row = (
+            layout_rows[index - 2]
+            if 1 < index <= len(layout_rows) + 1
+            and isinstance(layout_rows[index - 2], dict)
+            else None
+        )
+        logical_slide_id = (
+            layout_row.get("slide_id") if isinstance(layout_row, dict) else None
+        )
+        physical_slide_id = f"slide-{index:02d}"
+        page_findings = [
+            item
+            for item in structure_findings
+            if item.get("slide_id") in {physical_slide_id, logical_slide_id}
+            or item.get("slide") == index
+        ]
+        context = {
+            # Project only visual authoring fields. Source paths, speaker notes,
+            # and claim provenance are not needed to review the rendered page
+            # and must not become an accidental remote-adapter disclosure.
+            "layout_plan": _review_layout_context(layout_row),
+            "svg_metadata": svg_summaries.get(str(logical_slide_id), []),
+            "structure_findings": _review_structure_context(page_findings),
+        }
         pages.append(
             PageEvidence(
-                slide_id=f"slide-{index:02d}",
-                role="cover" if index == 1 else "body",
+                slide_id=physical_slide_id,
+                role=(
+                    "cover"
+                    if index == 1
+                    else str(
+                        (layout_row or {}).get("page_schema", {}).get(
+                            "page_purpose", "body"
+                        )
+                    )
+                ),
                 image_path=page,
                 width=width,
                 height=height,
                 run_id=run.run_dir.name,
                 sha256=_file_digest(page) or "",
+                context=context,
             )
         )
     try:
@@ -1232,6 +1457,41 @@ def run_optional_review(
     return report, policy
 
 
+def _review_layout_context(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(row, dict):
+        return None
+    allowed = {
+        "slide",
+        "slide_id",
+        "purpose",
+        "key_message",
+        "density",
+        "rhythm",
+        "layout_type",
+        "layout_archetype",
+        "visual_encoding",
+        "page_schema",
+    }
+    return {key: row[key] for key in allowed if key in row}
+
+
+def _review_structure_context(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    allowed = {
+        "code",
+        "severity",
+        "slide",
+        "slide_id",
+        "evidence",
+        "expected",
+        "suggested_action",
+    }
+    return [
+        {key: finding[key] for key in allowed if key in finding}
+        for finding in findings
+        if isinstance(finding, dict)
+    ]
+
+
 def validation_error_codes(report_path: Path) -> set[str]:
     try:
         payload = json.loads(report_path.read_text(encoding="utf-8"))
@@ -1252,6 +1512,81 @@ def require_completed_review(report: dict[str, Any], *, required: bool) -> None:
         raise PipelineError("required optional review did not complete")
 
 
+def skill_drift_payload(
+    repository_skill: Path,
+    *,
+    candidates: list[Path] | None = None,
+) -> dict[str, Any]:
+    """Compare installed Skill entrypoints without mutating either location."""
+    repository_digest = _file_digest(repository_skill) if repository_skill.is_file() else None
+    if candidates is None:
+        home = Path.home()
+        candidates = [
+            home / ".agents" / "skills" / "ghb-ppt-skill" / "SKILL.md",
+            home / ".codex" / "skills" / "ghb-ppt-skill" / "SKILL.md",
+        ]
+    installed: list[dict[str, Any]] = []
+    for candidate in candidates:
+        exists = candidate.is_file()
+        digest = _file_digest(candidate) if exists else None
+        installed.append({
+            "path": str(candidate),
+            "exists": exists,
+            "sha256": digest,
+            "matches_repository": bool(
+                repository_digest and digest and digest == repository_digest
+            ),
+        })
+    return {
+        "repository": {
+            "path": str(repository_skill),
+            "exists": repository_skill.is_file(),
+            "sha256": repository_digest,
+        },
+        "installed": installed,
+        "drift_detected": any(
+            item["exists"] and not item["matches_repository"] for item in installed
+        ),
+    }
+
+
+def _font_embedding_payload(target_cjk_font: str | None, fc_list_output: str) -> dict[str, Any]:
+    """Report whether the target CJK font can be embedded on this machine.
+
+    Used by ``doctor``; never raises. Resolves the font file via ``fc-list`` and
+    probes ``OS/2.fsType`` when ``fontTools`` is available.
+    """
+    payload: dict[str, Any] = {
+        "target_font": target_cjk_font,
+        "font_file": None,
+        "fonttools": False,
+        "fsType": None,
+        "embeddable": None,
+        "note": None,
+    }
+    if target_cjk_font is None:
+        payload["note"] = "no supported CJK font installed; nothing to embed"
+        return payload
+    font_file = resolve_font_file(target_cjk_font, fc_list_output)
+    payload["font_file"] = font_file
+    if not font_file:
+        payload["note"] = "font is installed but its file could not be resolved from fc-list"
+        return payload
+    try:
+        from scripts.embed_fonts import probe_embeddability
+    except ImportError:  # pragma: no cover - embed_fonts always ships alongside
+        payload["note"] = "embed_fonts module unavailable"
+        return payload
+    probe = probe_embeddability(Path(font_file))
+    payload.update(
+        fonttools=bool(probe["fonttools"]),
+        fsType=probe["fsType"],
+        embeddable=probe["embeddable"],
+        note=probe["note"],
+    )
+    return payload
+
+
 def doctor_payload(template: Path) -> dict[str, Any]:
     imports: dict[str, bool] = {}
     for module in ("pptx", "PIL", "requests"):
@@ -1263,10 +1598,12 @@ def doctor_payload(template: Path) -> dict[str, Any]:
             imports[module] = True
 
     font_output = ""
+    font_output_raw = ""
     fc_list = shutil.which("fc-list")
     if fc_list:
         completed = subprocess.run([fc_list], capture_output=True, text=True, errors="replace")
-        font_output = completed.stdout.lower()
+        font_output_raw = completed.stdout
+        font_output = font_output_raw.lower()
     cjk_fonts = detect_cjk_fonts(font_output)
     fonts = {
         **cjk_fonts,
@@ -1274,6 +1611,7 @@ def doctor_payload(template: Path) -> dict[str, Any]:
         "Arial": "arial" in font_output,
     }
     target_cjk_font = preferred_cjk_font(cjk_fonts)
+    font_embedding = _font_embedding_payload(target_cjk_font, font_output_raw)
     renderers = {
         "soffice": shutil.which("soffice"),
         "libreoffice": shutil.which("libreoffice"),
@@ -1296,8 +1634,17 @@ def doctor_payload(template: Path) -> dict[str, Any]:
     }
     errors: list[str] = []
     warnings: list[str] = []
+    skill_sync = skill_drift_payload(ROOT / "SKILL.md")
     if not template.is_file():
         errors.append(f"template missing: {template}")
+    if not skill_sync["repository"]["exists"]:
+        errors.append(f"repository Skill entrypoint missing: {skill_sync['repository']['path']}")
+    for installed in skill_sync["installed"]:
+        if installed["exists"] and not installed["matches_repository"]:
+            warnings.append(
+                "installed Skill drift detected: "
+                f"{installed['path']} differs from repository SKILL.md"
+            )
     for module, available in imports.items():
         if not available:
             errors.append(f"Python dependency missing: {module}")
@@ -1323,8 +1670,10 @@ def doctor_payload(template: Path) -> dict[str, Any]:
         "dependencies": imports,
         "fonts": fonts,
         "target_cjk_font": target_cjk_font,
+        "font_embedding": font_embedding,
         "renderers": renderers,
         "permissions": permissions,
+        "skill_sync": skill_sync,
         "errors": errors,
         "warnings": warnings,
     }
@@ -1345,6 +1694,16 @@ def parser() -> argparse.ArgumentParser:
     init = sub.add_parser("init", help="Create a deterministic GHB project directory")
     init.add_argument("--project", type=Path, required=True)
     init.add_argument("--dry-run", action="store_true")
+
+    plan = sub.add_parser(
+        "plan",
+        help="Scaffold draft content-model/layout/art-direction/visual-profile from a confirmed brief",
+    )
+    plan.add_argument("--project", type=Path, required=True)
+    plan.add_argument("--from-source", type=Path, help="Markdown source (default sources/source.md)")
+    plan.add_argument("--confirmation", type=Path, help="confirmation.json (default project/confirmation.json)")
+    plan.add_argument("--force", action="store_true", help="Overwrite existing planning drafts")
+    plan.add_argument("--dry-run", action="store_true")
 
     analyze = sub.add_parser("analyze-template", help="Analyze a PPTX template")
     analyze.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
@@ -1373,6 +1732,12 @@ def parser() -> argparse.ArgumentParser:
     check = sub.add_parser("check-svg", help="Run authored SVG quality gates")
     add_project(check)
 
+    check_plan_parser = sub.add_parser(
+        "check-plan",
+        help="Guidance-level plan check: scaffold drafts (advisory) and contract drift (error)",
+    )
+    add_project(check_plan_parser)
+
     contract = sub.add_parser(
         "check-project",
         help="Enforce confirmation, content-model, layout-plan, and authored-file contracts",
@@ -1381,7 +1746,8 @@ def parser() -> argparse.ArgumentParser:
     contract.add_argument(
         "--require-visual-contract",
         action="store_true",
-        help="Opt into the v1 visual profile and per-page schema gate before the U11 rollout",
+        default=True,
+        help="Require the visual profile, art direction, and every page schema (default)",
     )
 
     content = sub.add_parser("build-content", help="Finalize SVG and export editable content PPTX")
@@ -1394,10 +1760,23 @@ def parser() -> argparse.ArgumentParser:
     merge.add_argument("--content", type=Path)
     merge.add_argument("--cover", type=Path)
     merge.add_argument("--output", type=Path)
-    merge.add_argument("--content-layout", type=int, default=2)
+    merge.add_argument("--content-layout", type=int)
     ending = merge.add_mutually_exclusive_group()
     ending.add_argument("--no-ending", action="store_true")
     ending.add_argument("--ending-slide", type=int)
+    merge.add_argument(
+        "--embed-fonts",
+        action="store_true",
+        help="Embed subsetted fonts into the merged deck (off by default; needs fonttools)",
+    )
+    merge.add_argument(
+        "--embed-font",
+        type=Path,
+        action="append",
+        default=[],
+        dest="embed_font_paths",
+        help="Explicit font file to embed (repeatable); defaults to the installed CJK font",
+    )
 
     for name, help_text in (
         ("validate", "Validate final PPTX structure, mounts, content, and editability"),
@@ -1452,7 +1831,7 @@ def parser() -> argparse.ArgumentParser:
     build.add_argument("--title")
     build.add_argument("--subtitle")
     build.add_argument("--date")
-    build.add_argument("--content-layout", type=int, default=2)
+    build.add_argument("--content-layout", type=int)
     build.add_argument("--no-render", action="store_true")
     build.add_argument("--render-dpi", type=int, default=144)
     build.add_argument("--review", action="store_true")
@@ -1477,6 +1856,19 @@ def parser() -> argparse.ArgumentParser:
     build_ending = build.add_mutually_exclusive_group()
     build_ending.add_argument("--no-ending", action="store_true")
     build_ending.add_argument("--ending-slide", type=int)
+    build.add_argument(
+        "--embed-fonts",
+        action="store_true",
+        help="Embed subsetted fonts into the final deck (off by default; needs fonttools)",
+    )
+    build.add_argument(
+        "--embed-font",
+        type=Path,
+        action="append",
+        default=[],
+        dest="embed_font_paths",
+        help="Explicit font file to embed (repeatable); defaults to the installed CJK font",
+    )
     return root
 
 
@@ -1506,6 +1898,28 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[OK] Project initialized: {args.project.resolve()}")
         return 0
 
+    if args.command == "plan":
+        from scripts.plan_scaffold import ScaffoldError, scaffold_project
+
+        if args.dry_run:
+            print(f"[DRY-RUN] scaffold planning drafts under {args.project.resolve()}")
+            return 0
+        try:
+            ensure_project(args.project)
+            written = scaffold_project(
+                args.project,
+                source=args.from_source.resolve() if args.from_source else None,
+                confirmation=args.confirmation.resolve() if args.confirmation else None,
+                force=args.force,
+            )
+        except (PipelineError, ScaffoldError) as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            return 1
+        for path in written:
+            print(f"[OK] scaffolded {path}")
+        print("[NOTE] drafts carry needs_review/draft/origin markers; refine and run check-plan")
+        return 0
+
     if args.command == "analyze-template":
         if args.project:
             try:
@@ -1529,7 +1943,15 @@ def main(argv: list[str] | None = None) -> int:
             [sys.executable, str(PM / "template_fill_pptx.py"), "analyze", str(args.template), "-o", str(output)],
             cwd=ROOT,
         )
-        return completed.returncode
+        if completed.returncode != 0:
+            return completed.returncode
+        if args.project:
+            from scripts.template_profile import write_template_profile
+
+            profile_path = args.project / "analysis" / "template_profile.json"
+            write_template_profile(output, args.template.resolve(), profile_path)
+            print(f"[OK] template profile -> {profile_path}")
+        return 0
 
     project = args.project.resolve()
     try:
@@ -1554,25 +1976,35 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "check-svg":
                 check_svg(run)
                 run.checkpoint("check-svg", [])
+            elif args.command == "check-plan":
+                check_plan(run)
+                run.checkpoint("check-plan", [])
             elif args.command == "check-project":
                 check_project_contract(
-                    run, require_visual_contract=args.require_visual_contract
+                    run, require_visual_contract=True
                 )
                 run.checkpoint("check-project", [])
             elif args.command == "build-content":
                 build_content(run, output=_project_output(project, args.output, "content.pptx"))
             elif args.command == "merge":
-                check_project_contract(run)
-                merge_deck(
+                check_project_contract(run, require_visual_contract=True)
+                content_layout, ending_slide = _profiled_merge_values(
+                    project,
+                    content_layout=args.content_layout,
+                    ending_slide=args.ending_slide,
+                )
+                merged = merge_deck(
                     run,
                     content=_project_output(project, args.content, "content.pptx"),
                     template=args.template.resolve(),
                     cover=_project_output(project, args.cover, "cover.pptx"),
                     output=_project_output(project, args.output, "final.pptx"),
-                    content_layout=args.content_layout,
+                    content_layout=content_layout,
                     no_ending=args.no_ending,
-                    ending_slide=args.ending_slide,
+                    ending_slide=ending_slide,
                 )
+                if args.embed_fonts:
+                    embed_deck(run, pptx=merged, font_paths=args.embed_font_paths)
             elif args.command in {"validate", "report"}:
                 report_dir = project / "reports"
                 freshness = None
@@ -1746,7 +2178,12 @@ def main(argv: list[str] | None = None) -> int:
                 cover_path = _project_output(project, None, "cover.pptx")
                 content_path = _project_output(project, None, "content.pptx")
                 final_path = _project_output(project, args.output, "final.pptx")
-                check_project_contract(run)
+                content_layout, ending_slide = _profiled_merge_values(
+                    project,
+                    content_layout=args.content_layout,
+                    ending_slide=args.ending_slide,
+                )
+                check_project_contract(run, require_visual_contract=True)
                 build_cover(
                     run,
                     template=args.template.resolve(),
@@ -1763,9 +2200,9 @@ def main(argv: list[str] | None = None) -> int:
                     template=args.template.resolve(),
                     cover=cover_path,
                     output=final_path,
-                    content_layout=args.content_layout,
+                    content_layout=content_layout,
                     no_ending=args.no_ending,
-                    ending_slide=args.ending_slide,
+                    ending_slide=ending_slide,
                 )
                 report_dir = project / "reports"
                 pre_json = report_dir / "quality-pre-render.json"
@@ -1811,10 +2248,12 @@ def main(argv: list[str] | None = None) -> int:
                             template=args.template.resolve(),
                             cover=cover_path,
                             output=final_path,
-                            content_layout=args.content_layout,
+                            content_layout=content_layout,
                             no_ending=args.no_ending,
-                            ending_slide=args.ending_slide,
+                            ending_slide=ending_slide,
                         )
+                if args.embed_fonts:
+                    embed_deck(run, pptx=final_path, font_paths=args.embed_font_paths)
                 render_dir = None
                 if not args.no_render:
                     if shutil.which("soffice") or shutil.which("libreoffice"):

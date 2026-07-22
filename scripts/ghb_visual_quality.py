@@ -23,6 +23,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.ppt_master.visual_asset_checker import Box, measure_visible_geometry  # noqa: E402
+from scripts.ghb_component_balance import analyze_component_balance  # noqa: E402
 
 
 REVIEW_SCHEMA = "ghb.visual-pilot-review.v1"
@@ -170,6 +171,13 @@ def measure_svg(
     return {
         "schema": "ghb.visual-metrics.v1",
         "occupancy": _metric(raw["occupied_area"] / body_area if body_area else 0.0, status),
+        "box-occupancy": _metric(raw["occupied_area"] / body_area if body_area else 0.0, status),
+        "content-occupancy": _metric(
+            raw.get("content_occupied_area", raw["occupied_area"]) / body_area
+            if body_area
+            else 0.0,
+            status,
+        ),
         "focal-dominance": _metric(focal_ratio, status),
         "focal-emphasis": {
             "area_ratio": round(focal_ratio, 6),
@@ -334,6 +342,10 @@ def evaluate_page_quality(
             metrics["coverage"], {"measured_elements": ">=1"},
             "Provide visible supported geometry or declared QA boxes.",
         ))
+    # Intra-component void: a structurally valid card left visually hollow.
+    # Slot-overflow and paired balance are owned upstream by
+    # ``visual_asset_checker``; this only adds the missing hollow-card code.
+    findings.extend(analyze_component_balance(svg, slide_id=slide_id))
     suppressed = {
         item["code"]
         for item in findings
@@ -369,6 +381,10 @@ def analyze_deck_quality(pages: list[dict[str, Any]], *, profile: dict[str, Any]
     densities = [page.get("page_schema", {}).get("density") for page in pages]
     roles = [page.get("page_schema", {}).get("rhythm_role") for page in pages]
     variants = [page.get("page_schema", {}).get("layout_variant") for page in pages]
+    box_occupancies = [page["measurements"]["box-occupancy"]["value"] for page in pages]
+    content_occupancies = [
+        page["measurements"]["content-occupancy"]["value"] for page in pages
+    ]
     findings: list[dict[str, Any]] = []
 
     def repeated_runs(values: list[Any], minimum: int) -> list[tuple[int, int, Any]]:
@@ -407,6 +423,35 @@ def analyze_deck_quality(pages: list[dict[str, Any]], *, profile: dict[str, Any]
         add_run("visual-density-rhythm-drift", run, "Alternate density where the narrative permits.")
     for run in repeated_runs(variants, 3):
         add_run("visual-variant-repetition", run, "Use a different semantic variant or component arrangement.")
+    rhythm_profile = profile.get("deck_rhythm", {})
+    max_gap = (
+        rhythm_profile.get("max_box_content_gap")
+        if isinstance(rhythm_profile, dict)
+        else None
+    )
+    if isinstance(max_gap, (int, float)) and not isinstance(max_gap, bool):
+        for page, box_value, content_value in zip(
+            pages, box_occupancies, content_occupancies
+        ):
+            if (
+                isinstance(box_value, (int, float))
+                and isinstance(content_value, (int, float))
+                and box_value - content_value > float(max_gap)
+            ):
+                findings.append({
+                    "code": "visual-box-content-gap",
+                    "severity": "warning",
+                    "slide_ids": [page["slide_id"]],
+                    "evidence": {
+                        "box_occupancy": box_value,
+                        "content_occupancy": content_value,
+                        "gap": round(box_value - content_value, 6),
+                    },
+                    "expected": {"max_gap": float(max_gap)},
+                    "suggested_action": (
+                        "Reduce decorative container area or add meaningful information inside it."
+                    ),
+                })
     return {
         "schema": "ghb.visual-deck-metrics.v1",
         "measurements": {
@@ -415,6 +460,8 @@ def analyze_deck_quality(pages: list[dict[str, Any]], *, profile: dict[str, Any]
             "densities": densities,
             "rhythm_roles": roles,
             "layout_variants": variants,
+            "box_occupancies": box_occupancies,
+            "content_occupancies": content_occupancies,
         },
         "findings": findings,
     }

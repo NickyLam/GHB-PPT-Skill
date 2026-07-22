@@ -4,12 +4,63 @@ import hashlib
 import math
 from xml.etree import ElementTree as ET
 
-from scripts.ppt_master.svg_layouts import FONT, LAYOUT_CONTRACTS, LayoutSpec, render_layout
+from scripts.ppt_master.svg_layouts import (
+    FONT,
+    LAYOUT_CONTRACTS,
+    LayoutSpec,
+    render_layout,
+    render_layout_schema,
+    validate_layout_schema,
+)
+from scripts.ghb_svg_quality import typography_contract_errors
+from scripts.validate_project_contract import default_visual_profile
 from scripts.ppt_master.svg_to_pptx.drawingml_elements import _build_run_xml
 from scripts.ppt_master.svg_to_pptx.drawingml_utils import parse_font_family
 
 
 class SvgLayoutsTest(unittest.TestCase):
+    def test_constrained_json_schema_validates_before_rendering(self):
+        payload = {
+            "schema": "ghb.layout-schema.v1",
+            "archetype": "comparison",
+            "title": {"text": "方案比较", "max_chars": 24},
+            "nodes": [
+                {"id": "a", "heading": "方案A", "body": "稳健", "max_body_chars": 20},
+                {"id": "b", "heading": "方案B", "body": "敏捷", "max_body_chars": 20},
+            ],
+            "density": "balanced",
+            "emphasis": {"mode": "distributed"},
+            "source": "sources/source.md#comparison",
+        }
+        self.assertEqual(validate_layout_schema(payload), [])
+        svg = render_layout_schema(payload)
+        self.assertIn('data-layout="matrix"', svg)
+        self.assertIn("方案A", svg)
+
+    def test_constrained_json_schema_returns_actionable_copy_and_split_advice(self):
+        payload = {
+            "schema": "ghb.layout-schema.v1",
+            "archetype": "timeline",
+            "title": {"text": "这是一个明显超过标题字符预算的结论式长标题", "max_chars": 8},
+            "nodes": [
+                {
+                    "id": f"n{i}",
+                    "heading": f"阶段{i}",
+                    "body": "过长说明" * 30,
+                    "max_body_chars": 20,
+                }
+                for i in range(7)
+            ],
+        }
+        issues = validate_layout_schema(payload)
+        codes = {item["code"] for item in issues}
+        self.assertIn("layout-schema-title-too-long", codes)
+        self.assertIn("layout-budget-items-exceeded", codes)
+        self.assertIn("layout-schema-node-body-too-long", codes)
+        self.assertTrue(all(item["suggestion"] for item in issues))
+        with self.assertRaisesRegex(ValueError, "suggestion"):
+            render_layout_schema(payload)
+
     archetypes = (
         "pyramid",
         "waterfall",
@@ -115,7 +166,7 @@ class SvgLayoutsTest(unittest.TestCase):
         self.assertEqual({(width, height) for _, _, width, height in cards}, {(516.0, 196.0)})
         self.assertEqual(cards[1][0] - (cards[0][0] + cards[0][2]), 8.0)
         self.assertEqual(cards[2][1] - (cards[0][1] + cards[0][3]), 8.0)
-        self.assertIn('font-size="21"', pilot)
+        self.assertIn('font-size="24"', pilot)
 
     def test_explicit_pilot_intent_rejects_unknown_values_and_over_budget_content(self):
         with self.assertRaisesRegex(ValueError, "layout-budget-items-exceeded"):
@@ -307,8 +358,8 @@ class SvgLayoutsTest(unittest.TestCase):
             )
         )
 
-        self.assertRegex(svg, r'font-size="20" font-weight="bold"[^>]*>拥挤</text>')
-        self.assertRegex(svg, r'font-size="20" font-weight="bold"[^>]*>均衡</text>')
+        self.assertRegex(svg, r'font-size="24" font-weight="bold"[^>]*>拥挤</text>')
+        self.assertRegex(svg, r'font-size="24" font-weight="bold"[^>]*>均衡</text>')
         self.assertIn(">信息完整但难扫描</text>", svg)
         self.assertIn(">层级稳定且可编辑</text>", svg)
 
@@ -333,6 +384,44 @@ class SvgLayoutsTest(unittest.TestCase):
                 self.assertFalse(any(token in svg for token in forbidden))
                 tags = set(re.findall(r"<([A-Za-z][\w-]*)", svg))
                 self.assertLessEqual(tags, {"g", "rect", "polygon", "line", "text"})
+
+    def test_all_intent_aware_layouts_satisfy_default_strict_typography(self):
+        profile = default_visual_profile()
+        for archetype, contract in LAYOUT_CONTRACTS.items():
+            items = [f"项目{index + 1}" for index in range(contract.min_items)]
+            fragment = render_layout(
+                LayoutSpec(archetype, items, density="balanced", emphasis="distributed")
+            )
+            errors = typography_contract_errors(
+                f'<svg viewBox="0 0 1280 720">{fragment}</svg>',
+                profile,
+            )
+            with self.subTest(archetype=archetype):
+                self.assertEqual(errors, [])
+
+    def test_all_intent_aware_text_nodes_have_stable_typography_role_ids(self):
+        for archetype, contract in LAYOUT_CONTRACTS.items():
+            items = [f"项目{index + 1}" for index in range(contract.min_items)]
+            fragment = render_layout(
+                LayoutSpec(
+                    archetype,
+                    items,
+                    title=f"{archetype} 结构",
+                    density="balanced",
+                    emphasis="distributed",
+                )
+            )
+            root = ET.fromstring(f"<svg>{fragment}</svg>")
+            text_ids = [node.get("id") for node in root.iter() if node.tag == "text"]
+            with self.subTest(archetype=archetype):
+                self.assertTrue(text_ids)
+                self.assertTrue(all(text_ids))
+                self.assertTrue(
+                    all(
+                        text_id.startswith(("body-", "caption-", "source-", "footer-"))
+                        for text_id in text_ids
+                    )
+                )
 
     def test_maximum_item_geometry_stays_inside_declared_bounds(self):
         for archetype in self.archetypes:

@@ -1057,6 +1057,7 @@ def convert_text(elem: ET.Element, ctx: ConvertContext) -> Optional[ShapeResult]
     stroke_opacity = get_stroke_opacity(elem, ctx)
     font_style = _get_attr(elem, 'font-style', ctx) or ''
     text_decoration = _get_attr(elem, 'text-decoration', ctx) or ''
+    fixed_text_fit = elem.get('data-text-fit', '').strip().lower() == 'fixed'
 
     fonts = parse_font_family(font_family_str)
 
@@ -1170,17 +1171,50 @@ def convert_text(elem: ET.Element, ctx: ConvertContext) -> Optional[ShapeResult]
         text_height = font_size * 1.5
     padding = font_size * 0.1
 
-    # Adjust position based on text-anchor
-    if text_anchor == 'middle':
-        box_x = x - text_width / 2 - padding
-    elif text_anchor == 'end':
-        box_x = x - text_width - padding
-    else:
-        box_x = x - padding
+    # GHB authors already declare reviewable text bounds through data-qa-box.
+    # Use its width as a minimum for ordinary single-line DrawingML frames.
+    # For data-text-fit="fixed", bind the complete declared frame so the SVG
+    # checker and Office/WPS receive the same x/y/width/height contract. This
+    # is a narrow GHB packaging hook on top of the vendored converter;
+    # malformed metadata remains the quality gate's responsibility and does
+    # not make standalone conversion crash.
+    declared_box_width = 0.0
+    fixed_frame: Optional[tuple[float, float, float, float]] = None
+    qa_box = elem.get('data-qa-box')
+    if paragraph_runs is None and qa_box:
+        try:
+            qa_values = [float(value) for value in re.split(r'[\s,]+', qa_box.strip()) if value]
+        except ValueError:
+            qa_values = []
+        if len(qa_values) == 4 and math.isfinite(qa_values[2]) and qa_values[2] > 0:
+            declared_box_width = qa_values[2] * abs(ctx.scale_x or 1.0)
+            if (
+                fixed_text_fit
+                and all(math.isfinite(value) for value in qa_values)
+                and qa_values[3] > 0
+            ):
+                fixed_frame = (
+                    ctx_x(qa_values[0], ctx),
+                    ctx_y(qa_values[1], ctx),
+                    declared_box_width,
+                    qa_values[3] * abs(ctx.scale_y or 1.0),
+                )
 
-    box_y = y - font_size * 0.85
-    box_w = text_width + padding * 2
-    box_h = text_height + padding
+    if fixed_frame is not None:
+        box_x, box_y, box_w, box_h = fixed_frame
+    else:
+        box_w = max(text_width + padding * 2, declared_box_width)
+
+        # Adjust position based on text-anchor
+        if text_anchor == 'middle':
+            box_x = x - box_w / 2
+        elif text_anchor == 'end':
+            box_x = x - box_w + padding
+        else:
+            box_x = x - padding
+
+        box_y = y - font_size * 0.85
+        box_h = text_height + padding
 
     text_transform = elem.get('transform', '')
     if text_transform and 'rotate' not in text_transform and not ctx.use_transform_matrix:
@@ -1290,11 +1324,19 @@ def convert_text(elem: ET.Element, ctx: ConvertContext) -> Optional[ShapeResult]
     # long joined-up <a:p> on one line, blowing past the canvas. The cx we
     # write below (longest SVG line) is the design target width;
     # PowerPoint wraps long paragraphs inside this width.
-    # Single-line text keeps wrap="none" + spAutoFit for tight fidelity.
+    # Single-line text keeps wrap="none" + spAutoFit for tight fidelity unless
+    # a GHB-authored SVG explicitly freezes the reviewed frame. This is a
+    # narrow local hook in the vendored converter: WPS/PowerPoint may otherwise
+    # expand a near-capacity frame beyond its card despite wrap="none".
     if paragraph_runs is not None:
         body_pr_xml = (
             '<a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" '
             'anchor="t" anchorCtr="0"/>'
+        )
+    elif fixed_text_fit:
+        body_pr_xml = (
+            '<a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" '
+            'anchor="ctr" anchorCtr="0">\n<a:noAutofit/>\n</a:bodyPr>'
         )
     else:
         body_pr_xml = (

@@ -30,6 +30,13 @@
 ```
 
 - `data-qa-box` 使用画布绝对坐标 `x y width height`，不要使用变换后的局部坐标。
+- 对靠近卡片边界、不同 Office 字体度量可能导致文本框扩张的单行文本，可显式写
+  `data-text-fit="fixed"`。该属性必须与正数 `data-qa-box` 同时使用；转换器会输出
+  DrawingML `noAutofit`，因此作者必须为最宽目标字体保留安全宽度，避免从“越界”
+  变成“裁字”。未声明时仍保留默认自动适配行为。
+- 用 `data-qa-peer-group="cards"` 显式标记需要比较间距的同级组件。间距
+  指标只比较同组对象；未声明时会排除相互包含/重叠的父子盒，避免卡片
+  内部文本把真实卡片间距误算为 0。
 - 默认同属 `data-qa-group="content"` 的框不得重叠超过较小框面积的 12%。
 - 有意叠放（如图片上的标题遮罩）必须在参与叠放的元素上写 `data-allow-overlap="true"`。
 - 装饰性背景不要标 `data-qa-role`；它不参与碰撞检查。
@@ -69,6 +76,7 @@
 
 ```xml
 <g data-component="evidence-card" data-component-id="left"
+   data-component-balance="insets"
    data-component-pair="comparison-1" data-qa-box="100 180 420 360">
   <g data-component-parent="left" data-component-slot="verdict"
      data-qa-box="140 470 340 48">...</g>
@@ -80,6 +88,52 @@
 - 槽位越出父卡片时报 `component-slot-overflow`；
 - 相同 `data-component-pair` 必须恰有两张同类卡片；槽位缺失、顶部或高度
   偏差超过 24 px 时，报 `component-balance-outlier`。
+- 重复卡片可声明 `data-component-balance="insets"`。检查器会以全部子槽位的
+  联合边界计算左、右、上、下内边距：同一卡片的左右与上下差值不得超过 4 px，
+  同类卡片的四向内边距也必须在 4 px 内一致，否则报
+  `component-inset-outlier`。应给图标、编号、标题和说明分别声明固定槽位，不要用
+  字符串长短或字体墨迹边界冒充布局边界。
+
+### 3.4 页面目的语义合同
+
+`page_schema.page_purpose` 必须在主 `data-layout` 内有可见语义证据，不能
+用版式名称替代结构事实：
+
+- `process`：至少两个 `data-flow-node` 和一条完整 `data-flow-from` /
+  `data-flow-to` 边，或至少两个 `data-step` / `data-lane`；
+- `instruction` / `timeline`：至少两个 `data-step`，instruction 也可使用
+  完整 flow；
+- `architecture`：至少两个 `data-layer`；
+- `comparison`：至少两个带唯一 `data-component-id` 的组件；
+- `evidence` / `case-study` / `screenshot`：至少一个 `data-evidence`；
+- `metrics` / `data-story`：至少一个 `data-metric`；
+- `decision` / `recommendation`：至少一个 `data-decision` 或
+  `data-recommendation`；
+- `risk`：同时存在 `data-risk` 与 `data-mitigation`；
+- `hero` / `section-anchor` / `closing`：至少一个 `data-focal="true"`。
+
+缺失语义标记是 authored/finalized 两阶段的 error。内置 intent-aware
+renderer 会为 staircase、timeline、funnel、swimlane、layered architecture、
+matrix comparison/metric 等输出对应标记；手工 SVG 必须自行声明。
+
+### 3.5 角色化排版合同
+
+严格 `visual_profile.typography.enforcement` 默认开启。可见文本必须通过
+`data-qa-role`（可由父组继承）或稳定 ID 声明角色：
+
+| 角色 | ID 示例 | 最小 pt | SVG 最小 px |
+|---|---|---:|---:|
+| title | `main-title` | 28 | 38（28.5 pt） |
+| body / text / label | `body-summary` | 18 | 24 |
+| caption | `caption-shot` | 12 | 16 |
+| source | `source-note` | 10 | 14（10.5 pt） |
+| footer | `footer-page` | 9 | 12 |
+
+换算固定为 `1 px = 0.75 pt`。主 `data-layout` 中未声明角色的文本报
+`typography-unclassified-text`；低于角色下限报
+`typography-<role>-below-min`。最终 PPTX 还会按
+`main-title`、`body-*`、`caption-*`、`source-*`、`footer-*` 形状名再次
+读回并输出 `min_font_by_role`，防止 SVG→DrawingML 转换后字号退化。
 
 ## 4. 乱码与文本负载
 
@@ -118,7 +172,8 @@ proof of composition. Reports do not calculate an aggregate aesthetic score.
 
 The generic geometry envelope records the slide and body canvases, supported
 shape or `data-qa-box` bounds, semantic role, focal marker, fill, typography
-size where known, and measurement limitations. The GHB policy layer derives:
+size where known, peer-group identity, and measurement limitations. The GHB
+policy layer derives:
 
 - body occupancy (union area, so overlapping shapes are not double counted);
 - focal-area ratio, primary-fill focal signal, and observed left/center/right focal zone;
@@ -173,7 +228,9 @@ make `anchor` a geometry density. `anchor` remains a rhythm role in v1.
 
 Authored and finalized evidence is generated independently and carries its
 stage in the report. Later final-PPTX/readback observations must be a separate
-envelope rather than overwriting either SVG stage.
+envelope rather than overwriting either SVG stage. `svg_output/` is never
+post-processed in place: finalization and preview-background removal operate
+only on `svg_final/` before the finalized report is produced.
 
 ## Exceptions
 

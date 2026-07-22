@@ -28,6 +28,11 @@ python3 -m pip install -r requirements.txt
 python3 scripts/ghb_ppt.py doctor
 ```
 
+`--embed-fonts` is optional and requires the `fonttools` dependency included in
+`requirements.txt`. It refuses fonts whose `OS/2.fsType` forbids embedding and
+records actual embedded parts, typeface names, and license evidence in the
+quality report.
+
 开发与测试：
 
 ```bash
@@ -56,6 +61,7 @@ python3 scripts/ghb_ppt.py analyze-template \
 - `confirmation.json`（六项确认的机器可读凭证）
 - `design_spec.md` 与 `spec_lock.md`
 - `content_model.json`（可追溯的论点与不可删减项）
+- `art_direction.json`（视觉命题、叙事弧、页面家族、锚点页与图像策略）
 - `visual_profile.json`（项目级视觉阈值与预算）
 - `layout_plan.json`
 - `svg_output/*.svg`
@@ -90,13 +96,13 @@ python3 scripts/ghb_ppt.py build \
 ## 统一命令
 
 ```text
-doctor             环境、依赖、模板、字体和渲染器检查
+doctor             环境、依赖、模板、字体、渲染器和安装 Skill 漂移检查
 init               创建规范项目目录
 analyze-template   分析模板槽位、母版和版式
 build-cover        生成模板封面并修复字体
-check-project      强制校验确认、内容模型、版式语义和必需文件
+check-project      强制校验确认、art direction、视觉合同、内容模型和版式语义
 check-svg          运行 authored SVG 综合质量门
-build-content      正式移除白底、finalize、导出正文 PPTX
+build-content      finalize 到独立目录、正式移除白底、导出正文 PPTX
 merge              合并封面、正文、模板母版和可选致谢页
 validate           验证 ZIP/OOXML/母版/内容/可编辑性/版面
 render             生成 PDF、逐页 PNG 和 contact sheet
@@ -131,8 +137,9 @@ python3 scripts/ghb_ppt.py build --help
 ```text
 template ── template-fill ── cover-font repair ── cover.pptx
     │
-source → plan → SVG → authored gate → background removal
-                     → finalize → finalized gate → editable content.pptx
+source → content model → art direction → layout plan → authored SVG gate
+                     → finalize copy → svg_final background removal
+                     → finalized gate → editable content.pptx
     │
     └─ template master/layout/theme/media injection
                      → final.pptx → validate → render → report
@@ -148,7 +155,9 @@ OOXML 合并使用动态 ID、part 和媒体名分配，避免覆盖已有关系
 project/
 ├── analysis/
 ├── sources/
-├── svg_output/            # authored SVG
+├── art_direction.json     # deck-level aesthetic contract
+├── visual_profile.json    # strict role typography and geometry policy
+├── svg_output/            # immutable authored SVG
 ├── svg_final/             # finalized SVG
 ├── notes/
 ├── exports/
@@ -176,9 +185,18 @@ project/
 `anchor` 节奏机械推断重点；`single-focal` 必须由 `key_message` 支持并
 绑定真实 `focal_target`。
 
+默认视觉合同不是 opt-in：每个可见文本必须有角色元数据，标题/正文默认
+不得低于 28/18 pt（SVG 建议至少 38/24 px）；process、comparison、evidence、
+metrics、decision、risk 等页面必须提供对应语义标记。最终 PPTX 会再次输出
+`min_font_by_role`，防止转换后字号退化。
+
 最终报告检查关系目标、Content Types、ID、母版链、页数与页面角色、
 `ppt_to_md` 回读、计划文字、备注、字体、品牌色、对象统计、越界、
 重叠、空文本、白底和全幅图片。渲染证据仍需逐页人工复核。
+
+`.ghb/evidence-manifest.json` 使用 v2 DAG，分别绑定 visual profile、art
+direction、authored SVG、finalized SVG、PPTX、渲染和最终报告；任一上游
+语义或字节变化只按依赖边传播 stale，不能复用旧证据。
 
 遇到中断时，先读 `.ghb/state.json` 和最新 run log，确认输入未变化，
 从最后一个有效检查点重跑。详见

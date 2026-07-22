@@ -1,0 +1,16 @@
+# ppt-master is bundled upstream code and retains its original lint baseline.
+# Keep Ruff focused on GHB-owned code/tests and on the colocated GHB modules
+# listed in references/vendor-sync-policy.md.
+extend-exclude = [
+  "scripts/ppt_master/config.py",
+  "scripts/ppt_master/finalize_svg.py",
+  "scripts/ppt_master/image_backends",
+  "scripts/ppt_master/image_gen.py",
+  "scripts/ppt_master/image_search.py",
+  "scripts/ppt_master/source_to_md",
+  "scripts/ppt_master/svg_finalize",
+  "scripts/ppt_master/svg_quality_checker.py",
+  "scripts/ppt_master/svg_to_pptx",
+  "scripts/ppt_master/template_fill_pptx",
+  "scripts/ppt_master/total_md_split.py",
+]

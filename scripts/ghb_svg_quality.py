@@ -20,7 +20,208 @@ from scripts.ppt_master.check_layout_diversity import (  # noqa: E402
 from scripts.ghb_visual_quality import analyze_deck_quality, evaluate_page_quality  # noqa: E402
 
 
-def _ghb_chrome_errors(path: Path, *, stage: str) -> list[str]:
+_PX_TO_PT = 0.75
+_TYPOGRAPHY_ROLE_FLOORS = {
+    "title": "min_title_pt",
+    "body": "min_body_pt",
+    "text": "min_body_pt",
+    "label": "min_body_pt",
+    "caption": "min_caption_pt",
+    "source": "min_source_pt",
+    "footer": "min_footer_pt",
+}
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _style_value(node: ET.Element, name: str) -> str | None:
+    direct = node.get(name)
+    if direct is not None:
+        return direct
+    for declaration in node.get("style", "").split(";"):
+        key, separator, value = declaration.partition(":")
+        if separator and key.strip().lower() == name:
+            return value.strip()
+    return None
+
+
+def _font_size_px(node: ET.Element, inherited: float | None) -> float | None:
+    raw = _style_value(node, "font-size")
+    if raw is None:
+        return inherited
+    match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(px|pt)?\s*", raw, re.IGNORECASE)
+    if not match:
+        return None
+    value = float(match.group(1))
+    return value / _PX_TO_PT if match.group(2) and match.group(2).lower() == "pt" else value
+
+
+def _normalized_text_role(node: ET.Element, inherited: str | None) -> str | None:
+    explicit = (node.get("data-qa-role") or "").strip().lower()
+    if explicit in _TYPOGRAPHY_ROLE_FLOORS:
+        return explicit
+    identifier = (node.get("id") or "").strip().lower().replace("_", "-")
+    prefixes = {
+        "main-title": "title",
+        "title": "title",
+        "body": "body",
+        "text": "text",
+        "label": "label",
+        "caption": "caption",
+        "source": "source",
+        "footer": "footer",
+    }
+    for prefix, role in prefixes.items():
+        if identifier == prefix or identifier.startswith(f"{prefix}-"):
+            return role
+    return inherited
+
+
+def typography_contract_errors(svg: str, profile: dict[str, object]) -> list[str]:
+    """Enforce role-specific typography floors for strict visual profiles.
+
+    SVG user units in this pipeline are CSS pixels, so font sizes are converted
+    to PowerPoint points with the standard 0.75 factor. Roles may be declared
+    on a text element, inherited from a containing group, or expressed through
+    the stable role-oriented id prefixes used by the DrawingML readback gate.
+    """
+    typography = profile.get("typography")
+    if not isinstance(typography, dict) or typography.get("enforcement") != "strict":
+        return []
+    try:
+        root = ET.fromstring(svg)
+    except ET.ParseError as exc:
+        return [f"typography-invalid-svg: {exc}"]
+
+    errors: list[str] = []
+
+    def walk(
+        node: ET.Element,
+        *,
+        inherited_role: str | None = None,
+        inherited_size: float | None = None,
+        in_layout: bool = False,
+        hidden: bool = False,
+    ) -> None:
+        style = (node.get("style") or "").replace(" ", "").lower()
+        hidden = hidden or node.get("display", "").lower() == "none" or "display:none" in style
+        if hidden:
+            return
+        in_layout = in_layout or node.get("data-layout") is not None
+        role = _normalized_text_role(node, inherited_role)
+        size_px = _font_size_px(node, inherited_size)
+        if _local_name(node.tag) == "text" and "".join(node.itertext()).strip():
+            label = node.get("id") or "text"
+            if role is None and in_layout:
+                errors.append(
+                    f"typography-unclassified-text: {label} inside data-layout must declare a role"
+                )
+            elif role in _TYPOGRAPHY_ROLE_FLOORS:
+                floor_name = _TYPOGRAPHY_ROLE_FLOORS[role]
+                floor = typography.get(floor_name)
+                if not isinstance(floor, (int, float)) or isinstance(floor, bool) or floor <= 0:
+                    errors.append(f"typography-invalid-profile-floor: {floor_name}")
+                elif size_px is None or size_px <= 0:
+                    errors.append(f"typography-{role}-missing-size: {label}")
+                else:
+                    observed_pt = size_px * _PX_TO_PT
+                    if observed_pt + 1e-9 < float(floor):
+                        errors.append(
+                            f"typography-{role}-below-min: {label} is {observed_pt:.2f}pt; "
+                            f"requires {float(floor):g}pt"
+                        )
+        for child in node:
+            walk(
+                child,
+                inherited_role=role,
+                inherited_size=size_px,
+                in_layout=in_layout,
+                hidden=hidden,
+            )
+
+    walk(root)
+    return errors
+
+
+def semantic_contract_errors(svg: str, page_schema: dict[str, object]) -> list[str]:
+    """Require visible, machine-auditable semantics for purpose-led pages."""
+    purpose = page_schema.get("page_purpose")
+    if not isinstance(purpose, str) or not purpose:
+        return []
+    try:
+        root = ET.fromstring(svg)
+    except ET.ParseError as exc:
+        return [f"semantic-invalid-svg: {exc}"]
+
+    layout_scope = next(
+        (node for node in root.iter() if node.get("data-layout") is not None),
+        root,
+    )
+    nodes = list(layout_scope.iter())
+
+    def marked(attribute: str) -> list[ET.Element]:
+        return [node for node in nodes if (node.get(attribute) or "").strip()]
+
+    flow_nodes = marked("data-flow-node")
+    flow_edges = [
+        node
+        for node in nodes
+        if (node.get("data-flow-from") or "").strip()
+        and (node.get("data-flow-to") or "").strip()
+    ]
+    steps = marked("data-step")
+    lanes = marked("data-lane")
+    components = [
+        node
+        for node in nodes
+        if (node.get("data-component") or "").strip()
+        and (node.get("data-component-id") or "").strip()
+    ]
+    evidence = marked("data-evidence")
+    metrics = marked("data-metric")
+    layers = marked("data-layer")
+    focal = [node for node in nodes if (node.get("data-focal") or "").lower() == "true"]
+    decisions = marked("data-decision") + marked("data-recommendation")
+    risks = marked("data-risk")
+    mitigations = marked("data-mitigation")
+
+    errors: list[str] = []
+    if purpose == "process" and not (
+        (len(flow_nodes) >= 2 and flow_edges) or len(steps) >= 2 or len(lanes) >= 2
+    ):
+        errors.append("semantic-process-missing-flow")
+    elif purpose == "instruction" and not (len(steps) >= 2 or (len(flow_nodes) >= 2 and flow_edges)):
+        errors.append("semantic-instruction-missing-steps")
+    elif purpose == "timeline" and len(steps) < 2:
+        errors.append("semantic-timeline-missing-steps")
+    elif purpose == "architecture" and len(layers) < 2:
+        errors.append("semantic-architecture-missing-layers")
+
+    if purpose == "comparison":
+        component_ids = {(node.get("data-component-id") or "").strip() for node in components}
+        if len(component_ids) < 2:
+            errors.append("semantic-comparison-missing-components")
+    if purpose in {"evidence", "case-study", "screenshot"} and not evidence:
+        errors.append("semantic-evidence-missing-evidence")
+    if purpose in {"metrics", "data-story"} and not metrics:
+        errors.append("semantic-metrics-missing-metrics")
+    if purpose in {"decision", "recommendation"} and not decisions:
+        errors.append("semantic-decision-missing-decision")
+    if purpose == "risk" and (not risks or not mitigations):
+        errors.append("semantic-risk-missing-pairs")
+    if purpose in {"hero", "section-anchor", "closing"} and not focal:
+        errors.append("semantic-hero-missing-focal")
+    return errors
+
+
+def _ghb_chrome_errors(
+    path: Path,
+    *,
+    stage: str,
+    template_profile: dict[str, object] | None = None,
+) -> list[str]:
     """Verify the GHB surface contract and authored/finalized background state."""
     try:
         root = ET.fromstring(path.read_text(encoding="utf-8"))
@@ -103,7 +304,17 @@ def _ghb_chrome_errors(path: Path, *, stage: str) -> list[str]:
                 # The semantic label is replaced by the native GHB frame at
                 # merge time. Reserve that full template footprint rather than
                 # only the short source text's glyph box.
-                sx, sy, sw, sh = (930.0, 96.0, 294.0, 80.0)
+                zones = (
+                    template_profile.get("header_safe_zones")
+                    if isinstance(template_profile, dict)
+                    else None
+                )
+                section_zone = zones.get("section") if isinstance(zones, dict) else None
+                sx, sy, sw, sh = (
+                    tuple(float(value) for value in section_zone)
+                    if isinstance(section_zone, list) and len(section_zone) == 4
+                    else (930.0, 96.0, 294.0, 80.0)
+                )
                 overlap_w = max(0.0, min(tx + tw, sx + sw) - max(tx, sx))
                 overlap_h = max(0.0, min(ty + th, sy + sh) - max(ty, sy))
                 if overlap_w > 0 and overlap_h > 0:
@@ -144,11 +355,24 @@ def _ghb_chrome_errors(path: Path, *, stage: str) -> list[str]:
         return errors
     if stage == "authored":
         rectangles = [node for node in surface.iter() if node.tag.rsplit("}", 1)[-1] == "rect"]
-        expected = {"x": "56", "y": "96", "width": "1168", "height": "608"}
+        surface_profile = (
+            template_profile.get("body_surface")
+            if isinstance(template_profile, dict)
+            else None
+        )
+        surface_values = (
+            [float(value) for value in surface_profile]
+            if isinstance(surface_profile, list) and len(surface_profile) == 4
+            else [56.0, 96.0, 1168.0, 608.0]
+        )
+        expected = dict(zip(("x", "y", "width", "height"), surface_values))
         if not rectangles:
-            errors.append("GHB content surface must contain its standard rectangle")
+            errors.append("GHB content surface must contain its profiled rectangle")
         elif any(float(rectangles[0].get(key, "nan")) != float(value) for key, value in expected.items()):
-            errors.append("GHB content surface must be x=56 y=96 width=1168 height=608")
+            errors.append(
+                "GHB content surface must match template_profile body_surface "
+                f"{surface_values}"
+            )
     return errors
 from scripts.ppt_master.svg_quality_checker import SVGQualityChecker  # noqa: E402
 from scripts.ppt_master.visual_asset_checker import (  # noqa: E402
@@ -204,14 +428,32 @@ def check_project(project: Path, *, stage: str) -> dict[str, object]:
             profile = {}
     except (OSError, ValueError):
         profile = {}
+    template_profile_path = project / "analysis" / "template_profile.json"
+    try:
+        template_profile = (
+            json.loads(template_profile_path.read_text(encoding="utf-8"))
+            if template_profile_path.is_file()
+            else {}
+        )
+        if not isinstance(template_profile, dict):
+            template_profile = {}
+    except (OSError, ValueError):
+        template_profile = {}
     visual_results = []
     page_quality_results: list[dict[str, object]] = []
     layouts: list[str] = []
     file_payloads: list[dict[str, object]] = []
     for path in files:
+        svg_text = path.read_text(encoding="utf-8")
         svg_result = checker.check_file(str(path), "ppt169")
         visual_result = check_svg(path, stage=stage, icons_dir=icons_dir)
-        visual_result.errors.extend(_ghb_chrome_errors(path, stage=stage))
+        visual_result.errors.extend(
+            _ghb_chrome_errors(
+                path,
+                stage=stage,
+                template_profile=template_profile,
+            )
+        )
         visual_results.append(visual_result)
         markers = extract_layout_markers(path.read_text(encoding="utf-8"))
         layouts.append(markers[0] if markers else "missing")
@@ -229,10 +471,12 @@ def check_project(project: Path, *, stage: str) -> dict[str, object]:
                 "emphasis": "distributed",
                 "layout_variant": row.get("layout_archetype") or visual_result.layout,
             }
+        visual_result.errors.extend(typography_contract_errors(svg_text, profile))
+        visual_result.errors.extend(semantic_contract_errors(svg_text, page_schema))
         slide_id = str(page_schema.get("slide_id") or row.get("slide_id") or f"slide-{slide_number or len(page_quality_results) + 1}")
         try:
             page_quality = evaluate_page_quality(
-                path.read_text(encoding="utf-8"),
+                svg_text,
                 slide_id=slide_id,
                 profile=profile,
                 page_schema=page_schema,

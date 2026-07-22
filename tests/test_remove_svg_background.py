@@ -2,7 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.remove_svg_background import BackgroundRemovalError, remove_background
+from scripts.remove_svg_background import (
+    BackgroundRemovalError,
+    remove_background,
+    remove_project_backgrounds,
+)
 
 
 SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
@@ -13,6 +17,28 @@ SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewB
 
 
 class RemoveSvgBackgroundTest(unittest.TestCase):
+    def test_project_removal_can_target_finalized_directory_without_mutating_authored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            authored = project / "svg_output"
+            finalized = project / "svg_final"
+            authored.mkdir()
+            finalized.mkdir()
+            (authored / "01.svg").write_text(SVG, encoding="utf-8")
+            (finalized / "01.svg").write_text(SVG, encoding="utf-8")
+
+            results = remove_project_backgrounds(
+                project,
+                svg_dir_name="svg_final",
+            )
+
+            self.assertEqual([result.status for result in results], ["removed"])
+            self.assertEqual((authored / "01.svg").read_text(encoding="utf-8"), SVG)
+            self.assertNotIn(
+                '<g id="bg">',
+                (finalized / "01.svg").read_text(encoding="utf-8"),
+            )
+
     def test_removes_only_full_canvas_preview_background_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "slide.svg"

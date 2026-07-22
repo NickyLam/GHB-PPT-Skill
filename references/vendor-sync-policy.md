@@ -17,6 +17,11 @@ The GHB-owned additions currently colocated under the vendor tree are:
 - `check_layout_diversity.py`
 - `visual_asset_checker.py`
 
+`svg_to_pptx/drawingml_elements.py` also carries two narrow GHB packaging
+hooks covered by focused tests: explicit `data-qa-box` minimum widths and the
+opt-in `data-text-fit="fixed"` mapping to DrawingML `noAutofit`. Preserve or
+reapply both hooks during an upstream sync.
+
 `svg_layouts.py` also owns the GHB-specific `LayoutSpec` visual-intent fields,
 per-family `LAYOUT_CONTRACTS`, and Office-safe density/variant/emphasis
 geometry. These are local renderer contracts, not imported upstream API.
@@ -43,6 +48,12 @@ pipeline. Mark and test any further colocated additions explicitly.
 Every direct modification to vendored code must have a focused regression test
 and a comment explaining the GHB packaging reason. Prefer a top-level adapter
 when the change can be isolated outside the vendor tree.
+
+`ruff.toml` excludes upstream paths that retain their imported lint baseline.
+It continues to lint top-level GHB code, tests, and the colocated GHB-owned
+`svg_layouts.py`, `check_layout_diversity.py`, and `visual_asset_checker.py`.
+Do not treat that exclusion as permission to skip the focused tests and local
+packaging comment required for a direct vendor patch.
 
 For layout-contract changes, focused coverage must prove all ten built-in
 families, legacy byte stability when intent is omitted, item/text budget

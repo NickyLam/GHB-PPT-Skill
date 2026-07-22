@@ -5,7 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.ghb_svg_quality import check_project, main
+from scripts.ghb_svg_quality import (
+    check_project,
+    main,
+    semantic_contract_errors,
+    typography_contract_errors,
+)
 
 
 SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
@@ -16,6 +21,67 @@ SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewB
 
 
 class GhbSvgQualityTest(unittest.TestCase):
+    def test_strict_typography_contract_enforces_role_specific_point_floors(self):
+        svg = '''<svg viewBox="0 0 1280 720">
+        <g id="header"><text id="main-title" data-qa-role="title" font-size="30">标题</text></g>
+        <g data-layout="editorial" data-qa-role="body"><text id="body-copy" font-size="20">正文</text></g>
+        <text id="source-note" data-qa-role="source" font-size="14">来源</text>
+        </svg>'''
+        profile = {
+            "typography": {
+                "enforcement": "strict",
+                "min_title_pt": 28,
+                "min_body_pt": 18,
+                "min_caption_pt": 12,
+                "min_source_pt": 10,
+                "min_footer_pt": 9,
+            }
+        }
+        errors = typography_contract_errors(svg, profile)
+        self.assertTrue(any("typography-title-below-min" in item for item in errors))
+        self.assertTrue(any("typography-body-below-min" in item for item in errors))
+        self.assertFalse(any("typography-source-below-min" in item for item in errors))
+
+        compliant = svg.replace('font-size="30"', 'font-size="38"').replace(
+            'font-size="20"', 'font-size="24"'
+        )
+        self.assertEqual(typography_contract_errors(compliant, profile), [])
+
+    def test_semantic_contract_requires_purpose_specific_component_markers(self):
+        process = '<svg><g data-layout="waterfall"><rect width="20" height="20"/></g></svg>'
+        comparison = '<svg><g data-layout="matrix"><rect width="20" height="20"/></g></svg>'
+        evidence = '<svg><g data-layout="evidence_stack"><rect width="20" height="20"/></g></svg>'
+        self.assertIn(
+            "semantic-process-missing-flow",
+            semantic_contract_errors(process, {"page_purpose": "process"}),
+        )
+        self.assertIn(
+            "semantic-comparison-missing-components",
+            semantic_contract_errors(comparison, {"page_purpose": "comparison"}),
+        )
+        self.assertIn(
+            "semantic-evidence-missing-evidence",
+            semantic_contract_errors(evidence, {"page_purpose": "evidence"}),
+        )
+
+        valid = '''<svg><g data-layout="matrix">
+        <g data-component="comparison-card" data-component-id="left" data-qa-box="0 0 100 100"/>
+        <g data-component="comparison-card" data-component-id="right" data-qa-box="120 0 100 100"/>
+        </g></svg>'''
+        self.assertEqual(
+            semantic_contract_errors(valid, {"page_purpose": "comparison"}),
+            [],
+        )
+
+        out_of_scope = '''<svg>
+        <g data-component="comparison-card" data-component-id="outside-1"/>
+        <g data-component="comparison-card" data-component-id="outside-2"/>
+        <g data-layout="matrix"><rect width="20" height="20"/></g>
+        </svg>'''
+        self.assertIn(
+            "semantic-comparison-missing-components",
+            semantic_contract_errors(out_of_scope, {"page_purpose": "comparison"}),
+        )
     def make_project(self, directory: Path, *, broken: bool = False) -> Path:
         (directory / "svg_output").mkdir()
         (directory / "svg_final").mkdir()
@@ -69,7 +135,10 @@ class GhbSvgQualityTest(unittest.TestCase):
             payload = check_project(project, stage="authored")
             self.assertFalse(payload["passed"])
             self.assertTrue(
-                any("x=56 y=96" in message for message in payload["files"][0]["visual_errors"])
+                any(
+                    "template_profile body_surface" in message
+                    for message in payload["files"][0]["visual_errors"]
+                )
             )
 
     def test_title_marker_vertical_misalignment_is_an_error(self):

@@ -10,7 +10,8 @@ from xml.etree import ElementTree as ET
 
 from PIL import Image
 from pptx import Presentation
-from pptx.util import Inches
+from pptx.enum.text import MSO_AUTO_SIZE
+from pptx.util import Inches, Pt
 
 from scripts.merge_template_master import merge_pptx, relation_type, resolve_target
 from scripts.validate_ghb_pptx import main, markdown_report, report_dict, validate_pptx
@@ -92,6 +93,45 @@ class ValidateGhbPptxTest(unittest.TestCase):
             self.assertTrue(all(slide.text_objects >= 1 for slide in report.slides[1:-1]))
             self.assertEqual(len(report.package["masters_used"]), 1)
 
+    def test_strict_visual_profile_enforces_final_pptx_role_font_floors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            output, _result = self.build(directory, count=1)
+            presentation = Presentation(output)
+            body_shape = next(
+                shape
+                for shape in presentation.slides[1].shapes
+                if getattr(shape, "has_text_frame", False) and shape.text.strip()
+            )
+            body_shape.name = "body-copy"
+            for paragraph in body_shape.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.size = Pt(12)
+            presentation.save(output)
+            profile = directory / "visual_profile.json"
+            profile.write_text(json.dumps({
+                "schema": "ghb.visual-profile.v1",
+                "typography": {
+                    "enforcement": "strict",
+                    "min_title_pt": 28,
+                    "min_body_pt": 18,
+                    "min_caption_pt": 12,
+                    "min_source_pt": 10,
+                    "min_footer_pt": 9,
+                },
+            }), encoding="utf-8")
+
+            report = validate_pptx(
+                output,
+                expected_body_count=1,
+                expect_ending=True,
+                visual_profile_path=profile,
+            )
+
+            self.assertIn("typography-body-below-min", {issue.code for issue in report.errors})
+            self.assertEqual(report.package["min_font_by_role"], {"body": 12.0})
+            self.assertEqual(report.slides[1].min_font_by_role, {"body": 12.0})
+
     def test_wrong_page_count_is_an_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             output, _result = self.build(Path(tmp), count=1)
@@ -152,6 +192,100 @@ class ValidateGhbPptxTest(unittest.TestCase):
             )
             self.assertFalse(report.passed)
             self.assertTrue(any(issue.code == "missing-planned-item" for issue in report.errors))
+
+    def test_named_main_titles_take_priority_over_repeated_section_labels(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output, _result = self.build(Path(tmp), count=2)
+            presentation = Presentation(output)
+            expected_titles = ["第一页主标题", "第二页主标题"]
+            for slide, title in zip(
+                (presentation.slides[1], presentation.slides[2]), expected_titles
+            ):
+                main_title = next(
+                    shape
+                    for shape in slide.shapes
+                    if getattr(shape, "has_text_frame", False) and shape.text.startswith("Body")
+                )
+                main_title.name = "main-title"
+                main_title.text = title
+                section = slide.shapes.add_textbox(Inches(8), Inches(0.1), Inches(2), Inches(0.4))
+                section.name = "template-section-label"
+                section.text = "03 / Skill"
+            presentation.save(output)
+
+            report = validate_pptx(output, expected_body_count=2, expect_ending=True)
+
+            self.assertEqual([slide.title for slide in report.slides[1:3]], expected_titles)
+            self.assertNotIn("adjacent-duplicate-title", {issue.code for issue in report.warnings})
+
+    def test_adjacent_duplicate_named_main_titles_are_still_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output, _result = self.build(Path(tmp), count=2)
+            presentation = Presentation(output)
+            for index, slide in enumerate(
+                (presentation.slides[1], presentation.slides[2]), 1
+            ):
+                main_title = next(
+                    shape
+                    for shape in slide.shapes
+                    if getattr(shape, "has_text_frame", False) and shape.text.startswith("Body")
+                )
+                main_title.name = "main-title"
+                main_title.text = "重复的主标题"
+                section = slide.shapes.add_textbox(Inches(8), Inches(0.1), Inches(2), Inches(0.4))
+                section.name = "template-section-label"
+                section.text = f"0{index} / 章节"
+            presentation.save(output)
+
+            report = validate_pptx(output, expected_body_count=2, expect_ending=True)
+
+            self.assertIn("adjacent-duplicate-title", {issue.code for issue in report.warnings})
+
+    def test_single_line_text_frames_use_ink_bands_for_overlap_detection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output, _result = self.build(Path(tmp), count=1)
+            presentation = Presentation(output)
+            slide = presentation.slides[1]
+            for name, top in (("body-stack-a", 3.0), ("body-stack-b", 3.15)):
+                shape = slide.shapes.add_textbox(Inches(1), Inches(top), Inches(4), Inches(0.6))
+                shape.name = name
+                shape.text = name
+                shape.text_frame.word_wrap = False
+                shape.text_frame.auto_size = MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
+                shape.text_frame.margin_left = 0
+                shape.text_frame.margin_right = 0
+                shape.text_frame.margin_top = 0
+                shape.text_frame.margin_bottom = 0
+                for run in shape.text_frame.paragraphs[0].runs:
+                    run.font.size = Pt(24)
+            presentation.save(output)
+
+            report = validate_pptx(output, expected_body_count=1, expect_ending=True)
+
+            self.assertNotIn("possible-text-overlap", {issue.code for issue in report.warnings})
+
+    def test_true_single_line_text_overlap_is_still_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output, _result = self.build(Path(tmp), count=1)
+            presentation = Presentation(output)
+            slide = presentation.slides[1]
+            for name in ("body-overlap-a", "body-overlap-b"):
+                shape = slide.shapes.add_textbox(Inches(1), Inches(3), Inches(4), Inches(0.6))
+                shape.name = name
+                shape.text = name
+                shape.text_frame.word_wrap = False
+                shape.text_frame.auto_size = MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
+                shape.text_frame.margin_left = 0
+                shape.text_frame.margin_right = 0
+                shape.text_frame.margin_top = 0
+                shape.text_frame.margin_bottom = 0
+                for run in shape.text_frame.paragraphs[0].runs:
+                    run.font.size = Pt(24)
+            presentation.save(output)
+
+            report = validate_pptx(output, expected_body_count=1, expect_ending=True)
+
+            self.assertIn("possible-text-overlap", {issue.code for issue in report.warnings})
 
     def test_cli_writes_json_and_markdown_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -362,6 +496,7 @@ class ValidateGhbPptxTest(unittest.TestCase):
                     "freshness",
                     "reviewability",
                     "release_policy",
+                    "font_embedding",
                     "blocking_findings",
                     "advisory_findings",
                     "per_slide_evidence",

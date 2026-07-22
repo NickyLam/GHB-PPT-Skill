@@ -4,6 +4,12 @@ on:
   pull_request:
   push:
   workflow_dispatch:
+    inputs:
+      visual_regression:
+        description: Run the optional LibreOffice pixel-metrics regression
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -52,4 +58,43 @@ jobs:
             ${{ runner.temp }}/ghb-smoke/D_01_body_default_ending/reports/*.md
             ${{ runner.temp }}/ghb-smoke/ci-validation.json
             ${{ runner.temp }}/ghb-smoke/ci-validation.md
+          if-no-files-found: error
+
+  visual-regression:
+    if: github.event_name == 'workflow_dispatch' && inputs.visual_regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install renderer and CJK font
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libreoffice-impress poppler-utils fonts-adobe-source-han-sans-cn
+          fc-cache -f
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Build and render the one-body-slide visual fixture
+        run: >-
+          python tests/fixtures/build_baseline.py
+          --output "$RUNNER_TEMP/ghb-visual"
+          --pipeline unified
+          --case D_01_body_default_ending
+      - name: Compare tolerant pixel metrics
+        run: >-
+          python scripts/check_render_baseline.py
+          "$RUNNER_TEMP/ghb-visual/D_01_body_default_ending/render/slide-02.png"
+          --baseline tests/fixtures/render_baseline_d01.json
+      - name: Upload visual evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghb-visual-regression
+          path: |
+            ${{ runner.temp }}/ghb-visual/D_01_body_default_ending/exports/final.pptx
+            ${{ runner.temp }}/ghb-visual/D_01_body_default_ending/render/*
           if-no-files-found: error

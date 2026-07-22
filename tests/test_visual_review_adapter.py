@@ -13,6 +13,7 @@ from unittest import mock
 from PIL import Image
 
 import scripts.review_visual_quality as review_module
+from scripts.ghb_ppt import _review_layout_context, _review_structure_context
 from scripts.review_visual_quality import (
     AdapterConfig,
     PageEvidence,
@@ -25,6 +26,48 @@ from scripts.review_visual_quality import (
 
 
 class VisualReviewAdapterTest(unittest.TestCase):
+    def test_review_context_excludes_source_paths_notes_and_unrelated_fields(self):
+        projected = _review_layout_context({
+            "slide_id": "body-01",
+            "key_message": "可见结论",
+            "page_schema": {"page_purpose": "hero"},
+            "source_reference": "/private/source.md#secret",
+            "speaker_note": "internal presenter note",
+            "claim_ids": ["claim-secret"],
+        })
+        self.assertEqual(
+            projected,
+            {
+                "slide_id": "body-01",
+                "key_message": "可见结论",
+                "page_schema": {"page_purpose": "hero"},
+            },
+        )
+        findings = _review_structure_context([{
+            "code": "visual-test",
+            "severity": "warning",
+            "slide_id": "body-01",
+            "suggested_action": "align cards",
+            "debug_path": "/private/report.json",
+        }])
+        self.assertNotIn("debug_path", findings[0])
+
+    def test_request_page_carries_bounded_plan_svg_and_structure_context(self):
+        context = {
+            "layout_plan": {"slide_id": "body-01", "page_schema": {"page_purpose": "hero"}},
+            "svg_metadata": [{"stage": "authored", "error_count": 0}],
+            "structure_findings": [],
+        }
+        page = PageEvidence(**{**self.page.__dict__, "context": context})
+        with tempfile.TemporaryDirectory() as tmp:
+            request_pages, _ = review_module._snapshot_pages(
+                [page],
+                workspace=Path(tmp),
+                run_id=page.run_id,
+                approved_slide_ids={page.slide_id},
+            )
+        self.assertEqual(request_pages[0]["context"], context)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -68,7 +111,10 @@ class VisualReviewAdapterTest(unittest.TestCase):
             "model_id": "fixture-model",
             "tool_contract": "fixture-tool-v1",
             "trusted_direct": True,
-            "deadline_seconds": 2.0,
+            # Normal adapter-contract tests should tolerate a loaded CI host.
+            # The bounded-timeout behavior remains covered with an explicit
+            # 0.15-second deadline in the timeout-specific test below.
+            "deadline_seconds": 10.0,
         }
         values.update(overrides)
         return AdapterConfig(**values)

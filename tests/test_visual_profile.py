@@ -4,7 +4,9 @@ import unittest
 from pathlib import Path
 
 from scripts.validate_project_contract import (
+    default_art_direction,
     default_visual_profile,
+    validate_art_direction,
     validate_project_contract,
     validate_page_schema,
     validate_visual_profile,
@@ -60,7 +62,124 @@ class VisualProfileContractTest(unittest.TestCase):
             )
             codes = {item["code"] for item in issues}
             self.assertIn("missing-visual-profile", codes)
+            self.assertIn("missing-art-direction", codes)
             self.assertIn("missing-layout-plan", codes)
+
+    def test_art_direction_requires_deck_level_visual_thesis_and_rhythm(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "art_direction.json"
+            payload = default_art_direction()
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            codes = {item["code"] for item in validate_art_direction(path)}
+            self.assertIn("incomplete-art-direction", codes)
+
+            payload.update({
+                "visual_thesis": "用证据与决策页建立从工具体验到团队工作流的叙事",
+                "anchor_slide_ids": ["body-01", "body-09", "body-18"],
+            })
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertEqual(validate_art_direction(path), [])
+
+    def test_art_direction_anchor_ids_must_exist_in_layout_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            art = default_art_direction()
+            art.update({
+                "visual_thesis": "用一张锚点页建立整套演示的视觉重心",
+                "anchor_slide_ids": ["body-99"],
+            })
+            (project / "art_direction.json").write_text(json.dumps(art), encoding="utf-8")
+            (project / "visual_profile.json").write_text(
+                json.dumps(default_visual_profile()), encoding="utf-8"
+            )
+            (project / "layout_plan.json").write_text(json.dumps([{
+                "slide_id": "body-01",
+                "layout_archetype": "layered_arch",
+                "items": ["platform-core"],
+                "page_schema": page_schema(),
+            }]), encoding="utf-8")
+
+            codes = {
+                item["code"]
+                for item in validate_project_contract(
+                    project,
+                    skip_required_files=True,
+                    require_visual_contract=True,
+                )
+            }
+
+            self.assertIn("art-direction-anchor-missing-slide", codes)
+
+    def test_art_direction_design_mode_must_match_confirmed_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            art = default_art_direction()
+            art.update({
+                "design_mode": "instructional",
+                "visual_thesis": "以逐步讲解建立可复用的 Skill 选择方法",
+                "anchor_slide_ids": ["body-01"],
+            })
+            (project / "art_direction.json").write_text(json.dumps(art), encoding="utf-8")
+            (project / "visual_profile.json").write_text(
+                json.dumps(default_visual_profile()), encoding="utf-8"
+            )
+            (project / "confirmation.json").write_text(
+                json.dumps({"decisions": {"mode": "briefing"}}),
+                encoding="utf-8",
+            )
+            (project / "layout_plan.json").write_text(json.dumps([{
+                "slide_id": "body-01",
+                "layout_archetype": "layered_arch",
+                "items": ["platform-core"],
+                "page_schema": page_schema(),
+            }]), encoding="utf-8")
+
+            codes = {
+                item["code"]
+                for item in validate_project_contract(
+                    project,
+                    skip_required_files=True,
+                    require_visual_contract=True,
+                )
+            }
+
+            self.assertIn("art-direction-mode-drift", codes)
+
+    def test_extended_page_purpose_taxonomy_accepts_real_presentation_roles(self):
+        row = {
+            "slide_id": "body-01",
+            "layout_archetype": "editorial",
+            "items": ["message"],
+        }
+        for purpose in (
+            "hero",
+            "section-anchor",
+            "evidence",
+            "case-study",
+            "instruction",
+            "decision",
+            "risk",
+            "screenshot",
+            "data-story",
+            "recommendation",
+            "closing",
+        ):
+            with self.subTest(purpose=purpose):
+                schema = page_schema(
+                    page_purpose=purpose,
+                    layout_variant="editorial/default",
+                    emphasis="distributed",
+                    focal_target=None,
+                )
+                self.assertEqual(
+                    validate_page_schema(
+                        schema,
+                        row=row,
+                        path=Path("layout_plan.json"),
+                        profile=default_visual_profile(),
+                    ),
+                    [],
+                )
 
     def test_page_schema_rejects_unknown_major_but_tolerates_additive_fields(self):
         row = {

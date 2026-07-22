@@ -18,16 +18,68 @@ from scripts.ghb_ppt import (
     timestamped_candidates,
     validation_error_codes,
     build_evidence_items,
+    build_content,
+    check_svg,
     evidence_freshness,
     doctor_payload,
     load_review_config,
     _load_review_authorization,
     run_optional_review,
+    skill_drift_payload,
 )
 from scripts.validate_project_contract import confirmation_digest, validate_project_contract
 
 
 class GhbPptCliTest(unittest.TestCase):
+    def test_skill_drift_payload_compares_installed_copy_without_writing_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repository_skill = root / "repository" / "SKILL.md"
+            installed_skill = root / "installed" / "SKILL.md"
+            repository_skill.parent.mkdir()
+            installed_skill.parent.mkdir()
+            repository_skill.write_text("repository\n", encoding="utf-8")
+            installed_skill.write_text("installed\n", encoding="utf-8")
+            before = installed_skill.read_bytes()
+
+            payload = skill_drift_payload(
+                repository_skill,
+                candidates=[installed_skill],
+            )
+
+            self.assertTrue(payload["drift_detected"])
+            self.assertFalse(payload["installed"][0]["matches_repository"])
+            self.assertEqual(installed_skill.read_bytes(), before)
+
+    def test_check_svg_requires_visual_contract_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run = RunContext(Path(tmp), "check-svg", dry_run=True)
+            commands = []
+            with mock.patch.object(
+                run,
+                "run",
+                side_effect=lambda stage, command: commands.append((stage, command)),
+            ):
+                check_svg(run)
+            contract = next(command for stage, command in commands if stage == "project-contract")
+            self.assertIn("--require-visual-contract", contract)
+
+    def test_build_content_exports_from_finalized_svg_without_mutating_authored_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "notes").mkdir()
+            run = RunContext(project, "build-content", dry_run=True)
+            commands = []
+            with mock.patch.object(
+                run,
+                "run",
+                side_effect=lambda stage, command: commands.append((stage, command)),
+            ):
+                build_content(run, output=project / "content.pptx")
+            conversion = next(command for stage, command in commands if stage == "svg-to-pptx")
+            self.assertIn("-s", conversion)
+            self.assertEqual(conversion[conversion.index("-s") + 1], "final")
+
     def test_required_review_accepts_only_passed_outcome(self):
         require_completed_review({"outcome": "passed"}, required=True)
         for outcome in ("needs-revision", "limited", "skipped", "unavailable", "error"):
@@ -591,9 +643,12 @@ class GhbPptCliTest(unittest.TestCase):
             run = RunContext(project, "check-svg")
             run.checkpoint("check-svg", [])
             state = json.loads((project / ".ghb" / "state.json").read_text(encoding="utf-8"))
-            self.assertEqual(state["evidence_manifest"]["schema"], "ghb.evidence-manifest.v1")
+            self.assertEqual(state["evidence_manifest"]["schema"], "ghb.evidence-manifest.v2")
             identities = {item["identity"] for item in state["evidence_manifest"]["evidence"]}
-            self.assertTrue({"visual-profile", "layout-plan", "rule-contract"}.issubset(identities))
+            self.assertTrue({
+                "visual-profile", "art-direction", "layout-plan", "rule-contract",
+                "authored-svg-bundle",
+            }.issubset(identities))
 
     def test_evidence_freshness_propagates_only_to_manifest_dependents(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -601,14 +656,18 @@ class GhbPptCliTest(unittest.TestCase):
             for directory in ("svg_output", "svg_final", "reports", "exports", "render"):
                 (project / directory).mkdir()
             profile_path = project / "visual_profile.json"
+            art_direction_path = project / "art_direction.json"
             layout_path = project / "layout_plan.json"
             svg_path = project / "svg_output" / "01.svg"
+            final_svg_path = project / "svg_final" / "01.svg"
             pptx_path = project / "exports" / "final.pptx"
             render_path = project / "render" / "render-report.json"
             render_page = project / "render" / "slide-01.png"
             profile_path.write_text('{"schema":"ghb.visual-profile.v1","v":1}', encoding="utf-8")
+            art_direction_path.write_text('{"schema":"ghb.art-direction.v1","v":1}', encoding="utf-8")
             layout_path.write_text('[]', encoding="utf-8")
             svg_path.write_text('<svg/>', encoding="utf-8")
+            final_svg_path.write_text('<svg/>', encoding="utf-8")
             pptx_path.write_bytes(b"pptx")
             (project / "reports" / "quality-report.json").write_text('{"passed":true}', encoding="utf-8")
             render_page.write_bytes(b"png")
@@ -624,17 +683,27 @@ class GhbPptCliTest(unittest.TestCase):
                 (
                     profile_path,
                     '{"schema":"ghb.visual-profile.v1","v":2}',
-                    {"visual-profile", "svg-bundle", "pptx", "deterministic-report", "render-evidence", "adapter-review", "final-report"},
+                    {"visual-profile", "authored-svg-bundle", "finalized-svg-bundle", "pptx", "deterministic-report", "render-evidence", "adapter-review", "final-report"},
+                ),
+                (
+                    art_direction_path,
+                    '{"schema":"ghb.art-direction.v1","v":2}',
+                    {"art-direction", "authored-svg-bundle", "finalized-svg-bundle", "pptx", "deterministic-report", "render-evidence", "adapter-review", "final-report"},
                 ),
                 (
                     layout_path,
                     '[{"slide":1}]',
-                    {"layout-plan", "svg-bundle", "pptx", "deterministic-report", "render-evidence", "adapter-review", "final-report"},
+                    {"layout-plan", "authored-svg-bundle", "finalized-svg-bundle", "pptx", "deterministic-report", "render-evidence", "adapter-review", "final-report"},
                 ),
                 (
                     svg_path,
                     '<svg><rect/></svg>',
-                    {"svg-bundle", "pptx", "deterministic-report", "render-evidence", "adapter-review", "final-report"},
+                    {"authored-svg-bundle", "finalized-svg-bundle", "pptx", "deterministic-report", "render-evidence", "adapter-review", "final-report"},
+                ),
+                (
+                    final_svg_path,
+                    '<svg><rect/></svg>',
+                    {"finalized-svg-bundle", "pptx", "deterministic-report", "render-evidence", "adapter-review", "final-report"},
                 ),
                 (
                     pptx_path,

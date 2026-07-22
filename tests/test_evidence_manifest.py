@@ -112,7 +112,8 @@ class EvidenceFreshnessTest(unittest.TestCase):
             stale,
             {
                 "visual-profile",
-                "svg-bundle",
+                "authored-svg-bundle",
+                "finalized-svg-bundle",
                 "deterministic-report",
                 "pptx",
                 "render-evidence",
@@ -165,16 +166,31 @@ class EvidenceFreshnessTest(unittest.TestCase):
         self.assertEqual(missing.states["layout-plan"], "stale")
         self.assertEqual(missing.states["final-report"], "stale")
 
-        svg = next(item for item in self.items if item.identity == "svg-bundle")
+        svg = next(item for item in self.items if item.identity == "authored-svg-bundle")
         assert isinstance(svg.content, Path)
         svg.content.write_bytes(b"changed-svg-bytes")
         mismatched = self.evaluate()
         self.assertIn("evidence-byte-digest-mismatch", mismatched.issue_codes)
-        self.assertEqual(mismatched.states["svg-bundle"], "stale")
+        self.assertEqual(mismatched.states["authored-svg-bundle"], "stale")
         self.assertEqual(mismatched.states["final-report"], "stale")
 
+    def test_authored_and_finalized_svg_evidence_have_distinct_dependencies(self):
+        self.assertNotIn("svg-bundle", DEFAULT_DEPENDENCY_DAG)
+        self.assertEqual(
+            DEFAULT_DEPENDENCY_DAG["authored-svg-bundle"],
+            ("visual-profile", "art-direction", "layout-plan", "rule-contract"),
+        )
+        self.assertEqual(
+            DEFAULT_DEPENDENCY_DAG["finalized-svg-bundle"],
+            ("authored-svg-bundle",),
+        )
+        self.assertEqual(
+            DEFAULT_DEPENDENCY_DAG["pptx"],
+            ("finalized-svg-bundle",),
+        )
+
     def test_unknown_version_cycle_duplicate_and_dependency_mismatch_have_stable_codes(self):
-        unknown = {**self.manifest, "schema": "ghb.evidence-manifest.v2"}
+        unknown = {**self.manifest, "schema": "ghb.evidence-manifest.v3"}
         self.assertIn(
             "evidence-unknown-manifest-version",
             evaluate_freshness(

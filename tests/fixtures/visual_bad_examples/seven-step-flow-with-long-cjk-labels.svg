@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <g data-layout="timeline">
+    <g id="n1" data-flow-node="n1" data-qa-box="40 260 140 100"><rect x="40" y="260" width="140" height="100"/></g>
+    <g id="n2" data-flow-node="n2" data-qa-box="200 260 140 100"><rect x="200" y="260" width="140" height="100"/></g>
+    <g id="n3" data-flow-node="n3" data-qa-box="360 260 140 100"><rect x="360" y="260" width="140" height="100"/></g>
+    <g id="n4" data-flow-node="n4" data-qa-box="520 260 140 100"><rect x="520" y="260" width="140" height="100"/></g>
+    <g id="n5" data-flow-node="n5" data-qa-box="680 260 140 100"><rect x="680" y="260" width="140" height="100"/></g>
+    <g id="n6" data-flow-node="n6" data-qa-box="840 260 140 100"><rect x="840" y="260" width="140" height="100"/></g>
+    <g id="n7" data-flow-node="n7" data-qa-box="1000 260 140 100"><rect x="1000" y="260" width="140" height="100"/></g>
+    <text id="body-long-step" data-qa-role="body" data-qa-box="50 285 120 30" x="50" y="310" font-size="24">这是一个无法放进节点的超长中文阶段标签</text>
+    <line data-flow-from="n1" data-flow-to="n2" x1="110" y1="310" x2="270" y2="310"/>
+  </g>
+</svg>

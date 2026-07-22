@@ -1,5 +1,14 @@
 # Template Analysis — 如何分析一个 PPTX 模板
 
+`ghb_ppt.py analyze-template --project ...` 同时输出
+`analysis/slide_library.json` 与标准化的 `analysis/template_profile.json`
+（`ghb.template-profile.v1`）。封面填充、页眉/正文质量门和合并默认值读取
+该 profile；内置 GHB 实例位于 `templates/GHB_PPT_模板.profile.json`。
+无已评审 sidecar 的模板会从正文 layout 占位符几何、幻灯片显式颜色和主题
+`dk2` 推导安全区、正文 surface 与品牌色；已评审 sidecar 必须用
+`source_sha256` 绑定模板字节，模板变化后会自动失效并回到 OOXML 推导，避免
+静默复用陈旧常量。
+
 > Phase 0 的详细操作手册。目标是搞清模板结构，确定 3 件事：① 封面是哪页；② 正文页用哪个版式做背景；③ 品牌色与字体。
 
 ## 1. 解包

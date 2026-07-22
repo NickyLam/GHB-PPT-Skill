@@ -39,7 +39,9 @@ python3 -m pip install -r requirements.txt
 python3 scripts/ghb_ppt.py doctor
 ```
 
-`doctor` 检查 Python、依赖、模板、目录权限、字体和渲染器。缺少
+`doctor` 检查 Python、依赖、模板、目录权限、字体和渲染器，并只读比较
+仓库 `SKILL.md` 与本机已安装候选副本的 SHA-256；漂移只告警，不自动
+覆盖仓库外文件。缺少
 LibreOffice 时仍可构建和结构验证，但必须记录“未进行最终渲染”。缺少
 `Source Han Sans SC`（首选）和 `Microsoft YaHei`（兼容回退）时，不得声称
 中文视觉效果已经通过。正文 SVG、封面和 DrawingML 默认使用并保留
@@ -55,8 +57,12 @@ python3 scripts/ghb_ppt.py analyze-template \
 ```
 
 按 [references/authoring-workflow.md](references/authoring-workflow.md) 准备
-封面计划、源内容、设计规范、`spec_lock.md`、`layout_plan.json`、正文
-SVG 和备注。
+封面计划 `analysis/cover_fill_plan.json`、源内容、`design_spec.md`、
+`spec_lock.md`、`layout_plan.json`、正文 SVG 和备注。
+
+全部项目合同字段与 SVG `data-*` 语义标记以
+[references/contracts.md](references/contracts.md) 为单一索引；其他文档只解释
+流程和算法，不另行定义同名字段。
 
 ### 内容确认闸门
 
@@ -91,7 +97,9 @@ SVG 和备注。
 - [references/svg-image-embedding.md](references/svg-image-embedding.md)：仅在使用
   图片或图标时读取。
 
-`visual_profile.json` 定义全局字号、间距、占用率、构图和预算；每个正文
+`art_direction.json` 先锁定整套演示的视觉命题、叙事弧、页面家族、表面
+节奏、锚点页和图像策略。`visual_profile.json` 定义全局角色字号、间距、
+占用率、构图和预算；两者都是默认强制合同。每个正文
 记录必须在嵌套 `page_schema` 中声明页面用途、密度、节奏角色、版式变体和
 强调意图。Density is not emphasis：不能因为页面较稀疏或旧节奏为
 `anchor` 就机械强调第 2 项。只有 `key_message` 明确支持某个可见项目时才
@@ -111,6 +119,13 @@ SVG 和备注。
   GHB 模板原生右上标题框。每页最多一个该 id，不要把页面主标题标记为此 id；
 - 使用 `#AB1F29` 主色、`#44546A` 辅色和 GHB 字体规范；
 - 给自由摆放内容提供质量检查所需的边界/角色元数据。
+- 每个可见文本使用 `data-qa-role`，或使用 `main-title`、`body-*`、
+  `caption-*`、`source-*`、`footer-*` 等稳定 ID；严格合同按 SVG px→pt
+  的 0.75 换算强制标题/正文/说明/来源/页脚字号下限。
+- 按 `page_schema.page_purpose` 提供机器可审计语义：流程用
+  `data-flow-*` / `data-step` / `data-lane`，比较用 `data-component*`，
+  证据、指标、决策、风险和锚点分别使用 `data-evidence`、`data-metric`、
+  `data-decision`、`data-risk` / `data-mitigation`、`data-focal`。
 - 让流程/飞轮连接线在节点外结束，箭头不得穿入卡片；连接空间不足时
   优先缩窄节点或重排，不得把箭头压成竖直短线。
 - 流程节点必须写 `data-flow-node` 与 `data-qa-box`，连接线必须写
@@ -148,9 +163,11 @@ python3 scripts/ghb_ppt.py build \
   --repair-attempts 1
 ```
 
-`build` 依次执行封面、authored SVG 门、正式白底移除、SVG finalized 门、
+`build` 依次执行封面、authored SVG 门、复制/内联到 `svg_final/`、仅从
+`svg_final/` 正式移除预览白底、SVG finalized 门、
 可编辑正文导出、碰撞安全 OOXML 合并、预渲染验证、可用时的
-LibreOffice 渲染和最终报告。修复重试仅限 `0..3` 次确定性操作。
+LibreOffice 渲染和最终报告。`svg_output/` 是不可变 authored 证据，构建
+不得原地改写。修复重试仅限 `0..3` 次确定性操作。
 
 真实交付默认使用 `--quality-policy release`：任何未处置 warning 都阻断。
 确需接受的模板异常写入 `ghb.warning-waivers.v1` 文件，并用
@@ -168,7 +185,7 @@ LibreOffice 渲染和最终报告。修复重试仅限 `0..3` 次确定性操作
 | `analyze-template` | 分析模板槽位和版式 |
 | `build-cover` | template-fill 封面并修复字体 |
 | `check-svg` | 运行 authored SVG 综合门 |
-| `check-project` | 强制校验六项确认、内容模型、版式语义和必需文件 |
+| `check-project` | 强制校验六项确认、art direction、视觉合同、内容模型、版式语义和必需文件 |
 | `build-content` | 移除白底、finalize 并导出正文 PPTX |
 | `merge` | 合并封面、正文、母版和可选致谢页 |
 | `validate` | 输出最终结构/内容/可编辑性检查 |
@@ -199,6 +216,10 @@ LibreOffice 渲染和最终报告。修复重试仅限 `0..3` 次确定性操作
 - `render/contact-sheet.png` 和逐页 PNG（渲染器可用时）
 - `.ghb/evidence-manifest.json`、`.ghb/runs/<run>/run.json` 与
   `.ghb/state.json`
+
+最终 PPTX 验证会再次按角色形状名输出 `min_font_by_role`，严格模式下任何
+角色字号低于 `visual_profile.json` 下限都会失败，不能只凭 authored SVG
+通过就宣称排版合同保真。
 
 按 [references/quality-and-recovery.md](references/quality-and-recovery.md)
 逐页检查。至少确认：页数/角色正确、母版链完整、无悬空关系、无白底、

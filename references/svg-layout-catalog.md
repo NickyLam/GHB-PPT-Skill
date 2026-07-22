@@ -1,5 +1,13 @@
 # SVG Layout Catalog
 
+For deterministic component rendering, prefer the constrained
+`ghb.layout-schema.v1` entrypoint exposed by
+`scripts/ppt_master/svg_layouts.py::render_layout_schema`. Call
+`validate_layout_schema` first and act on its `suggestion` field before emitting
+SVG. The schema accepts an archetype, a budgeted title, visible nodes, density,
+variant, emphasis, source reference, and optional geometry. It does not replace
+manual composition for anchor pages.
+
 Use this catalog after content confirmation and before writing body-slide SVG.
 Pick a semantic `layout_archetype` for every body slide, write it into
 `layout_plan.json`, and put the same value on the main SVG content group as
@@ -118,9 +126,14 @@ their legacy SVG bytes. Intent-aware calls accept:
 
 The renderer rejects content below the semantic minimum, above the family or
 declared node maximum, above the per-item limit, or above the declared/family
-text maximum. Even within those hard ceilings, it also rejects labels whose
-wrapped lines cannot fit the actual component height at the 13 px font floor.
-It does not globally shrink type to hide an over-budget page.
+text maximum. Even within those hard ceilings, intent-aware output also rejects
+labels whose wrapped lines cannot fit the actual component height at the strict
+24 px / 18 pt body floor. Legacy calls without visual intent retain their
+byte-stable 13 px compatibility floor, but they are not a valid strict
+production-authoring path. The renderer does not globally shrink type to hide
+an over-budget page. Intent-aware text also receives stable `body-*` or
+`caption-*` IDs so the SVG-to-DrawingML converter preserves typography roles
+for final PPTX font-floor readback.
 
 Density is not emphasis. The author must derive emphasis from `key_message`:
 `single-focal` is valid only when the conclusion names or clearly privileges

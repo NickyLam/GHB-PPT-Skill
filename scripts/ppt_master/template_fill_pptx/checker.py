@@ -149,9 +149,19 @@ def _fit_status(
         geometry=geometry,
         text_metrics=text_metrics,
     )
+    measured_font_size = text_metrics.get("font_size_px")
+    has_measured_capacity = (
+        capacity_width is not None
+        and isinstance(measured_font_size, (int, float))
+        and not isinstance(measured_font_size, bool)
+        and measured_font_size > 0
+    )
 
     if role == "label_candidate" or (old_width <= 8 and old_paragraphs <= 1):
-        if capacity_width is not None and new_width <= capacity_width and not (old_width <= 8):
+        # GHB cover templates use short placeholders such as ``XXX``. When the
+        # bundled analyzer supplied measured geometry and font size, trust that
+        # packaging evidence instead of treating placeholder length as capacity.
+        if has_measured_capacity and new_width <= capacity_width:
             return "OK", "short label fits estimated text-box capacity"
         label_limit = old_width
         if isinstance(width, int) and width >= 220:

@@ -7,11 +7,11 @@ time, or a checkpoint path is never evidence of freshness.
 
 ## Version and identity
 
-V1 manifests use:
+V2 manifests use:
 
 ```json
 {
-  "schema": "ghb.evidence-manifest.v1",
+  "schema": "ghb.evidence-manifest.v2",
   "canonicalization": "ghb.canonical-json.v1",
   "project_id": "logical-project-id",
   "run_id": "logical-run-id",
@@ -59,32 +59,36 @@ the regular, non-symlink file or exact bytes and the manifest binds
 name remains semantic data and must not be hidden inside an excluded output
 path.
 
-## V1 dependency DAG
+## V2 dependency DAG
 
 The built-in DAG is versioned in `DEFAULT_DEPENDENCY_DAG`:
 
 ```text
 visual-profile ─┐
-layout-plan ────┼─> svg-bundle -> pptx ──────────────┐
-                │          │       │                 │
-rule-contract ──┴──────────┴──────> deterministic-report
-                                     │               │
-render-environment -> render-evidence <──────────────┘
-                              │      │
-adapter-policy ───────────────┼──────┴─> adapter-review
-                              │                │
-                              └────────────────┴─> final-report
+art-direction ──┼─> authored-svg-bundle -> finalized-svg-bundle -> pptx ─┐
+layout-plan ────┤                   │                    │          │     │
+rule-contract ──┘                   └────────────────────┴──────────┼─> deterministic-report
+                                                                    │           │
+render-environment ───────────────────────────────> render-evidence <───────────┘
+                                                         │                    │
+adapter-policy ──────────────────────────────────────────┼────────────> adapter-review
+                                                         │                    │
+                                                         └────────────────────┴─> final-report
 ```
 
 This gives every downstream stage an explicit invalidation path:
 
-- profile or layout changes invalidate SVG, PPTX, deterministic, rendered,
-  adapter-review, and final-report evidence;
-- SVG byte changes invalidate PPTX and all of its downstream evidence;
+- profile, art-direction, layout, or rule-contract changes invalidate authored
+  SVG, finalized SVG, PPTX, deterministic, rendered, adapter-review, and final
+  evidence;
+- authored SVG byte changes invalidate the authored bundle and every downstream
+  record; finalized SVG byte changes invalidate only the finalized bundle and
+  its downstream records;
 - renderer, DPI, font inventory, or substitution changes invalidate rendered,
   adapter-review, and final-report evidence, but not deterministic evidence;
-- rule-contract changes invalidate deterministic, adapter-review, and final
-  reports;
+- rule-contract is upstream of authored SVG as well as deterministic reports,
+  so a quality-rule change forces revalidation and regeneration instead of
+  blessing old bytes under a new contract;
 - adapter identity, local/remote capability, authorization, credential-variable
   names/presence, retention, slide membership, and bounds belong in
   `adapter-policy`; a policy change invalidates adapter-review and final-report
@@ -125,7 +129,7 @@ At minimum, callers should preserve these codes verbatim:
 | `evidence-unknown-canonicalization-version` | Unsupported digest rules |
 | `evidence-duplicate-identity` | Duplicate manifest or current identity |
 | `evidence-missing-dependency` | A declared dependency is absent |
-| `evidence-dependency-mismatch` | A V1 built-in edge differs from the contract |
+| `evidence-dependency-mismatch` | A V2 built-in edge differs from the contract |
 | `evidence-dependency-cycle` | Dependency graph is cyclic |
 | `evidence-project-mismatch` | Manifest belongs to another project |
 | `evidence-run-mismatch` | Manifest belongs to another run |

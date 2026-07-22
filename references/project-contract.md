@@ -70,15 +70,23 @@ Every layout-plan row uses `claim_ids` to map the page back to claims. Every
 
 ## Visual profile v1
 
-`visual_profile.json` owns project-wide visual direction. `ghb_ppt.py init`
-creates the valid neutral GHB scaffold below; it does not invent a page purpose,
-focal target, or layout coordinates.
+`visual_profile.json` owns measurable project-wide visual policy.
+`ghb_ppt.py init` creates the valid strict GHB scaffold below; it does not
+invent a page purpose, focal target, or layout coordinates.
 
 ```json
 {
   "schema": "ghb.visual-profile.v1",
   "brand": {"primary": "#AB1F29", "text": "#2B2B2B", "surface": "#FFFFFF"},
-  "typography": {"min_title_pt": 28, "min_body_pt": 18, "min_title_body_ratio": 1.5},
+  "typography": {
+    "enforcement": "strict",
+    "min_title_pt": 28,
+    "min_body_pt": 18,
+    "min_caption_pt": 12,
+    "min_source_pt": 10,
+    "min_footer_pt": 9,
+    "min_title_body_ratio": 1.5
+  },
   "spacing": {"base_unit": 8, "min_component_gap": 16},
   "occupancy": {"body": {"min": 0.42, "max": 0.78}},
   "composition": {"default_density": "balanced", "default_emphasis": "ranked"},
@@ -89,9 +97,46 @@ focal target, or layout coordinates.
 ```
 
 The validator rejects an unknown schema major, inverted occupancy bands,
-non-positive typography/spacing values, invalid defaults, empty focal-zone
-policy, and non-positive budgets. Unknown additive fields are retained and
-tolerated. Page budgets may tighten but never exceed the project maxima.
+non-positive or unordered typography roles, non-strict enforcement, invalid
+spacing/defaults, an empty focal-zone policy, and non-positive budgets. SVG
+font sizes are CSS pixels and convert to points at `0.75`; the default floors
+therefore require at least 38 px title and 24 px body text. Unknown additive
+fields are retained and tolerated. Page budgets may tighten but never exceed
+the project maxima.
+
+## Art direction v1
+
+`art_direction.json` owns deck-level aesthetic coherence. `init` writes an
+intentionally incomplete scaffold; after the six decisions are confirmed, the
+author must replace `visual_thesis: null` and choose real anchor slide IDs
+before any SVG is authored.
+
+```json
+{
+  "schema": "ghb.art-direction.v1",
+  "design_mode": "instructional",
+  "visual_thesis": "用证据与决策页建立从工具体验到团队工作流的叙事",
+  "narrative_arc": ["orient", "explain", "prove", "decide"],
+  "page_families": ["editorial", "evidence", "comparison", "process", "decision"],
+  "surface_strategy": {
+    "variants": ["light", "contrast", "evidence"],
+    "max_same_variant_streak": 2
+  },
+  "focal_strategy": {"max_distributed_streak": 4},
+  "anchor_slide_ids": ["body-01", "body-09", "body-18"],
+  "imagery": {"strategy": "evidence-first", "max_images_per_page": 2}
+}
+```
+
+The validator requires a supported design mode, a non-empty thesis, at least
+three narrative stages and page families, at least two surface variants,
+positive streak limits, at least one real anchor ID, and an image policy of
+`none`, `evidence-first`, `editorial`, or `data-led`. The evidence manifest
+binds this file upstream of both authored and finalized SVG bundles.
+`design_mode` must exactly equal the confirmed `decisions.mode`, and every
+`anchor_slide_ids` entry must equal a `slide_id` that exists in the current
+`layout_plan.json`; either mismatch is confirmation/plan drift and blocks the
+visual contract gate.
 
 ## Nested page schema v1
 
@@ -120,7 +165,7 @@ V1 vocabulary and precedence:
 
 | Concern | Allowed values / boundary |
 |---|---|
-| `page_purpose` | exactly one primary value: `architecture`, `process`, `comparison`, `timeline`, `metrics`, or `summary`; optional additive secondary tags do not change the primary purpose |
+| `page_purpose` | exactly one primary value: `architecture`, `process`, `comparison`, `timeline`, `metrics`, `summary`, `hero`, `section-anchor`, `evidence`, `case-study`, `instruction`, `decision`, `risk`, `screenshot`, `data-story`, `recommendation`, or `closing` |
 | `density` | `breathing`, `balanced`, or `dense`; page value overrides the profile default but cannot exceed profile budgets or typography floors |
 | `rhythm_role` | `anchor`, `continuity`, or `transition`; this is independent of density |
 | `emphasis` | `single-focal`, `ranked`, or `distributed`; `single-focal` requires a non-empty `focal_target` |
@@ -147,16 +192,17 @@ to the same-named densities. The author must still choose `rhythm_role`,
 purpose, emphasis, focal target, and variant. Validators never silently create
 a missing `page_schema`.
 
-Before the U11 rollout gate, use the explicit contract check on migrated/pilot
-projects:
+The visual contract is mandatory in the production CLI. Diagnose it directly:
 
 ```bash
-python3 scripts/ghb_ppt.py check-project --project projects/<name> --require-visual-contract
+python3 scripts/ghb_ppt.py check-project --project projects/<name>
 ```
 
-Normal legacy checks remain available during this rollout window. New projects
-already receive `visual_profile.json`, but page schemas are written only during
-layout planning after user confirmation.
+`check-project`, `check-svg`, `build-content`, `merge`, and `build` all require
+`visual_profile.json`, a completed `art_direction.json`, and one valid
+`page_schema` per planned body slide. There is no production opt-out. Direct
+library calls may still omit the explicit gate only for legacy unit fixtures;
+that compatibility surface is not an authoring path.
 
 ## Layout semantic fields
 
@@ -170,11 +216,34 @@ Add these fields when the matching layout is selected:
 | `flywheel` | non-empty `loop_closure` |
 | `comparison` | non-empty `comparison_criteria` |
 
+The authored SVG must also prove the page purpose with visible semantic
+markers; `data-layout` is descriptive and is not sufficient evidence:
+
+| Page purpose | Required SVG semantics |
+|---|---|
+| `process` | two or more `data-flow-node` plus an edge, or two `data-step` / `data-lane` markers |
+| `instruction` / `timeline` | two or more `data-step` markers; instruction may alternatively use a complete flow |
+| `architecture` | two or more `data-layer` markers |
+| `comparison` | two or more unique `data-component-id` components |
+| `evidence` / `case-study` / `screenshot` | at least one `data-evidence` object |
+| `metrics` / `data-story` | at least one `data-metric` object |
+| `decision` / `recommendation` | at least one `data-decision` or `data-recommendation` object |
+| `risk` | both `data-risk` and `data-mitigation` objects |
+| `hero` / `section-anchor` / `closing` | at least one visible `data-focal="true"` object |
+
+## Authored and finalized identity
+
+`svg_output/` is the immutable authored bundle. `build-content` runs the
+authored gate, writes finalized copies into `svg_final/`, removes the preview
+`<g id="bg">` only from those copies, runs the finalized gate, and converts
+only `svg_final/` into PPTX. Any authored edit creates a new upstream digest;
+post-processing must never rewrite authored evidence in place.
+
 Run the contract gate directly when diagnosing:
 
 ```bash
 python3 scripts/ghb_ppt.py check-project --project projects/<name>
 ```
 
-`check-svg`, `build-content`, and `build` call the same gate automatically.
+`check-svg`, `build-content`, `merge`, and `build` call the same gate automatically.
 There is no production bypass flag.

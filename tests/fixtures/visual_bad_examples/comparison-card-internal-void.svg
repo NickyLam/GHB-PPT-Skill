@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <g data-layout="comparison">
+    <rect data-component="comparison-card" data-component-id="left" data-qa-box="100 180 480 400" x="100" y="180" width="480" height="400"/>
+    <text id="body-left-heading" data-component-parent="left" data-component-slot="heading" data-qa-box="130 210 420 42" x="130" y="242" font-size="24">方案A</text>
+  </g>
+</svg>
