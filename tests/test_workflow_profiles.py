@@ -135,7 +135,9 @@ def test_standard_consulting_research_visual_profile_is_opt_in_and_projected() -
         lock = (project / "spec_lock.md").read_text(encoding="utf-8")
         assert "- mode: narrative" in lock
         assert "## visual_profile" in lock
-        assert "full-canvas white body overlay" in lock
+        assert "preserve the GHB logo" in lock
+        assert "section_label: required id='template-section-label'" in lock
+        assert "full-canvas white overlays" in lock
         assert "#00A6E8" in lock
 
 

@@ -100,3 +100,5 @@ def test_consulting_content_profile_is_explicit_and_visual_style_stays_separate(
     assert "visual_profile" in workflow_modes
     assert "默认不启用" in visual_profile
     assert "GHB" in visual_profile
+    assert "template-section-label" in visual_profile
+    assert "全画布白色覆盖层" in visual_profile

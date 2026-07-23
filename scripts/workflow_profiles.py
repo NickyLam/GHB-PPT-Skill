@@ -327,11 +327,11 @@ def _projected_spec_lock(brief: dict[str, Any], visual_profile: str | None) -> s
 
 ## visual_style
 - visual_style: custom
-- visual_style_behavior: white research-editorial field; rectilinear evidence graphics; typographic hierarchy, rules, and whitespace instead of cards or dashboard chrome
+- visual_style_behavior: research-editorial evidence treatment inside the GHB body field; preserve native GHB header while using rectilinear evidence graphics, typographic hierarchy, rules, and whitespace instead of cards or dashboard chrome
 
 ## visual_profile
 - name: consulting-research-cn-v1
-- body_master_behavior: full-canvas white body overlay; retain GHB cover and ending only
+- body_master_behavior: preserve the GHB logo, native right section-title frame, and template body panel; author only beneath the native header, never with a full-canvas overlay
 
 ## colors
 - paper: #FFFFFF
@@ -348,8 +348,8 @@ def _projected_spec_lock(brief: dict[str, Any], visual_profile: str | None) -> s
 - font_family: 'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif
 - title_family: 'Songti SC', SimSun, serif
 - body: 24
-- title: 42
-- subtitle: 28
+- title: 36
+- subtitle: 20
 - label: 20
 - annotation: 16
 - source: 15
@@ -360,11 +360,18 @@ def _projected_spec_lock(brief: dict[str, Any], visual_profile: str | None) -> s
 - library: none
 - inventory: none
 
+## template_header
+- preserve: GHB logo at upper left and native section-title frame at upper right
+- section_label: required id='template-section-label'; short chapter name only; reserve x=930..1224, y=96..176
+
 ## safe_area
-- bounds: x=76..1204, y=56..672
+- body_surface: x=56..1224, y=96..704; white panel only, never a full-canvas overlay
+- title: x=96..900, y=176..226
+- content: x=96..1192, y=250..600
+- source_footer: x=96..1192, y=620..668
 
 ## forbidden
-- GHB red card shells, rounded dashboard cards, gradients, shadows, decorative icons, and native template section labels on body pages
+- full-canvas white overlays, any foreground that covers the native header, custom top meta headers, GHB red card shells, rounded dashboard cards, gradients, shadows, and decorative icons
 """
 
 

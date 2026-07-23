@@ -319,7 +319,6 @@ def _summarize_slide(
     slide_height: int,
     issues: list[Issue],
     typography: dict[str, Any] | None = None,
-    allow_full_white_body_overlay: bool = False,
 ) -> SlideSummary:
     summary = SlideSummary(index, role, layout_part, master_part)
     positioned_text: list[tuple[int, int, str]] = []
@@ -437,7 +436,7 @@ def _summarize_slide(
         )
     if role == "body" and summary.full_slide_pictures and summary.text_objects == 0:
         _issue(issues, "error", "full-slide-image-body", "body slide is effectively a full-slide image with no editable text", index)
-    if role == "body" and summary.full_white_rectangles and not allow_full_white_body_overlay:
+    if role == "body" and summary.full_white_rectangles:
         _issue(issues, "error", "full-white-rectangle", "body slide contains a near-full-slide white rectangle", index)
     if summary.min_font_pt is not None and summary.min_font_pt < 9:
         _issue(issues, "warning", "small-font", f"minimum explicit font size is {summary.min_font_pt:g} pt", index)
@@ -808,17 +807,6 @@ def validate_pptx(
         chains, mount_info = _check_mount_chain(parts, ordered_slides, roles, issues)
         package_info.update(mount_info)
 
-    # A research-editorial body deliberately overlays a branded template master
-    # with an editable white surface. This is a narrow visual-contract
-    # exception: every planned body slide must explicitly select the profile.
-    plan = _load_layout_plan(layout_plan_path, issues)
-    allow_full_white_body_overlay = (
-        inferred_body_count > 0
-        and len(plan) == inferred_body_count
-        and all(entry.get("visual_profile") == "consulting-research-cn-v1" for entry in plan)
-    )
-    package_info["full_white_body_overlay_allowed"] = allow_full_white_body_overlay
-
     slides: list[SlideSummary] = []
     slide_full_texts: list[str] = []
     slide_size: dict[str, Any] = {}
@@ -846,7 +834,6 @@ def validate_pptx(
                     slide_height=height,
                     issues=issues,
                     typography=typography,
-                    allow_full_white_body_overlay=allow_full_white_body_overlay,
                 )
             )
             slide_full_texts.append(
@@ -864,6 +851,7 @@ def validate_pptx(
         if required_text and required_text not in all_text:
             _issue(issues, "error", "missing-cover-text", f"cover text not found: {required_text!r}", 1)
 
+    plan = _load_layout_plan(layout_plan_path, issues)
     if plan and len(plan) != inferred_body_count:
         _issue(issues, "error", "layout-plan-count", f"layout plan has {len(plan)} entries for {inferred_body_count} body slides")
     for offset, entry in enumerate(plan, 2):

@@ -44,7 +44,6 @@ def make_content(
     count: int,
     *,
     full_slide_image: bool = False,
-    full_white_overlay: bool = False,
 ) -> None:
     presentation = Presentation()
     presentation.slide_width = 12192000
@@ -52,17 +51,6 @@ def make_content(
     blank = presentation.slide_layouts[6]
     for index in range(count):
         slide = presentation.slides.add_slide(blank)
-        if full_white_overlay and index == 0:
-            overlay = slide.shapes.add_shape(
-                MSO_SHAPE.RECTANGLE,
-                0,
-                0,
-                presentation.slide_width,
-                presentation.slide_height,
-            )
-            overlay.fill.solid()
-            overlay.fill.fore_color.rgb = RGBColor(255, 255, 255)
-            overlay.line.fill.background()
         if full_slide_image and index == 0:
             image_path = path.with_suffix(".png")
             Image.new("RGB", (1280, 720), "white").save(image_path)
@@ -94,7 +82,6 @@ class ValidateGhbPptxTest(unittest.TestCase):
         count: int = 3,
         no_ending: bool = False,
         full_slide_image: bool = False,
-        full_white_overlay: bool = False,
     ):
         content = directory / "content.pptx"
         cover = directory / "cover.pptx"
@@ -103,7 +90,6 @@ class ValidateGhbPptxTest(unittest.TestCase):
             content,
             count,
             full_slide_image=full_slide_image,
-            full_white_overlay=full_white_overlay,
         )
         make_cover(cover)
         result = merge_pptx(
@@ -198,10 +184,33 @@ class ValidateGhbPptxTest(unittest.TestCase):
             self.assertFalse(report.passed)
             self.assertTrue(any(issue.code == "full-slide-image-body" for issue in report.errors))
 
-    def test_full_white_body_overlay_requires_explicit_research_profile(self):
+    def test_full_white_body_overlay_is_rejected_even_when_research_profile_is_selected(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
-            output, _result = self.build(directory, count=1, full_white_overlay=True)
+            content = directory / "content.pptx"
+            make_content(content, 1)
+            presentation = Presentation(content)
+            slide = presentation.slides[0]
+            overlay = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE,
+                0,
+                0,
+                presentation.slide_width,
+                presentation.slide_height,
+            )
+            overlay.fill.solid()
+            overlay.fill.fore_color.rgb = RGBColor(255, 255, 255)
+            overlay.line.fill.background()
+            presentation.save(content)
+            cover = directory / "cover.pptx"
+            make_cover(cover)
+            output = directory / "final.pptx"
+            merge_pptx(
+                content_path=content,
+                template_path=TEMPLATE,
+                cover_path=cover,
+                output_path=output,
+            )
 
             default_report = validate_pptx(output, expected_body_count=1, expect_ending=True)
             self.assertIn("full-white-rectangle", {issue.code for issue in default_report.errors})
@@ -218,9 +227,8 @@ class ValidateGhbPptxTest(unittest.TestCase):
                 layout_plan_path=plan,
             )
 
-            self.assertTrue(research_report.passed, research_report.errors)
-            self.assertTrue(research_report.package["full_white_body_overlay_allowed"])
-            self.assertNotIn("full-white-rectangle", {issue.code for issue in research_report.errors})
+            self.assertFalse(research_report.passed)
+            self.assertIn("full-white-rectangle", {issue.code for issue in research_report.errors})
 
     def test_missing_planned_body_item_is_rejected_even_when_title_exists(self):
         with tempfile.TemporaryDirectory() as tmp:
