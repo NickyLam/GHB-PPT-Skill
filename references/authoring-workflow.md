@@ -1,5 +1,9 @@
 # Authoring Workflow
 
+> This is the **Strict** authoring contract. The default Standard workflow is
+> defined in [workflow-modes.md](workflow-modes.md) and uses only
+> `brief.json + deck_plan.json` as author-maintained contracts.
+
 Phase ownership and evidence hand-offs are defined in
 [authoring-roles.md](authoring-roles.md). These roles are sequential boundaries;
 they do not authorize subagent use.
@@ -98,8 +102,10 @@ main slide title unmarked. Slides without this semantic id remain unchanged.
 - Body/content/title minimums: follow the density plan; never solve overflow by
   globally shrinking text.
 
-Use the standard body surface at `x=56, y=96, width=1168, height=608`. Keep the
-top template decoration visible. Include exactly one preview-only
+In Strict mode, use the profiled body surface (the bundled profile is
+`x=56, y=96, width=1168, height=608`). Standard pages may instead compose
+freely inside the safe area defined by [workflow-modes.md](workflow-modes.md).
+Keep the top template decoration visible. Include exactly one preview-only
 `<g id="bg">` white background so the formal removal step can delete it.
 
 ## Authoring rules

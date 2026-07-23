@@ -220,6 +220,7 @@ def _ghb_chrome_errors(
     path: Path,
     *,
     stage: str,
+    workflow_mode: str = "standard",
     template_profile: dict[str, object] | None = None,
 ) -> list[str]:
     """Verify the GHB surface contract and authored/finalized background state."""
@@ -351,9 +352,10 @@ def _ghb_chrome_errors(
                 )
     surface = groups.get("bg-surface")
     if surface is None:
-        errors.append("missing GHB content surface group id='bg-surface'")
+        if workflow_mode == "strict":
+            errors.append("missing GHB content surface group id='bg-surface'")
         return errors
-    if stage == "authored":
+    if stage == "authored" and workflow_mode == "strict":
         rectangles = [node for node in surface.iter() if node.tag.rsplit("}", 1)[-1] == "rect"]
         surface_profile = (
             template_profile.get("body_surface")
@@ -381,7 +383,12 @@ from scripts.ppt_master.visual_asset_checker import (  # noqa: E402
 )
 
 
-def check_project(project: Path, *, stage: str) -> dict[str, object]:
+def check_project(
+    project: Path,
+    *,
+    stage: str,
+    workflow_mode: str = "standard",
+) -> dict[str, object]:
     svg_dir = project / ("svg_final" if stage == "finalized" else "svg_output")
     files = sorted(svg_dir.glob("*.svg")) if svg_dir.is_dir() else []
     if not files:
@@ -451,6 +458,7 @@ def check_project(project: Path, *, stage: str) -> dict[str, object]:
             _ghb_chrome_errors(
                 path,
                 stage=stage,
+                workflow_mode=workflow_mode,
                 template_profile=template_profile,
             )
         )
@@ -471,8 +479,16 @@ def check_project(project: Path, *, stage: str) -> dict[str, object]:
                 "emphasis": "distributed",
                 "layout_variant": row.get("layout_archetype") or visual_result.layout,
             }
-        visual_result.errors.extend(typography_contract_errors(svg_text, profile))
-        visual_result.errors.extend(semantic_contract_errors(svg_text, page_schema))
+        typography_findings = typography_contract_errors(svg_text, profile)
+        semantic_findings = semantic_contract_errors(svg_text, page_schema)
+        if workflow_mode == "strict":
+            visual_result.errors.extend(typography_findings)
+            visual_result.errors.extend(semantic_findings)
+        elif workflow_mode == "standard":
+            # Standard keeps these findings visible for the design/QA loop but
+            # does not make detailed metadata or role floors a build blocker.
+            visual_result.warnings.extend(typography_findings)
+            visual_result.warnings.extend(semantic_findings)
         slide_id = str(page_schema.get("slide_id") or row.get("slide_id") or f"slide-{slide_number or len(page_quality_results) + 1}")
         try:
             page_quality = evaluate_page_quality(
@@ -568,6 +584,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project", type=Path)
     parser.add_argument("--stage", choices=("authored", "finalized"), required=True)
+    parser.add_argument(
+        "--workflow-mode",
+        choices=("quick", "standard", "strict"),
+        default="standard",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
     return parser
@@ -575,7 +596,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    payload = check_project(args.project, stage=args.stage)
+    payload = check_project(
+        args.project,
+        stage=args.stage,
+        workflow_mode=args.workflow_mode,
+    )
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

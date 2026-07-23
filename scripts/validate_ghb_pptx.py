@@ -657,6 +657,7 @@ def validate_pptx(
     review_report_path: Path | None = None,
     review_required: bool = False,
     quality_policy: str = "draft",
+    warning_policy: str = "require-waivers",
     warning_waivers_path: Path | None = None,
     target_renderer: str = "auto",
     visual_profile_path: Path | None = None,
@@ -665,6 +666,8 @@ def validate_pptx(
     issues: list[Issue] = []
     if quality_policy not in {"draft", "release"}:
         _issue(issues, "error", "invalid-quality-policy", f"unknown policy {quality_policy!r}")
+    if warning_policy not in {"report-only", "require-waivers"}:
+        _issue(issues, "error", "invalid-warning-policy", f"unknown policy {warning_policy!r}")
     if target_renderer not in {"auto", "libreoffice", "powerpoint", "wps"}:
         _issue(issues, "error", "invalid-target-renderer", f"unknown renderer {target_renderer!r}")
     visual_profile: dict[str, Any] = {}
@@ -1408,7 +1411,11 @@ def validate_pptx(
         for code, slide in warning_rows
         if not any(_waiver_matches(waiver, code, slide) for waiver in waivers)
     ]
-    if quality_policy == "release" and unresolved_warning_rows:
+    if (
+        quality_policy == "release"
+        and warning_policy == "require-waivers"
+        and unresolved_warning_rows
+    ):
         _issue(
             issues,
             "error",
@@ -1419,6 +1426,7 @@ def validate_pptx(
 
     release_policy = {
         "policy": quality_policy,
+        "warning_policy": warning_policy,
         "target_renderer": target_renderer,
         "actual_renderer": actual_renderer,
         "render_evidence_bound": render_evidence_bound,
@@ -1672,6 +1680,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--review-report", type=Path)
     parser.add_argument("--review-required", action="store_true")
     parser.add_argument("--quality-policy", choices=("draft", "release"), default="draft")
+    parser.add_argument(
+        "--warning-policy",
+        choices=("report-only", "require-waivers"),
+        default="require-waivers",
+    )
     parser.add_argument("--warning-waivers", type=Path)
     parser.add_argument(
         "--target-renderer",
@@ -1712,6 +1725,7 @@ def main(argv: list[str] | None = None) -> int:
         review_report_path=args.review_report,
         review_required=args.review_required,
         quality_policy=args.quality_policy,
+        warning_policy=args.warning_policy,
         warning_waivers_path=args.warning_waivers,
         target_renderer=args.target_renderer,
         visual_profile_path=args.visual_profile,

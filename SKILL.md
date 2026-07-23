@@ -1,260 +1,209 @@
 ---
 name: ghb-ppt-skill
-description: 使用内置 GHB 模板创建、构建、修复或验证企业演示文稿（.pptx）：template-fill 保留封面，正文 SVG 转可编辑 DrawingML，OOXML 注入模板母版/背景，默认续接致谢页，并生成结构报告与逐页渲染。用于“用 GHB 模板做 PPT”“保留模板母版/首页格式”“生成 GHB 演示文稿”“给模板 PPT 配图”“验证或修复 GHB PPTX”等请求；支持纯离线默认路径及可选联网搜图/AI 生图。
+description: 使用内置 GHB 模板创建、构建、修复或验证企业演示文稿（.pptx）。默认由 ppt-master 负责逐页内容设计和 SVG 创作，GHB 负责品牌模板、可编辑 DrawingML、OOXML 合并、兼容性与交付验证。支持 Quick、Standard、Strict 三种工作流。
 ---
 
 # GHB PPT
 
-用统一流水线交付“模板封面 + 可编辑正文 + 模板致谢页”的企业级
-PPTX。保留模板母版、主题和背景装饰，不要用整页截图或整页图片冒充
-可编辑正文。
+交付“GHB 模板封面 + 逐页设计的可编辑正文 + 模板致谢页”。默认使用
+`Standard`；不要把普通项目自动升级为完整审计流程。
 
-## 不可变约束
+## 职责边界
 
-- 用 `template_fill_pptx.py` 克隆并填充模板首页。
-- 用 `fix_cover_font.py` 规范封面字体。
-- 用 Office-safe SVG 生成正文，并转换为原生 DrawingML 文本和图形。
-- 删除正文 SVG 的预览白底，让模板母版背景透出。
+### ppt-master：设计主流程
+
+- 理解来源、规划叙事和拆页；
+- 为每页选择内容驱动的构图；
+- 当前主代理逐页、顺序创作 SVG，并通过实时预览迭代；
+- 关键结论页、章节锚点页和用户点名的问题页必须专门设计；
+- 禁止用通用卡片函数或生成脚本批量决定整套正文构图。
+
+### GHB：模板与交付底座
+
+- 填充封面，保留品牌、母版、主题、页眉和致谢页；
+- 将 Office-safe SVG 转成可编辑 DrawingML；
+- 合并 OOXML，处理字体和目标渲染器兼容；
+- 执行结构、溢出、渲染、回读和交付检查。
+
+## 选择工作流
+
+| 模式 | 使用场景 | 作者维护的合同 | 硬门 |
+|---|---|---|---|
+| `quick` | 草稿、内部预览 | 来源 + SVG | 可构建、可打开、无明显越界、可渲染 |
+| `standard` | 默认正式演示 | `brief.json` + `deck_plan.json` | 确认、来源、可编辑、结构/溢出、渲染、人工逐页检查 |
+| `strict` | 外部发布、审计敏感 | 完整 legacy 合同与证据 | Standard 全部 + 完整视觉合同、warning 处置、强制视觉评审 |
+
+详细定义见 [references/workflow-modes.md](references/workflow-modes.md)。
+
+### 默认选择规则
+
+- 没有特别说明：`standard`。
+- 用户明确说草稿、快速预览：`quick`。
+- 用户明确要求审计、严格发布、完整证据：`strict`。
+- 模板已有成熟正文版式且只换文字：直接用 template-fill，不启动 SVG 流程。
+- 不需要 GHB 模板保真：改用自由演示文稿工作流。
+
+## 不可变交付约束
+
+- 用 `template_fill_pptx.py` 填充模板首页，用 `fix_cover_font.py` 规范封面字体。
+- 正文使用 Office-safe SVG，并转换为原生 DrawingML 文本和图形；禁止整页截图冒充正文。
+- 正式构建只从 `svg_final/` 删除预览白底；不得原地改写 `svg_output/`。
 - 用 `merge_template_master.py` 注入模板母版、版式、主题和媒体。
-- 默认续接模板最后一页；仅按用户要求使用 `--no-ending` 或
-  `--ending-slide N`。
-- 保持离线默认路径；不要默认调用图片 API、AI 生图或付费服务。
-- 对未知错误立即失败并保留现场；不要吞异常或伪造视觉评分。
+- 默认续接模板最后一页；只有用户要求时才使用 `--no-ending`。
+- 默认离线，不自动调用图片 API、AI 生图或付费服务。
+- 未知错误立即失败并保留现场；不得伪造视觉评分或确认凭证。
 
-## 先判断路径
+## Standard 主流程
 
-- 若模板已有成熟正文版式且只需替换文字，直接使用 template-fill；
-  不要启动完整 SVG/OOXML 流水线。
-- 若不需要 GHB 模板或模板保真，改用自由演示文稿工作流。
-- 若需要 GHB 封面/母版/致谢页且正文需结构化视觉表达，使用本流程。
-- 若更换模板，先读 [references/template-analysis.md](references/template-analysis.md)
-  并运行 `analyze-template`。
-
-## 准备环境
-
-从 Skill 根目录运行：
-
-```bash
-python3 -m pip install -r requirements.txt
-python3 scripts/ghb_ppt.py doctor
+```text
+来源 → 一次确认 → brief.json + deck_plan.json
+    → ppt-master 逐页设计与 SVG 预览
+    → GHB 模板/OOXML 构建
+    → 自动检查 → 渲染 → 人工逐页检查 → 交付
 ```
 
-`doctor` 检查 Python、依赖、模板、目录权限、字体和渲染器，并只读比较
-仓库 `SKILL.md` 与本机已安装候选副本的 SHA-256；漂移只告警，不自动
-覆盖仓库外文件。缺少
-LibreOffice 时仍可构建和结构验证，但必须记录“未进行最终渲染”。缺少
-`Source Han Sans SC`（首选）和 `Microsoft YaHei`（兼容回退）时，不得声称
-中文视觉效果已经通过。正文 SVG、封面和 DrawingML 默认使用并保留
-`Source Han Sans SC`；跨机器交付前必须在目标渲染环境再次运行 `doctor`。
+### 1. 一次确认
 
-## 建立项目
+在创作正文前，用一组简短建议一次确认：
+
+1. 受众与用途；
+2. 页数或演讲时长；
+3. `instructional` / `briefing` / `narrative`；
+4. 逐页大纲和保留/压缩策略；
+5. 视觉风格；
+6. 图片和图标来源。
+
+用户确认后写 `brief.json`，不要让用户分别确认内容模型、艺术方向、视觉画像
+和布局合同。`deck_plan.json` 只记录故事、风格和逐页设计意图。字段以
+[references/workflow-modes.md](references/workflow-modes.md) 为准。
+
+### 2. 建立项目与投影兼容合同
 
 ```bash
-python3 scripts/ghb_ppt.py init --project projects/<name>
-python3 scripts/ghb_ppt.py analyze-template \
+python3 scripts/ghb_ppt.py init \
   --project projects/<name> \
-  --template templates/GHB_PPT_模板.pptx
+  --workflow-mode standard
+
+python3 scripts/ghb_ppt.py plan \
+  --project projects/<name> \
+  --workflow-mode standard
 ```
 
-按 [references/authoring-workflow.md](references/authoring-workflow.md) 准备
-封面计划 `analysis/cover_fill_plan.json`、源内容、`design_spec.md`、
-`spec_lock.md`、`layout_plan.json`、正文 SVG 和备注。
+`plan` 从 `brief.json + deck_plan.json` 确定性投影旧转换器需要的兼容文件。
+这些文件是内部实现，不再要求用户逐份编写。旧项目没有简化合同文件时仍按
+原合同兼容构建，不会被自动覆盖。
 
-全部项目合同字段与 SVG `data-*` 语义标记以
-[references/contracts.md](references/contracts.md) 为单一索引；其他文档只解释
-流程和算法，不另行定义同名字段。
+### 3. 逐页设计正文
 
-### 内容确认闸门
+创作前读取 ppt-master 的 Executor、共享 SVG 标准以及选定的模式/风格参考。
+每页顺序完成：读当前计划 → 选择构图 → 编写 SVG → 预览 → 修订。
 
-真实用户项目在写 `spec_lock.md`、生成 SVG 或取图前，必须一次性确认：
+- 画布保持 `viewBox="0 0 1280 720"`。
+- 必须保留一个可安全删除的 `<g id="bg">` 预览背景。
+- `id="template-section-label"` 只用于迁入模板原生章节框的页眉标签。
+- 使用模板分析产物定义的安全区；默认建议内容安全区为
+  `x=64..1216, y=170..680`，不是固定正文矩形。
+- 允许全宽大图、非对称分栏、大数字、时间轴、中心图、满版流程和留白页。
+- 连续三页不得机械重复同一构图；每 3–5 页应有一次节奏变化。
+- 禁止为了凑版式数量强套内置结构图；内容语义优先于形式配额。
+- 卡片超过四个时优先重构信息，不要靠缩小文字塞入。
+- 流程必须用位置和连接关系表达，不能只是并排文本框。
 
-1. 目标受众；
-2. 页数范围；
-3. `instructional` / `briefing` / `narrative` 模式；
-4. 逐页大纲与节奏；
-5. 展开、删减和合并策略；
-6. 配图来源与图标选择。
+Standard 中，详细 `data-*` 语义标记和角色字号合同作为 QA 建议；Strict
+才将完整语义与 `page_schema` 作为硬门。来源、可编辑性、溢出和渲染始终
+是硬门。模型视觉评审在 Standard 中是可选增强，人工逐页检查仍为必需。
 
-每项给出具体选项、推荐及修改方法。等待明确确认。仓库测试和 CI 使用
-固定 fixture 配置，不等待用户输入。
-
-确认后立即按 [references/project-contract.md](references/project-contract.md)
-写入 `confirmation.json`。真实项目必须记录 `confirmation_source: user`；
-测试只能使用 `fixture`。不得在未获得用户明确确认时伪造确认凭证。
-`check-project`、`check-svg`、`build-content` 和 `build` 都会强制校验该凭证，
-没有生产绕过参数。
-
-## 规划并编写正文
-
-先把来源中的核心论点、证据、不可删减项和来源引用写入
-`content_model.json`，再为每页写结论式标题，并在 `layout_plan.json` 中声明用途、关键信息、
-密度、节奏、结构、可编辑对象、素材需求、来源和备注。先读：
-
-- [references/svg-layout-catalog.md](references/svg-layout-catalog.md)：页面结构
-  与多样性；
-- [references/visual-quality-rules.md](references/visual-quality-rules.md)：SVG、
-  图片、图标、碰撞、乱码和内容负载硬规则；
-- [references/svg-image-embedding.md](references/svg-image-embedding.md)：仅在使用
-  图片或图标时读取。
-
-`art_direction.json` 先锁定整套演示的视觉命题、叙事弧、页面家族、表面
-节奏、锚点页和图像策略。`visual_profile.json` 定义全局角色字号、间距、
-占用率、构图和预算；两者都是默认强制合同。每个正文
-记录必须在嵌套 `page_schema` 中声明页面用途、密度、节奏角色、版式变体和
-强调意图。Density is not emphasis：不能因为页面较稀疏或旧节奏为
-`anchor` 就机械强调第 2 项。只有 `key_message` 明确支持某个可见项目时才
-使用 `single-focal`，且 `focal_target` 必须与该项目精确对应；否则使用
-`distributed` 或 `ranked`。
-
-每个正文 SVG 必须：
-
-- 使用 `viewBox="0 0 1280 720"`；
-- 包含一个可安全删除的 `<g id="bg">` 预览白底；
-- 在主内容组写 `data-layout="<layout_archetype>"`；该值描述实际构图，
-  可以是手工编排的 `editorial`、`evidence_stack`、`file_tree`、
-  `simple_list` 或 `native_table`，不要求调用内置结构图渲染器；
-- 保留标题、正文、卡片、表格、流程和架构为文本/形状；
-- 将“演示文稿名 · Part/Section”这类页眉文本标记为
-  `id="template-section-label"`；构建时会删除 SVG 中的该文本框，并将文本迁入
-  GHB 模板原生右上标题框。每页最多一个该 id，不要把页面主标题标记为此 id；
-- 使用 `#AB1F29` 主色、`#44546A` 辅色和 GHB 字体规范；
-- 给自由摆放内容提供质量检查所需的边界/角色元数据。
-- 每个可见文本使用 `data-qa-role`，或使用 `main-title`、`body-*`、
-  `caption-*`、`source-*`、`footer-*` 等稳定 ID；严格合同按 SVG px→pt
-  的 0.75 换算强制标题/正文/说明/来源/页脚字号下限。
-- 按 `page_schema.page_purpose` 提供机器可审计语义：流程用
-  `data-flow-*` / `data-step` / `data-lane`，比较用 `data-component*`，
-  证据、指标、决策、风险和锚点分别使用 `data-evidence`、`data-metric`、
-  `data-decision`、`data-risk` / `data-mitigation`、`data-focal`。
-- 让流程/飞轮连接线在节点外结束，箭头不得穿入卡片；连接空间不足时
-  优先缩窄节点或重排，不得把箭头压成竖直短线。
-- 流程节点必须写 `data-flow-node` 与 `data-qa-box`，连接线必须写
-  `data-flow-from` / `data-flow-to`；比较卡片必须用 `data-component`、
-  `data-component-id`、`data-component-pair`，内部槽位使用
-  `data-component-parent` / `data-component-slot`。
-
-内容语义优先于版式多样性。只有层级、顺序、循环、双轴或收窄关系真实
-存在时，才使用对应的 pyramid、timeline、flywheel、matrix 或 funnel；
-禁止为了凑版式数量强套内置结构图。连续重复和版式种类不足只作为人工
-复核建议，不得阻断构建。不要用同一种卡片网格伪装版式多样性。长文本
-依次采用重写、换布局、拆页、调间距和小幅字号调整；禁止全局缩成不可读
-小字。
-
-真实项目不得用一个通用 `neutral_body`、卡片网格或表格函数批量决定整套
-正文构图。脚本可以负责文件输出和确定性后处理，但结论页、章节锚点页、
-用户明确指出的问题页必须逐页设计专属构图。删除不合适的 SVG、图标或
-结构图后，必须用字号、对比、分栏、证据、重点数字或编辑式留白重新建立
-视觉焦点；不得退化成连续清单和表格。每轮修复都要把新 contact sheet 与
-上一版或用户指定基准并排复核，不能只凭 0 error 宣告视觉改善。
-
-## 构建
-
-推荐直接运行完整流水线：
+### 4. 构建
 
 ```bash
 python3 scripts/ghb_ppt.py build \
   --project projects/<name> \
+  --workflow-mode standard \
   --template templates/GHB_PPT_模板.pptx \
   --cover-plan projects/<name>/analysis/cover_fill_plan.json \
   --output projects/<name>/exports/final.pptx \
   --quality-policy release \
   --target-renderer libreoffice \
-  --keep-intermediate \
+  --embed-fonts \
   --repair-attempts 1
 ```
 
-`build` 依次执行封面、authored SVG 门、复制/内联到 `svg_final/`、仅从
-`svg_final/` 正式移除预览白底、SVG finalized 门、
-可编辑正文导出、碰撞安全 OOXML 合并、预渲染验证、可用时的
-LibreOffice 渲染和最终报告。`svg_output/` 是不可变 authored 证据，构建
-不得原地改写。修复重试仅限 `0..3` 次确定性操作。
+`--no-render` 只能用于草稿排错，不能据此声称视觉检查完成。
 
-真实交付默认使用 `--quality-policy release`：任何未处置 warning 都阻断。
-确需接受的模板异常写入 `ghb.warning-waivers.v1` 文件，并用
-`--warning-waivers <path>` 显式传入。`--target-renderer` 记录实际交付环境；
-若选择 `wps` / `powerpoint` 而当前证据来自 LibreOffice，构建必须失败，
-直到导入与最终 PPTX digest 绑定的目标渲染报告和逐页 PNG。草稿迭代可
-显式使用 `--quality-policy draft`。
+### 5. 视觉验收
 
-需要排查或单步执行时使用：
+至少执行一个“发现问题 → 修复 → 重新渲染”的循环：
+
+1. 检查 `reports/svg-authored.json` 和最终质量报告；
+2. 查看 `render/contact-sheet.png`；
+3. 逐页查看 PNG，重点检查越界、裁切、间距、对齐、标题换行、页脚碰撞、
+   卡片内边距、流程连接和跨页节奏；
+4. 与上一版或指定基准 contact sheet 并排比较；
+5. 修复后重新构建并复查受影响页面。
+
+结构 `0 errors` 不等于审美通过。最终交付必须明确人工检查范围和渲染器。
+
+## Quick
+
+```bash
+python3 scripts/ghb_ppt.py build \
+  --project projects/<name> \
+  --workflow-mode quick \
+  --quality-policy draft
+```
+
+Quick 不需要用户确认和完整规划合同，但仍必须提供 `sources/source.md` 和
+逐页创作的 SVG。Quick 不是发布模式。
+
+## Strict
+
+Strict 继续使用：
+
+- `confirmation.json`
+- `content_model.json`
+- `art_direction.json`
+- `visual_profile.json`
+- `layout_plan.json` + 每页 `page_schema`
+- `spec_lock.md`
+- `design_spec.md`
+- `analysis/cover_fill_plan.json`
+- 完整语义标记、evidence manifest、warning waiver 和新鲜度绑定
+
+严格发布必须显式运行且通过视觉评审：
+
+```bash
+python3 scripts/ghb_ppt.py build \
+  --project projects/<name> \
+  --workflow-mode strict \
+  --quality-policy release \
+  --review --require-review
+```
+
+`visual-review: skipped / unavailable / limited / needs-revision / error` 均不能
+作为 Strict release 交付。完整旧合同规则见
+[references/authoring-workflow.md](references/authoring-workflow.md) 和
+[references/contracts.md](references/contracts.md)。
+
+Strict 的交付证据包括 `reports/visual-review.json`、
+`.ghb/evidence-manifest.json`，确需接受的模板异常必须通过
+`--warning-waivers` 显式处置。中文正文首选 `Source Han Sans SC`，跨机器
+交付应使用 `--embed-fonts` 或在目标环境重新验证。
+
+## 常用命令
 
 | 命令 | 作用 |
 |---|---|
-| `doctor` | 检查依赖、字体、模板、渲染器和权限 |
-| `init` | 创建规范项目目录 |
-| `analyze-template` | 分析模板槽位和版式 |
-| `build-cover` | template-fill 封面并修复字体 |
-| `check-svg` | 运行 authored SVG 综合门 |
-| `check-project` | 强制校验六项确认、art direction、视觉合同、内容模型、版式语义和必需文件 |
-| `build-content` | 移除白底、finalize 并导出正文 PPTX |
-| `merge` | 合并封面、正文、母版和可选致谢页 |
-| `validate` | 输出最终结构/内容/可编辑性检查 |
-| `render` | 输出 PDF、逐页 PNG 和 contact sheet |
-| `review` | 基于新鲜确定性与渲染证据运行一次显式可选视觉评审 |
-| `report` | 生成 JSON/Markdown 质量报告 |
-| `build` | 执行完整流程并写检查点 |
-
-用 `--dry-run` 查看计划；用 `--no-render` 明确跳过渲染；不要以
-`--no-render` 的结果声称视觉验证通过。
-
-默认构建不调用模型。仅当操作者明确提供可信配置时使用 `review` 或
-`build --review`；远程适配器还需要单独的披露授权。`--require-review`
-只提升可选评审的交付要求，不改变确定性检查结果；启用后只有
-`outcome=passed` 才满足交付，`needs-revision`、`limited`、`skipped`、
-`unavailable` 和 `error` 均阻断。
-
-## 验收与修复
-
-打开以下证据：
-
-- `reports/svg-authored.json`
-- `reports/svg-finalized.json`
-- `reports/ppt-readback.md`
-- `reports/quality-report.json`
-- `reports/quality-report.md`
-- `reports/visual-review.json`（仅显式运行可选评审时）
-- `render/contact-sheet.png` 和逐页 PNG（渲染器可用时）
-- `.ghb/evidence-manifest.json`、`.ghb/runs/<run>/run.json` 与
-  `.ghb/state.json`
-
-最终 PPTX 验证会再次按角色形状名输出 `min_font_by_role`，严格模式下任何
-角色字号低于 `visual_profile.json` 下限都会失败，不能只凭 authored SVG
-通过就宣称排版合同保真。
-
-按 [references/quality-and-recovery.md](references/quality-and-recovery.md)
-逐页检查。至少确认：页数/角色正确、母版链完整、无悬空关系、无白底、
-无整页图片、计划文字和备注存在、正文对象不越界、没有明显遮挡/乱码/
-占位符、页面结构与 `layout_plan.json` 一致。
-
-若合并异常，读 [references/ooxml-merge.md](references/ooxml-merge.md)。
-修复后必须重新构建、验证、渲染并复核受影响页面。保留失败 run，不要
-覆盖原始证据。
-
-## 可选配图
-
-默认不使用图片或图标；内置图标库只是可选资源。只有用户确认后再选择：
-
-- 源材料提取或用户自备：读
-  [references/svg-image-embedding.md](references/svg-image-embedding.md)；
-- 联网搜图：读 [references/image-searcher.md](references/image-searcher.md)，
-  按 license tier 记录来源并在需要时内联署名；
-- AI 生图：读 [references/image-generator.md](references/image-generator.md)，
-  使用用户授权的后端和密钥。
-
-不要删除联网搜图、AI 生图、图标和版权能力；也不要让它们成为离线
-构建的必需条件。
-
-## 完成交付
-
-交付最终 PPTX、源/最终 SVG、中间 PPTX、运行日志、状态文件、JSON 与
-Markdown 报告、逐页渲染和 contact sheet。明确列出渲染器、字体替换、
-备注支持和人工复核限制。
-
-只有在所有可用硬门通过、每页已检查且已知限制被准确记录后，才宣告
-完成。中断后从 `.ghb/state.json` 的最后有效检查点恢复。
+| `doctor` | 检查依赖、字体、模板、渲染器和本机 Skill 漂移 |
+| `init` | 按模式创建项目 |
+| `plan` | Standard 投影兼容合同；Strict 生成规划草稿 |
+| `analyze-template` | 生成模板分析与 `template_profile.json` |
+| `check-project` | 按工作流模式检查作者合同 |
+| `check-svg` | 按模式运行 SVG 门禁 |
+| `build` | 构建、合并、验证、渲染和报告 |
+| `render` | 生成 PDF、逐页 PNG 和 contact sheet |
+| `review` | 显式视觉评审；Strict release 必需 |
 
 ## 维护边界
 
-优先在顶层 `scripts/` 添加 GHB 适配。修改 `scripts/ppt_master/` 前先读
-[references/vendor-sync-policy.md](references/vendor-sync-policy.md)，保持改动
-窄小、注释明确并添加回归测试。
+优先在顶层 `scripts/` 添加 GHB 适配。修改 `scripts/ppt_master/` 前必须读
+[references/vendor-sync-policy.md](references/vendor-sync-policy.md)，保持改动窄小并添加回归测试。

@@ -51,7 +51,7 @@ class GhbPptCliTest(unittest.TestCase):
             self.assertFalse(payload["installed"][0]["matches_repository"])
             self.assertEqual(installed_skill.read_bytes(), before)
 
-    def test_check_svg_requires_visual_contract_by_default(self):
+    def test_check_svg_uses_standard_contract_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             run = RunContext(Path(tmp), "check-svg", dry_run=True)
             commands = []
@@ -62,7 +62,23 @@ class GhbPptCliTest(unittest.TestCase):
             ):
                 check_svg(run)
             contract = next(command for stage, command in commands if stage == "project-contract")
+            self.assertIn("--workflow-mode", contract)
+            self.assertIn("standard", contract)
+            self.assertNotIn("--require-visual-contract", contract)
+
+    def test_check_svg_strict_requires_visual_contract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run = RunContext(Path(tmp), "check-svg", dry_run=True)
+            commands = []
+            with mock.patch.object(
+                run,
+                "run",
+                side_effect=lambda stage, command: commands.append((stage, command)),
+            ):
+                check_svg(run, workflow_mode="strict")
+            contract = next(command for stage, command in commands if stage == "project-contract")
             self.assertIn("--require-visual-contract", contract)
+            self.assertIn("strict", contract)
 
     def test_build_content_exports_from_finalized_svg_without_mutating_authored_source(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -187,6 +203,32 @@ class GhbPptCliTest(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertLess(events.index("render"), events.index("review"))
             self.assertLess(events.index("review"), events.index("final-report"))
+
+    def test_build_prevalidation_ignores_stale_font_report_until_current_embedding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            validations = []
+            with (
+                mock.patch("scripts.ghb_ppt.check_project_contract"),
+                mock.patch("scripts.ghb_ppt.build_cover"),
+                mock.patch("scripts.ghb_ppt.build_content"),
+                mock.patch("scripts.ghb_ppt.merge_deck"),
+                mock.patch("scripts.ghb_ppt.embed_deck"),
+                mock.patch(
+                    "scripts.ghb_ppt.validate_deck",
+                    side_effect=lambda *a, **kwargs: validations.append(kwargs)
+                    or (project / "a", project / "b"),
+                ),
+                mock.patch.object(RunContext, "checkpoint"),
+            ):
+                code = main([
+                    "build", "--project", str(project), "--dry-run", "--no-render",
+                    "--embed-fonts", "--title", "T", "--subtitle", "S", "--date", "D",
+                ])
+            self.assertEqual(code, 0)
+            self.assertGreaterEqual(len(validations), 2)
+            self.assertFalse(validations[0]["include_font_embed_report"])
+            self.assertTrue(validations[-1]["include_font_embed_report"])
 
     def test_required_review_failure_is_reported_after_deterministic_report(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -471,11 +513,25 @@ class GhbPptCliTest(unittest.TestCase):
                 self.assertEqual(main(["init", "--project", str(project)]), 0)
             for name in ("sources", "analysis", "images", "svg_output", "svg_final", "notes", "exports"):
                 self.assertTrue((project / name).is_dir())
+            workflow = json.loads((project / "workflow.json").read_text(encoding="utf-8"))
+            self.assertEqual(workflow["mode"], "standard")
+            brief = json.loads((project / "brief.json").read_text(encoding="utf-8"))
+            self.assertEqual(brief["status"], "pending")
+            deck_plan = json.loads((project / "deck_plan.json").read_text(encoding="utf-8"))
+            self.assertEqual(deck_plan["schema"], "ghb.deck-plan.v1")
+            self.assertFalse((project / "visual_profile.json").exists())
+
+    def test_strict_init_keeps_full_contract_scaffold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main([
+                    "init", "--project", str(project), "--workflow-mode", "strict"
+                ]), 0)
             confirmation = json.loads((project / "confirmation.json").read_text(encoding="utf-8"))
             self.assertEqual(confirmation["status"], "pending")
             profile = json.loads((project / "visual_profile.json").read_text(encoding="utf-8"))
             self.assertEqual(profile["schema"], "ghb.visual-profile.v1")
-            self.assertEqual(profile["composition"]["default_density"], "balanced")
 
     def test_init_dry_run_does_not_write(self):
         with tempfile.TemporaryDirectory() as tmp:

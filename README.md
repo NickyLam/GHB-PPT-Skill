@@ -1,5 +1,18 @@
 # GHB-PPT-SKILL
 
+## 默认工作流已简化
+
+当前默认使用 `Standard`：作者只维护 `brief.json + deck_plan.json`，
+`ppt-master` 负责逐页设计和 SVG 创作，GHB 负责模板品牌、DrawingML、OOXML、
+兼容性与最终验证。完整的 `art_direction.json`、`visual_profile.json`、逐页
+`page_schema` 和证据治理只在 `Strict` 模式强制。
+
+- `quick`：草稿和内部预览；
+- `standard`：默认正式演示；
+- `strict`：外部发布和审计敏感交付。
+
+详见 [references/workflow-modes.md](references/workflow-modes.md)。
+
 使用内置 GHB 模板生成企业级 PPTX：封面保留模板首页，正文由 SVG
 转换为可编辑 DrawingML，所有页面继承模板母版和背景装饰，末页默认
 续接模板致谢页。

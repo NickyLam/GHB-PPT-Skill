@@ -149,7 +149,7 @@ class ScaffoldProjectTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             project = _seed_project(Path(tmp))
             scaffold_project(project)
-            issues = validate_project_contract(project)
+            issues = validate_project_contract(project, workflow_mode="strict")
             self.assertTrue(any(i["code"] == "plan-draft-not-finalized" for i in issues))
 
             # Clearing every scaffold marker removes the release blocker.
@@ -159,7 +159,7 @@ class ScaffoldProjectTest(unittest.TestCase):
                 _strip_markers(payload)
                 path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
             self.assertEqual(find_scaffold_markers(project), [])
-            cleared = validate_project_contract(project)
+            cleared = validate_project_contract(project, workflow_mode="strict")
             self.assertFalse(
                 any(i["code"] == "plan-draft-not-finalized" for i in cleared),
                 msg=f"marker still detected after clearing: {cleared}",

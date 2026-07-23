@@ -8,6 +8,25 @@
 
 ## 0. 先给结论
 
+> **第二次实施更新（2026-07-22）**：本文后续“8 类合同默认必填、普通
+> release 必须逐项 waiver、固定 body surface”描述保留为历史问题背景，
+> 已不再代表当前默认行为。当前以 `references/workflow-modes.md` 为准。
+
+### 简化方案实施状态
+
+| 项目 | 状态 | 实现证据 |
+|---|---|---|
+| Quick / Standard / Strict | 已完成 | `--workflow-mode` 已贯穿 init、plan、合同检查、SVG 门和 build |
+| Standard 两文件合同 | 已完成 | 作者只维护 `brief.json + deck_plan.json`，`workflow_profiles.py` 投影兼容合同 |
+| Strict 完整治理 | 已完成 | 完整视觉合同、warning waiver、`--review --require-review` 仅 Strict release 强制 |
+| 构图自由度 | 已完成 | Standard 不再强制固定 `body_surface`；完整语义/字号合同降为建议 |
+| 设计与工程重新分工 | 已完成 | `SKILL.md` 明确 ppt-master 主导逐页设计，GHB 负责品牌、OOXML 与交付验证 |
+| 真实素材回归 | 已完成 | `PPT_TEST_SURVEY.md` 生成 20 页 Standard PPTX；LibreOffice 20/20、字体嵌入、人工逐页检查通过 |
+
+当前默认流程是 `确认 → brief/deck plan → ppt-master 逐页设计 → GHB 构建
+与 QA`。复杂证据文件仍可由底层生成，但不再是 Standard 作者逐份维护的
+输入合同。
+
 ### 实施状态（2026-07-22续接）
 
 | 任务 | 状态 | 当前证据 |

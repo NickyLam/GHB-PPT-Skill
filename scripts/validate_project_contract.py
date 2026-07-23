@@ -654,11 +654,27 @@ def validate_confirmation_plan_alignment(project: Path) -> list[dict[str, str]]:
 def validate_project_contract(
     project: Path,
     *,
+    workflow_mode: str = "standard",
     confirmation_only: bool = False,
     skip_required_files: bool = False,
     require_visual_contract: bool = False,
 ) -> list[dict[str, str]]:
     project = project.resolve()
+    if workflow_mode not in {"quick", "standard", "strict"}:
+        return [issue("invalid-workflow-mode", f"unsupported workflow mode: {workflow_mode}", project)]
+    if workflow_mode == "quick":
+        if confirmation_only:
+            return []
+        issues: list[dict[str, str]] = []
+        if not skip_required_files:
+            source = project / "sources" / "source.md"
+            svg_dir = project / "svg_output"
+            if not source.is_file():
+                issues.append(issue("missing-project-artifact", "Quick mode requires sources/source.md", source))
+            if not svg_dir.is_dir() or not any(svg_dir.glob("*.svg")):
+                issues.append(issue("missing-authored-svg", "Quick mode requires authored SVG files", svg_dir))
+        return issues
+
     issues = validate_confirmation(project)
     if confirmation_only:
         return issues
@@ -682,17 +698,18 @@ def validate_project_contract(
     art_direction_path = project / "art_direction.json"
     profile: dict[str, Any] | None = None
     art_direction: dict[str, Any] | None = None
-    if profile_path.is_file():
+    strict_visual = require_visual_contract or workflow_mode == "strict"
+    if profile_path.is_file() and strict_visual:
         issues.extend(validate_visual_profile(profile_path))
         profile_payload = read_json(profile_path, issues)
         profile = profile_payload if isinstance(profile_payload, dict) else None
-    elif require_visual_contract:
+    elif strict_visual:
         issues.append(issue(
             "missing-visual-profile",
             "visual_profile.json is required by the explicit visual-contract gate",
             profile_path,
         ))
-    if art_direction_path.is_file():
+    if art_direction_path.is_file() and strict_visual:
         issues.extend(validate_art_direction(art_direction_path))
         art_payload = read_json(art_direction_path, issues)
         art_direction = art_payload if isinstance(art_payload, dict) else None
@@ -714,7 +731,7 @@ def validate_project_contract(
                     "art_direction.json design_mode no longer matches the confirmed presentation mode",
                     art_direction_path,
                 ))
-    elif require_visual_contract:
+    elif strict_visual:
         issues.append(issue(
             "missing-art-direction",
             "art_direction.json is required by the visual-contract gate",
@@ -743,11 +760,11 @@ def validate_project_contract(
                         art_direction_path,
                     ))
         for row in visual_rows:
-            if "page_schema" in row or require_visual_contract:
+            if strict_visual:
                 issues.extend(validate_page_schema(
                     row.get("page_schema"), row=row, path=layout_path, profile=profile
                 ))
-    elif require_visual_contract:
+    elif strict_visual:
         issues.append(issue(
             "missing-layout-plan",
             "layout_plan.json is required by the explicit visual-contract gate",
@@ -756,7 +773,7 @@ def validate_project_contract(
     content_model = project / "content_model.json"
     if content_model.is_file():
         issues.extend(validate_content_model(content_model, layout_path))
-    if not confirmation_only:
+    if not confirmation_only and workflow_mode == "strict":
         markers = find_scaffold_markers(project)
         if markers:
             issues.append(issue(
@@ -882,6 +899,11 @@ def score_layout_fit(row: dict[str, Any]) -> dict[str, Any] | None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project", type=Path)
+    parser.add_argument(
+        "--workflow-mode",
+        choices=("quick", "standard", "strict"),
+        default="standard",
+    )
     parser.add_argument("--confirmation-only", action="store_true")
     parser.add_argument(
         "--plan-only",
@@ -909,6 +931,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if not blocking else 1
     issues = validate_project_contract(
         args.project,
+        workflow_mode=args.workflow_mode,
         confirmation_only=args.confirmation_only,
         require_visual_contract=args.require_visual_contract,
     )

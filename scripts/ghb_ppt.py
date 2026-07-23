@@ -53,6 +53,13 @@ from scripts.font_policy import (  # noqa: E402
     preferred_cjk_font,
     resolve_font_file,
 )
+from scripts.workflow_profiles import (  # noqa: E402
+    WORKFLOW_MODES,
+    WorkflowProfileError,
+    materialize_standard_contract,
+    seed_simplified_contract,
+    write_workflow_config,
+)
 
 
 class PipelineError(RuntimeError):
@@ -90,7 +97,7 @@ class RunContext:
     ) -> None:
         self.project = project.resolve()
         self.dry_run = dry_run
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        stamp = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{os.getpid()}"
         self.run_dir = self.project / ".ghb" / "runs" / stamp
         self.record = RunRecord(
             command=command,
@@ -203,7 +210,13 @@ class RunContext:
             self._write_record()
 
 
-def ensure_project(project: Path, *, create: bool = False, dry_run: bool = False) -> None:
+def ensure_project(
+    project: Path,
+    *,
+    create: bool = False,
+    dry_run: bool = False,
+    workflow_mode: str = "standard",
+) -> None:
     if create:
         if project.exists() and not project.is_dir():
             raise PipelineError(f"project path is not a directory: {project}")
@@ -211,8 +224,11 @@ def ensure_project(project: Path, *, create: bool = False, dry_run: bool = False
             project.mkdir(parents=True, exist_ok=True)
             for name in REQUIRED_DIRS:
                 (project / name).mkdir(exist_ok=True)
+            write_workflow_config(project, workflow_mode)
+            if workflow_mode == "standard":
+                seed_simplified_contract(project)
             confirmation = project / "confirmation.json"
-            if not confirmation.exists():
+            if workflow_mode == "strict" and not confirmation.exists():
                 confirmation.write_text(
                     json.dumps(
                         {
@@ -243,7 +259,7 @@ def ensure_project(project: Path, *, create: bool = False, dry_run: bool = False
                     encoding="utf-8",
                 )
             visual_profile = project / "visual_profile.json"
-            if not visual_profile.exists():
+            if workflow_mode == "strict" and not visual_profile.exists():
                 from scripts.validate_project_contract import default_visual_profile
 
                 visual_profile.write_text(
@@ -251,7 +267,7 @@ def ensure_project(project: Path, *, create: bool = False, dry_run: bool = False
                     encoding="utf-8",
                 )
             art_direction = project / "art_direction.json"
-            if not art_direction.exists():
+            if workflow_mode == "strict" and not art_direction.exists():
                 from scripts.validate_project_contract import default_art_direction
 
                 art_direction.write_text(
@@ -700,7 +716,7 @@ def build_cover(
     return output
 
 
-def run_svg_gate(run: RunContext, *, stage: str) -> Path:
+def run_svg_gate(run: RunContext, *, stage: str, workflow_mode: str = "standard") -> Path:
     report = run.project / "reports" / f"svg-{stage}.json"
     run.run(
         f"svg-{stage}",
@@ -709,6 +725,7 @@ def run_svg_gate(run: RunContext, *, stage: str) -> Path:
             str(ROOT / "scripts" / "ghb_svg_quality.py"),
             str(run.project),
             "--stage", stage,
+            "--workflow-mode", workflow_mode,
             "--output", str(report),
         ],
     )
@@ -716,11 +733,22 @@ def run_svg_gate(run: RunContext, *, stage: str) -> Path:
     return report
 
 
-def check_project_contract(run: RunContext, *, require_visual_contract: bool = False) -> None:
+def check_project_contract(
+    run: RunContext,
+    *,
+    workflow_mode: str = "standard",
+    require_visual_contract: bool = False,
+) -> None:
+    if workflow_mode == "standard" and not run.dry_run:
+        try:
+            materialize_standard_contract(run.project)
+        except WorkflowProfileError as exc:
+            raise PipelineError(str(exc)) from exc
     command = [
         sys.executable,
         str(ROOT / "scripts" / "validate_project_contract.py"),
         str(run.project),
+        "--workflow-mode", workflow_mode,
     ]
     if require_visual_contract:
         command.append("--require-visual-contract")
@@ -730,9 +758,13 @@ def check_project_contract(run: RunContext, *, require_visual_contract: bool = F
     )
 
 
-def check_svg(run: RunContext) -> None:
-    check_project_contract(run, require_visual_contract=True)
-    run_svg_gate(run, stage="authored")
+def check_svg(run: RunContext, *, workflow_mode: str = "standard") -> None:
+    check_project_contract(
+        run,
+        workflow_mode=workflow_mode,
+        require_visual_contract=workflow_mode == "strict",
+    )
+    run_svg_gate(run, stage="authored", workflow_mode=workflow_mode)
 
 
 def check_plan(run: RunContext) -> None:
@@ -747,8 +779,13 @@ def check_plan(run: RunContext) -> None:
     )
 
 
-def build_content(run: RunContext, *, output: Path) -> Path:
-    check_svg(run)
+def build_content(
+    run: RunContext,
+    *,
+    output: Path,
+    workflow_mode: str = "standard",
+) -> Path:
+    check_svg(run, workflow_mode=workflow_mode)
     backup_dir = run.run_dir / "finalized-svg-with-preview-background"
     total_notes = run.project / "notes" / "total.md"
     if total_notes.exists() or run.dry_run:
@@ -773,7 +810,7 @@ def build_content(run: RunContext, *, output: Path) -> Path:
         )
         run._write_record()
 
-    run_svg_gate(run, stage="finalized")
+    run_svg_gate(run, stage="finalized", workflow_mode=workflow_mode)
     run.run(
         "svg-to-pptx",
         [
@@ -904,8 +941,10 @@ def validate_deck(
     review_report_path: Path | None = None,
     review_required: bool = False,
     quality_policy: str = "draft",
+    warning_policy: str = "require-waivers",
     warning_waivers: Path | None = None,
     target_renderer: str = "auto",
+    include_font_embed_report: bool = True,
 ) -> tuple[Path, Path]:
     if not pptx.is_file() and not run.dry_run:
         raise PipelineError(f"final PPTX not found: {pptx}")
@@ -939,7 +978,7 @@ def validate_deck(
     if visual_profile.exists() or run.dry_run:
         command.extend(["--visual-profile", str(visual_profile)])
     font_embed_report = run.project / "reports" / "font-embed-report.json"
-    if font_embed_report.exists() or run.dry_run:
+    if include_font_embed_report and (font_embed_report.exists() or run.dry_run):
         command.extend(["--font-embed-report", str(font_embed_report)])
     command.append("--expect-ending" if expect_ending else "--no-ending")
     if render_dir is not None:
@@ -949,6 +988,7 @@ def validate_deck(
     if review_required:
         command.append("--review-required")
     command.extend(["--quality-policy", quality_policy])
+    command.extend(["--warning-policy", warning_policy])
     command.extend(["--target-renderer", target_renderer])
     if warning_waivers is not None:
         command.extend(["--warning-waivers", str(warning_waivers)])
@@ -1694,16 +1734,21 @@ def parser() -> argparse.ArgumentParser:
     init = sub.add_parser("init", help="Create a deterministic GHB project directory")
     init.add_argument("--project", type=Path, required=True)
     init.add_argument("--dry-run", action="store_true")
+    init.add_argument(
+        "--workflow-mode", choices=WORKFLOW_MODES, default="standard",
+        help="quick, standard (default), or strict authoring and QA profile",
+    )
 
     plan = sub.add_parser(
         "plan",
-        help="Scaffold draft content-model/layout/art-direction/visual-profile from a confirmed brief",
+        help="Project Standard brief/deck-plan or scaffold Strict planning contracts",
     )
     plan.add_argument("--project", type=Path, required=True)
     plan.add_argument("--from-source", type=Path, help="Markdown source (default sources/source.md)")
     plan.add_argument("--confirmation", type=Path, help="confirmation.json (default project/confirmation.json)")
     plan.add_argument("--force", action="store_true", help="Overwrite existing planning drafts")
     plan.add_argument("--dry-run", action="store_true")
+    plan.add_argument("--workflow-mode", choices=WORKFLOW_MODES, default="standard")
 
     analyze = sub.add_parser("analyze-template", help="Analyze a PPTX template")
     analyze.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
@@ -1714,6 +1759,10 @@ def parser() -> argparse.ArgumentParser:
     def add_project(command: argparse.ArgumentParser) -> None:
         command.add_argument("--project", type=Path, required=True)
         command.add_argument("--dry-run", action="store_true")
+        command.add_argument(
+            "--workflow-mode", choices=WORKFLOW_MODES, default="standard",
+            help="quick, standard (default), or strict workflow profile",
+        )
         command.add_argument(
             "--keep-intermediate",
             action="store_true",
@@ -1746,8 +1795,7 @@ def parser() -> argparse.ArgumentParser:
     contract.add_argument(
         "--require-visual-contract",
         action="store_true",
-        default=True,
-        help="Require the visual profile, art direction, and every page schema (default)",
+        help="Require the visual profile, art direction, and every page schema",
     )
 
     content = sub.add_parser("build-content", help="Finalize SVG and export editable content PPTX")
@@ -1888,8 +1936,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "init":
         try:
-            ensure_project(args.project, create=True, dry_run=args.dry_run)
-        except PipelineError as exc:
+            ensure_project(
+                args.project,
+                create=True,
+                dry_run=args.dry_run,
+                workflow_mode=args.workflow_mode,
+            )
+        except (PipelineError, WorkflowProfileError) as exc:
             print(f"[ERROR] {exc}", file=sys.stderr)
             return 1
         if args.dry_run:
@@ -1906,18 +1959,25 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         try:
             ensure_project(args.project)
-            written = scaffold_project(
-                args.project,
-                source=args.from_source.resolve() if args.from_source else None,
-                confirmation=args.confirmation.resolve() if args.confirmation else None,
-                force=args.force,
-            )
-        except (PipelineError, ScaffoldError) as exc:
+            if args.workflow_mode == "standard":
+                written = materialize_standard_contract(args.project)
+            else:
+                written = scaffold_project(
+                    args.project,
+                    source=args.from_source.resolve() if args.from_source else None,
+                    confirmation=args.confirmation.resolve() if args.confirmation else None,
+                    force=args.force,
+                )
+        except (PipelineError, ScaffoldError, WorkflowProfileError) as exc:
             print(f"[ERROR] {exc}", file=sys.stderr)
             return 1
         for path in written:
-            print(f"[OK] scaffolded {path}")
-        print("[NOTE] drafts carry needs_review/draft/origin markers; refine and run check-plan")
+            verb = "prepared" if args.workflow_mode == "standard" else "scaffolded"
+            print(f"[OK] {verb} {path}")
+        if args.workflow_mode == "standard":
+            print("[NOTE] Standard compatibility contracts projected from brief.json + deck_plan.json")
+        else:
+            print("[NOTE] drafts carry needs_review/draft/origin markers; refine and run check-plan")
         return 0
 
     if args.command == "analyze-template":
@@ -1974,20 +2034,32 @@ def main(argv: list[str] | None = None) -> int:
                     date=args.date,
                 )
             elif args.command == "check-svg":
-                check_svg(run)
+                check_svg(run, workflow_mode=args.workflow_mode)
                 run.checkpoint("check-svg", [])
             elif args.command == "check-plan":
                 check_plan(run)
                 run.checkpoint("check-plan", [])
             elif args.command == "check-project":
                 check_project_contract(
-                    run, require_visual_contract=True
+                    run,
+                    workflow_mode=args.workflow_mode,
+                    require_visual_contract=(
+                        args.require_visual_contract or args.workflow_mode == "strict"
+                    ),
                 )
                 run.checkpoint("check-project", [])
             elif args.command == "build-content":
-                build_content(run, output=_project_output(project, args.output, "content.pptx"))
+                build_content(
+                    run,
+                    output=_project_output(project, args.output, "content.pptx"),
+                    workflow_mode=args.workflow_mode,
+                )
             elif args.command == "merge":
-                check_project_contract(run, require_visual_contract=True)
+                check_project_contract(
+                    run,
+                    workflow_mode=args.workflow_mode,
+                    require_visual_contract=args.workflow_mode == "strict",
+                )
                 content_layout, ending_slide = _profiled_merge_values(
                     project,
                     content_layout=args.content_layout,
@@ -2087,6 +2159,9 @@ def main(argv: list[str] | None = None) -> int:
                         ).get("required", False)
                     ),
                     quality_policy=args.quality_policy,
+                    warning_policy=(
+                        "require-waivers" if args.workflow_mode == "strict" else "report-only"
+                    ),
                     warning_waivers=(
                         args.warning_waivers.resolve() if args.warning_waivers else None
                     ),
@@ -2152,6 +2227,9 @@ def main(argv: list[str] | None = None) -> int:
                     review_report_path=review_path if review_path.is_file() else None,
                     review_required=args.require_review,
                     quality_policy=args.quality_policy,
+                    warning_policy=(
+                        "require-waivers" if args.workflow_mode == "strict" else "report-only"
+                    ),
                     warning_waivers=(
                         args.warning_waivers.resolve() if args.warning_waivers else None
                     ),
@@ -2175,6 +2253,15 @@ def main(argv: list[str] | None = None) -> int:
                     raise PipelineError("review options require explicit --review")
                 if args.repair_attempts < 0 or args.repair_attempts > 3:
                     raise PipelineError("--repair-attempts must be between 0 and 3")
+                if (
+                    args.workflow_mode == "strict"
+                    and args.quality_policy == "release"
+                    and (not args.review or not args.require_review)
+                ):
+                    raise PipelineError(
+                        "strict release requires --review --require-review; "
+                        "visual-review skipped/unavailable is not releasable"
+                    )
                 cover_path = _project_output(project, None, "cover.pptx")
                 content_path = _project_output(project, None, "content.pptx")
                 final_path = _project_output(project, args.output, "final.pptx")
@@ -2183,7 +2270,11 @@ def main(argv: list[str] | None = None) -> int:
                     content_layout=args.content_layout,
                     ending_slide=args.ending_slide,
                 )
-                check_project_contract(run, require_visual_contract=True)
+                check_project_contract(
+                    run,
+                    workflow_mode=args.workflow_mode,
+                    require_visual_contract=args.workflow_mode == "strict",
+                )
                 build_cover(
                     run,
                     template=args.template.resolve(),
@@ -2193,7 +2284,11 @@ def main(argv: list[str] | None = None) -> int:
                     subtitle=args.subtitle,
                     date=args.date,
                 )
-                build_content(run, output=content_path)
+                build_content(
+                    run,
+                    output=content_path,
+                    workflow_mode=args.workflow_mode,
+                )
                 merge_deck(
                     run,
                     content=content_path,
@@ -2224,6 +2319,7 @@ def main(argv: list[str] | None = None) -> int:
                             json_output=pre_json,
                             markdown_output=pre_markdown,
                             quality_policy="draft",
+                            include_font_embed_report=False,
                         )
                         break
                     except PipelineError:
@@ -2323,10 +2419,14 @@ def main(argv: list[str] | None = None) -> int:
                     review_report_path=review_path if review_path.is_file() else None,
                     review_required=args.require_review,
                     quality_policy=args.quality_policy,
+                    warning_policy=(
+                        "require-waivers" if args.workflow_mode == "strict" else "report-only"
+                    ),
                     warning_waivers=(
                         args.warning_waivers.resolve() if args.warning_waivers else None
                     ),
                     target_renderer=args.target_renderer,
+                    include_font_embed_report=True,
                 )
                 require_completed_review(review_report, required=args.require_review)
                 run.checkpoint(

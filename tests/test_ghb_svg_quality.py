@@ -122,7 +122,7 @@ class GhbSvgQualityTest(unittest.TestCase):
     def test_combines_svg_visual_layout_and_plan_checks(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = self.make_project(Path(tmp))
-            payload = check_project(project, stage="authored")
+            payload = check_project(project, stage="authored", workflow_mode="strict")
             self.assertTrue(payload["passed"], payload)
             self.assertEqual(payload["layouts"], ["timeline"])
             self.assertEqual(payload["error_count"], 0)
@@ -132,7 +132,7 @@ class GhbSvgQualityTest(unittest.TestCase):
             project = self.make_project(Path(tmp))
             path = project / "svg_output" / "01_timeline.svg"
             path.write_text(path.read_text(encoding="utf-8").replace('y="96"', 'y="56"'), encoding="utf-8")
-            payload = check_project(project, stage="authored")
+            payload = check_project(project, stage="authored", workflow_mode="strict")
             self.assertFalse(payload["passed"])
             self.assertTrue(
                 any(

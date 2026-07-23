@@ -344,6 +344,25 @@ class ValidateGhbPptxTest(unittest.TestCase):
                 for issue in payload["issues"]
             ))
 
+            standard_report = directory / "standard-release-passed.json"
+            code = main([
+                str(output), "--body-count", "1", "--no-ending",
+                "--quality-policy", "release", "--target-renderer", "auto",
+                "--warning-policy", "report-only",
+                "--render-dir", str(render_dir),
+                "--json-output", str(standard_report),
+            ])
+            self.assertEqual(code, 0)
+            standard = json.loads(standard_report.read_text(encoding="utf-8"))
+            self.assertEqual(
+                standard["quality"]["release_policy"]["warning_policy"],
+                "report-only",
+            )
+            self.assertGreater(
+                standard["quality"]["release_policy"]["unresolved_warning_count"],
+                0,
+            )
+
             waivers = directory / "warning-waivers.json"
             warning_rows = [
                 {
