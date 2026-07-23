@@ -7,6 +7,7 @@ from pathlib import Path
 from scripts.validate_project_contract import validate_project_contract
 from scripts.workflow_profiles import (
     GENERATED_ORIGIN,
+    WorkflowProfileError,
     materialize_standard_contract,
     seed_simplified_contract,
 )
@@ -76,6 +77,114 @@ def test_standard_projection_builds_legacy_compatibility_contract() -> None:
         assert confirmation["decisions"]["outline"][0]["title"] == "事实 A 是核心结论"
         issues = validate_project_contract(project, workflow_mode="standard")
         assert issues == []
+
+
+def test_standard_consulting_profile_is_opt_in_and_projected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        project = Path(tmp) / "project"
+        _seed_confirmed_standard(project)
+        plan_path = project / "deck_plan.json"
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        plan["style"]["content_profile"] = "consulting-evidence-cn-v1"
+        plan["slides"][0]["consulting_content"] = {
+            "claim_type": "fact",
+            "evidence": [{
+                "label": "采用率",
+                "value": "88%",
+                "source_ref": "sources/source.md#来源",
+            }],
+            "so_what": {
+                "type": "inference",
+                "text": "下一步应关注规模化条件。",
+            },
+        }
+        _write(plan_path, plan)
+
+        materialize_standard_contract(project)
+
+        layout = json.loads((project / "layout_plan.json").read_text(encoding="utf-8"))
+        assert layout[0]["content_profile"] == "consulting-evidence-cn-v1"
+        assert layout[0]["consulting_content"] == plan["slides"][0]["consulting_content"]
+        design = (project / "design_spec.md").read_text(encoding="utf-8")
+        assert "Content profile: consulting-evidence-cn-v1" in design
+        lock = (project / "spec_lock.md").read_text(encoding="utf-8")
+        assert "content_profile" not in lock
+
+
+def test_standard_default_projection_does_not_emit_consulting_profile() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        project = Path(tmp) / "project"
+        _seed_confirmed_standard(project)
+
+        materialize_standard_contract(project)
+
+        layout = json.loads((project / "layout_plan.json").read_text(encoding="utf-8"))
+        assert "content_profile" not in layout[0]
+        assert "consulting_content" not in layout[0]
+        design = (project / "design_spec.md").read_text(encoding="utf-8")
+        assert "Content profile:" not in design
+
+
+def test_standard_consulting_profile_rejects_unknown_profile_and_unmapped_fact() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        project = Path(tmp) / "project"
+        _seed_confirmed_standard(project)
+        plan_path = project / "deck_plan.json"
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        plan["style"]["content_profile"] = "unrecognized-profile"
+        _write(plan_path, plan)
+
+        try:
+            materialize_standard_contract(project)
+        except WorkflowProfileError as exc:
+            assert "unsupported content_profile" in str(exc)
+        else:
+            raise AssertionError("unknown content profile must fail before projection")
+
+        plan["style"]["content_profile"] = "consulting-evidence-cn-v1"
+        plan["slides"][0]["consulting_content"] = {
+            "claim_type": "fact",
+            "evidence": [{
+                "label": "采用率",
+                "value": "88%",
+                "source_ref": "sources/source.md#未映射",
+            }],
+        }
+        _write(plan_path, plan)
+
+        try:
+            materialize_standard_contract(project)
+        except WorkflowProfileError as exc:
+            assert "must match one source_refs entry" in str(exc)
+        else:
+            raise AssertionError("fact evidence must be traceable to source_refs")
+
+
+def test_standard_consulting_content_requires_profile_and_fact_evidence() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        project = Path(tmp) / "project"
+        _seed_confirmed_standard(project)
+        plan_path = project / "deck_plan.json"
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        plan["slides"][0]["consulting_content"] = {"claim_type": "fact", "evidence": []}
+        _write(plan_path, plan)
+
+        try:
+            materialize_standard_contract(project)
+        except WorkflowProfileError as exc:
+            assert "requires style.content_profile" in str(exc)
+        else:
+            raise AssertionError("consulting_content must remain opt-in")
+
+        plan["style"]["content_profile"] = "consulting-evidence-cn-v1"
+        _write(plan_path, plan)
+
+        try:
+            materialize_standard_contract(project)
+        except WorkflowProfileError as exc:
+            assert "requires at least one evidence item" in str(exc)
+        else:
+            raise AssertionError("fact consulting_content must include evidence")
 
 
 def test_standard_projection_refreshes_when_deck_plan_changes() -> None:

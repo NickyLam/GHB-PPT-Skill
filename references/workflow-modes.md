@@ -61,6 +61,16 @@
 }
 ```
 
+`style.content_profile` 是可选字段，未设置时不改变 Standard 的当前行为。用户明确需要
+“结论先行、证据比较、业务含义”的内容组织方式时，可写入：
+
+```json
+{"content_profile": "consulting-evidence-cn-v1"}
+```
+
+它是内容档案，不是 `brief.json.visual_style` 的替代品；详细规则见
+[content-styles/consulting-evidence-cn-v1.md](content-styles/consulting-evidence-cn-v1.md)。
+
 `ghb_ppt.py plan --workflow-mode standard` 会投影 `confirmation.json`、
 `content_model.json`、`layout_plan.json`、`design_spec.md` 和 `spec_lock.md`，
 供现有转换器兼容使用。投影文件不要求用户逐份维护。

@@ -82,3 +82,16 @@ def test_release_and_semantic_geometry_contracts_are_documented():
         "header-safe-zone-collision",
     ):
         assert token in visual
+
+
+def test_consulting_content_profile_is_explicit_and_visual_style_stays_separate():
+    skill = _read("SKILL.md")
+    workflow_modes = _read("references/workflow-modes.md")
+    profile = _read("references/content-styles/consulting-evidence-cn-v1.md")
+
+    for document in (skill, workflow_modes, profile):
+        assert "consulting-evidence-cn-v1" in document
+    assert "默认不启用" in skill
+    assert "visual_style" in skill
+    assert "结论" in profile
+    assert "source_refs" in profile
