@@ -111,6 +111,37 @@ class ValidateGhbPptxTest(unittest.TestCase):
             self.assertTrue(all(slide.text_objects >= 1 for slide in report.slides[1:-1]))
             self.assertEqual(len(report.package["masters_used"]), 1)
 
+    def test_cover_font_gate_allows_kaiti_in_body_but_rejects_it_on_cover(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output, _result = self.build(Path(tmp), count=1)
+            presentation = Presentation(output)
+            body = next(
+                shape
+                for shape in presentation.slides[1].shapes
+                if getattr(shape, "has_text_frame", False) and shape.text.strip()
+            )
+            for paragraph in body.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.name = "KaiTi"
+            presentation.save(output)
+
+            body_report = validate_pptx(output, expected_body_count=1, expect_ending=True)
+            self.assertTrue(body_report.passed, body_report.errors)
+
+            presentation = Presentation(output)
+            cover = next(
+                shape
+                for shape in presentation.slides[0].shapes
+                if getattr(shape, "has_text_frame", False) and shape.text.strip()
+            )
+            for paragraph in cover.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.name = "KaiTi"
+            presentation.save(output)
+
+            cover_report = validate_pptx(output, expected_body_count=1, expect_ending=True)
+            self.assertIn("cover-font", {issue.code for issue in cover_report.errors})
+
     def test_strict_visual_profile_enforces_final_pptx_role_font_floors(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)

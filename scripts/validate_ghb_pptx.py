@@ -882,7 +882,8 @@ def validate_pptx(
 
     slide_xml = b"\n".join(payload for name, payload in parts.items() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name))
     decoded_slide_xml = slide_xml.decode("utf-8", errors="replace")
-    if re.search(r'typeface="(?:楷体|KaiTi)"', decoded_slide_xml, re.IGNORECASE):
+    cover_xml = parts.get(ordered_slides[0], b"").decode("utf-8", errors="replace") if ordered_slides else ""
+    if re.search(r'typeface="(?:楷体|KaiTi)"', cover_xml, re.IGNORECASE):
         _issue(issues, "error", "cover-font", "KaiTi/楷体 remains in slide text runs")
     if "AB1F29" not in decoded_slide_xml.upper():
         _issue(issues, "warning", "brand-color", "GHB primary color #AB1F29 was not found in slide XML")

@@ -101,6 +101,60 @@ class MergeTemplateMasterTest(unittest.TestCase):
                 slide_size = presentation.find("p:sldSz", NS)
                 self.assertLessEqual(int(off.get("x")) + int(ext.get("cx")), int(slide_size.get("cx")))
 
+    def test_profiled_section_frame_uses_kaiti_and_is_right_flush(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            content = tmp_path / "content.pptx"
+            make_content(content, 1, section_labels=["投资判断"])
+            default = merge_pptx(
+                content_path=content,
+                template_path=TEMPLATE,
+                cover_path=TEMPLATE,
+                output_path=tmp_path / "default.pptx",
+            )
+            profiled = merge_pptx(
+                content_path=content,
+                template_path=TEMPLATE,
+                cover_path=TEMPLATE,
+                output_path=tmp_path / "profiled.pptx",
+                section_frame_font="KaiTi",
+                section_frame_left_inset_px=24,
+            )
+
+            def frame_geometry(path: Path):
+                parts = package(path)
+                presentation = ET.fromstring(parts["ppt/presentation.xml"])
+                width = int(presentation.find("p:sldSz", NS).get("cx"))
+                slide = ET.fromstring(parts[presentation_slide_parts(parts)[1]])
+                frame = next(
+                    node
+                    for node in slide.findall("p:cSld/p:spTree/p:grpSp", NS)
+                    if node.find("p:nvGrpSpPr/p:cNvPr", NS).get("name")
+                    == "GHB Template Section Frame"
+                )
+                xfrm = frame.find("p:grpSpPr/a:xfrm", NS)
+                off = xfrm.find("a:off", NS)
+                ext = xfrm.find("a:ext", NS)
+                fonts = [
+                    node.get("typeface")
+                    for node in (
+                        frame.findall(".//a:latin", NS)
+                        + frame.findall(".//a:ea", NS)
+                        + frame.findall(".//a:cs", NS)
+                    )
+                ]
+                return width, int(off.get("x")), int(ext.get("cx")), fonts
+
+            width, default_x, default_width, _ = frame_geometry(default.output)
+            profiled_width, profiled_x, profiled_frame_width, fonts = frame_geometry(profiled.output)
+            inset = round(24 * width / 1280)
+            self.assertEqual(profiled_width, width)
+            self.assertEqual(profiled_x + profiled_frame_width, width)
+            self.assertEqual(profiled_x - default_x, inset)
+            self.assertEqual(default_width - profiled_frame_width, inset)
+            self.assertTrue(fonts)
+            self.assertTrue(all(font == "KaiTi" for font in fonts))
+
     def test_body_without_semantic_section_label_does_not_gain_title_frame(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

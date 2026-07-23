@@ -22,6 +22,7 @@ from scripts.ghb_ppt import (
     check_svg,
     evidence_freshness,
     doctor_payload,
+    _profiled_section_frame_options,
     load_review_config,
     _load_review_authorization,
     run_optional_review,
@@ -31,6 +32,21 @@ from scripts.validate_project_contract import confirmation_digest, validate_proj
 
 
 class GhbPptCliTest(unittest.TestCase):
+    def test_consulting_profile_selects_kaiti_and_right_flush_title_frame(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "deck_plan.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "ghb.deck-plan.v1",
+                        "style": {"visual_profile": "consulting-research-cn-v1"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(_profiled_section_frame_options(project), ("KaiTi", 24.0))
+            self.assertEqual(_profiled_section_frame_options(project / "default"), (None, 0.0))
+
     def test_skill_drift_payload_compares_installed_copy_without_writing_it(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -229,6 +245,36 @@ class GhbPptCliTest(unittest.TestCase):
             self.assertGreaterEqual(len(validations), 2)
             self.assertFalse(validations[0]["include_font_embed_report"])
             self.assertTrue(validations[-1]["include_font_embed_report"])
+
+    def test_build_final_validation_ignores_stale_font_report_without_embedding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            reports = project / "reports"
+            reports.mkdir()
+            (reports / "font-embed-report.json").write_text(
+                '{"schema":"ghb.font-embed-report.v1","fonts_embedded":1}',
+                encoding="utf-8",
+            )
+            validations = []
+            with (
+                mock.patch("scripts.ghb_ppt.check_project_contract"),
+                mock.patch("scripts.ghb_ppt.build_cover"),
+                mock.patch("scripts.ghb_ppt.build_content"),
+                mock.patch("scripts.ghb_ppt.merge_deck"),
+                mock.patch(
+                    "scripts.ghb_ppt.validate_deck",
+                    side_effect=lambda *args, **kwargs: validations.append(kwargs)
+                    or (project / "a", project / "b"),
+                ),
+                mock.patch.object(RunContext, "checkpoint"),
+            ):
+                code = main([
+                    "build", "--project", str(project), "--dry-run", "--no-render",
+                    "--title", "T", "--subtitle", "S", "--date", "D",
+                ])
+            self.assertEqual(code, 0)
+            self.assertGreaterEqual(len(validations), 2)
+            self.assertFalse(validations[-1]["include_font_embed_report"])
 
     def test_required_review_failure_is_reported_after_deterministic_report(self):
         with tempfile.TemporaryDirectory() as tmp:

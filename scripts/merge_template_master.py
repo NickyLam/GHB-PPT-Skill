@@ -154,7 +154,11 @@ def parse_rels(parts: dict[str, bytes], part: str) -> ET.Element:
 
 
 def find_template_section_frame(
-    template: dict[str, bytes], template_slides: list[str], content_layout: str
+    template: dict[str, bytes],
+    template_slides: list[str],
+    content_layout: str,
+    *,
+    left_inset_px: float = 0.0,
 ) -> ET.Element:
     """Return the native top-level title-frame group for the content layout."""
     matches: list[ET.Element] = []
@@ -187,11 +191,22 @@ def find_template_section_frame(
     slide_width = int(slide_size.get("cx", "0"))
     frame_width = int(frame_ext.get("cx", "0"))
     frame_x = int(frame_off.get("x", "0"))
+    if left_inset_px < 0:
+        raise MergeError("section frame left inset must not be negative")
     if frame_x + frame_width > slide_width:
         # The reference template intentionally bleeds this group a few pixels
         # past the right edge. Body-slide quality gates treat that as an error,
         # so preserve its size and appearance while right-aligning it in-frame.
         frame_off.set("x", str(max(0, slide_width - frame_width)))
+    if left_inset_px:
+        # Consulting pages use a slightly narrower title band. Anchor the
+        # native group to the physical right edge first, then move only its
+        # left edge right so the branded frame remains flush with the slide.
+        inset = round(left_inset_px * slide_width / 1280)
+        if inset >= frame_width:
+            raise MergeError("section frame left inset leaves no visible title frame")
+        frame_off.set("x", str(max(0, slide_width - frame_width) + inset))
+        frame_ext.set("cx", str(frame_width - inset))
     # PowerPoint attached authoring tags to the placeholder shape. They are
     # slide-specific metadata, not visual content, so carrying their r:id into
     # another slide would create a dangling relationship. Remove that metadata
@@ -215,7 +230,12 @@ def find_template_section_frame(
     return frame
 
 
-def move_section_label_into_template_frame(slide_payload: bytes, template_frame: ET.Element) -> bytes:
+def move_section_label_into_template_frame(
+    slide_payload: bytes,
+    template_frame: ET.Element,
+    *,
+    section_frame_font: str = SECTION_FRAME_FONT,
+) -> bytes:
     """Replace a semantic SVG label with a cloned, editable template title frame."""
     slide = ET.fromstring(slide_payload)
     tree = slide.find("p:cSld/p:spTree", NS)
@@ -255,7 +275,7 @@ def move_section_label_into_template_frame(slide_payload: bytes, template_frame:
         raise MergeError("template section frame must contain exactly one title placeholder")
     placeholders[0].text = label
     for font in frame.findall(".//a:latin", NS) + frame.findall(".//a:ea", NS) + frame.findall(".//a:cs", NS):
-        font.set("typeface", SECTION_FRAME_FONT)
+        font.set("typeface", section_frame_font)
 
     top_properties = frame.find("p:nvGrpSpPr/p:cNvPr", NS)
     if top_properties is None:
@@ -456,6 +476,8 @@ def merge_pptx(
     content_layout_index: int = 2,
     ending_slide_index: int | None = None,
     no_ending: bool = False,
+    section_frame_font: str = SECTION_FRAME_FONT,
+    section_frame_left_inset_px: float = 0.0,
 ) -> MergeResult:
     content = load_package(content_path)
     template = load_package(template_path)
@@ -600,10 +622,15 @@ def merge_pptx(
         if has_section_label:
             if template_section_frame is None:
                 template_section_frame = find_template_section_frame(
-                    template, template_slides, template_content_layout
+                    template,
+                    template_slides,
+                    template_content_layout,
+                    left_inset_px=section_frame_left_inset_px,
                 )
             content[body_slide] = move_section_label_into_template_frame(
-                content[body_slide], template_section_frame
+                content[body_slide],
+                template_section_frame,
+                section_frame_font=section_frame_font,
             )
         rels = parse_rels(content, body_slide)
         layouts = [rel for rel in rels if relation_type(rel) == "slideLayout"]
@@ -689,6 +716,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--template", type=Path, required=True)
     parser.add_argument("--cover", type=Path, required=True)
     parser.add_argument("--content-layout", type=int, default=2)
+    parser.add_argument("--section-frame-font", default=SECTION_FRAME_FONT)
+    parser.add_argument("--section-frame-left-inset-px", type=float, default=0.0)
     parser.add_argument("--ending-slide", type=int)
     parser.add_argument("--no-ending", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
@@ -706,6 +735,8 @@ def main(argv: list[str] | None = None) -> int:
             content_layout_index=args.content_layout,
             ending_slide_index=args.ending_slide,
             no_ending=args.no_ending,
+            section_frame_font=args.section_frame_font,
+            section_frame_left_inset_px=args.section_frame_left_inset_px,
         )
     except (OSError, ET.ParseError, MergeError) as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)

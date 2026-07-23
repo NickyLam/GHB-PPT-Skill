@@ -25,6 +25,9 @@ ROOT = Path(__file__).resolve().parents[1]
 PM = ROOT / "scripts" / "ppt_master"
 DEFAULT_TEMPLATE = ROOT / "templates" / "GHB_PPT_模板.pptx"
 REQUIRED_DIRS = ("sources", "analysis", "images", "svg_output", "svg_final", "notes", "exports")
+CONSULTING_RESEARCH_VISUAL_PROFILE = "consulting-research-cn-v1"
+CONSULTING_RESEARCH_SECTION_FRAME_FONT = "KaiTi"
+CONSULTING_RESEARCH_SECTION_FRAME_LEFT_INSET_PX = 24.0
 
 sys.path.insert(0, str(ROOT))
 from scripts.remove_svg_background import (  # noqa: E402
@@ -842,6 +845,8 @@ def merge_deck(
     content_layout: int,
     no_ending: bool,
     ending_slide: int | None,
+    section_frame_font: str | None = None,
+    section_frame_left_inset_px: float = 0.0,
 ) -> Path:
     for label, path in (("content", content), ("template", template), ("cover", cover)):
         if not path.is_file() and not run.dry_run:
@@ -855,6 +860,12 @@ def merge_deck(
         "--content-layout", str(content_layout),
         "--output", str(output),
     ]
+    if section_frame_font:
+        command.extend(["--section-frame-font", section_frame_font])
+    if section_frame_left_inset_px:
+        command.extend(
+            ["--section-frame-left-inset-px", str(section_frame_left_inset_px)]
+        )
     if no_ending:
         command.append("--no-ending")
     elif ending_slide is not None:
@@ -885,6 +896,20 @@ def _profiled_merge_values(
         candidate = profile.get("ending_slide_index")
         resolved_ending = candidate if isinstance(candidate, int) and candidate > 0 else None
     return resolved_layout, resolved_ending
+
+
+def _profiled_section_frame_options(project: Path) -> tuple[str | None, float]:
+    """Return profile-specific native title-frame treatment without changing defaults."""
+
+    plan = _load_json_evidence(project / "deck_plan.json")
+    style = plan.get("style") if isinstance(plan, dict) else None
+    profile = style.get("visual_profile") if isinstance(style, dict) else None
+    if profile == CONSULTING_RESEARCH_VISUAL_PROFILE:
+        return (
+            CONSULTING_RESEARCH_SECTION_FRAME_FONT,
+            CONSULTING_RESEARCH_SECTION_FRAME_LEFT_INSET_PX,
+        )
+    return None, 0.0
 
 
 def _resolve_embed_font_paths(explicit: list[Path]) -> list[Path]:
@@ -2065,6 +2090,9 @@ def main(argv: list[str] | None = None) -> int:
                     content_layout=args.content_layout,
                     ending_slide=args.ending_slide,
                 )
+                section_frame_font, section_frame_left_inset_px = _profiled_section_frame_options(
+                    project
+                )
                 merged = merge_deck(
                     run,
                     content=_project_output(project, args.content, "content.pptx"),
@@ -2074,6 +2102,8 @@ def main(argv: list[str] | None = None) -> int:
                     content_layout=content_layout,
                     no_ending=args.no_ending,
                     ending_slide=ending_slide,
+                    section_frame_font=section_frame_font,
+                    section_frame_left_inset_px=section_frame_left_inset_px,
                 )
                 if args.embed_fonts:
                     embed_deck(run, pptx=merged, font_paths=args.embed_font_paths)
@@ -2270,6 +2300,9 @@ def main(argv: list[str] | None = None) -> int:
                     content_layout=args.content_layout,
                     ending_slide=args.ending_slide,
                 )
+                section_frame_font, section_frame_left_inset_px = _profiled_section_frame_options(
+                    project
+                )
                 check_project_contract(
                     run,
                     workflow_mode=args.workflow_mode,
@@ -2298,6 +2331,8 @@ def main(argv: list[str] | None = None) -> int:
                     content_layout=content_layout,
                     no_ending=args.no_ending,
                     ending_slide=ending_slide,
+                    section_frame_font=section_frame_font,
+                    section_frame_left_inset_px=section_frame_left_inset_px,
                 )
                 report_dir = project / "reports"
                 pre_json = report_dir / "quality-pre-render.json"
@@ -2347,6 +2382,8 @@ def main(argv: list[str] | None = None) -> int:
                             content_layout=content_layout,
                             no_ending=args.no_ending,
                             ending_slide=ending_slide,
+                            section_frame_font=section_frame_font,
+                            section_frame_left_inset_px=section_frame_left_inset_px,
                         )
                 if args.embed_fonts:
                     embed_deck(run, pptx=final_path, font_paths=args.embed_font_paths)
@@ -2426,7 +2463,7 @@ def main(argv: list[str] | None = None) -> int:
                         args.warning_waivers.resolve() if args.warning_waivers else None
                     ),
                     target_renderer=args.target_renderer,
-                    include_font_embed_report=True,
+                    include_font_embed_report=args.embed_fonts,
                 )
                 require_completed_review(review_report, required=args.require_review)
                 run.checkpoint(
