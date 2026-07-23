@@ -88,6 +88,7 @@ def test_consulting_content_profile_is_explicit_and_visual_style_stays_separate(
     skill = _read("SKILL.md")
     workflow_modes = _read("references/workflow-modes.md")
     profile = _read("references/content-styles/consulting-evidence-cn-v1.md")
+    visual_profile = _read("references/visual-styles/consulting-research-cn-v1.md")
 
     for document in (skill, workflow_modes, profile):
         assert "consulting-evidence-cn-v1" in document
@@ -95,3 +96,7 @@ def test_consulting_content_profile_is_explicit_and_visual_style_stays_separate(
     assert "visual_style" in skill
     assert "结论" in profile
     assert "source_refs" in profile
+    assert "consulting-research-cn-v1" in skill
+    assert "visual_profile" in workflow_modes
+    assert "默认不启用" in visual_profile
+    assert "GHB" in visual_profile

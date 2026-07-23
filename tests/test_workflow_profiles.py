@@ -111,6 +111,51 @@ def test_standard_consulting_profile_is_opt_in_and_projected() -> None:
         assert "content_profile" not in lock
 
 
+def test_standard_consulting_research_visual_profile_is_opt_in_and_projected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        project = Path(tmp) / "project"
+        _seed_confirmed_standard(project)
+        plan_path = project / "deck_plan.json"
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        plan["style"]["visual_profile"] = "consulting-research-cn-v1"
+        _write(plan_path, plan)
+        brief_path = project / "brief.json"
+        brief = json.loads(brief_path.read_text(encoding="utf-8"))
+        brief["mode"] = "narrative"
+        _write(brief_path, brief)
+
+        materialize_standard_contract(project)
+
+        layout = json.loads((project / "layout_plan.json").read_text(encoding="utf-8"))
+        assert layout[0]["visual_profile"] == "consulting-research-cn-v1"
+        confirmation = json.loads((project / "confirmation.json").read_text(encoding="utf-8"))
+        assert confirmation["decisions"]["visual_profile"] == "consulting-research-cn-v1"
+        design = (project / "design_spec.md").read_text(encoding="utf-8")
+        assert "Visual profile: consulting-research-cn-v1" in design
+        lock = (project / "spec_lock.md").read_text(encoding="utf-8")
+        assert "- mode: narrative" in lock
+        assert "## visual_profile" in lock
+        assert "full-canvas white body overlay" in lock
+        assert "#00A6E8" in lock
+
+
+def test_standard_research_visual_profile_rejects_unknown_value() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        project = Path(tmp) / "project"
+        _seed_confirmed_standard(project)
+        plan_path = project / "deck_plan.json"
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        plan["style"]["visual_profile"] = "unknown-visual-profile"
+        _write(plan_path, plan)
+
+        try:
+            materialize_standard_contract(project)
+        except WorkflowProfileError as exc:
+            assert "unsupported visual_profile" in str(exc)
+        else:
+            raise AssertionError("unknown visual_profile must fail before projection")
+
+
 def test_standard_default_projection_does_not_emit_consulting_profile() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         project = Path(tmp) / "project"
@@ -121,8 +166,10 @@ def test_standard_default_projection_does_not_emit_consulting_profile() -> None:
         layout = json.loads((project / "layout_plan.json").read_text(encoding="utf-8"))
         assert "content_profile" not in layout[0]
         assert "consulting_content" not in layout[0]
+        assert "visual_profile" not in layout[0]
         design = (project / "design_spec.md").read_text(encoding="utf-8")
         assert "Content profile:" not in design
+        assert "Visual profile:" not in design
 
 
 def test_standard_projection_preserves_timeline_order_signal() -> None:

@@ -71,6 +71,20 @@
 它是内容档案，不是 `brief.json.visual_style` 的替代品；详细规则见
 [content-styles/consulting-evidence-cn-v1.md](content-styles/consulting-evidence-cn-v1.md)。
 
+`style.visual_profile` 也是可选字段。用户明确要求将“咨询研究报告式”视觉落到正文时，
+可与内容档案组合填写：
+
+```json
+{
+  "content_profile": "consulting-evidence-cn-v1",
+  "visual_profile": "consulting-research-cn-v1"
+}
+```
+
+它锁定白底研究版式、衬线标题、细分隔线、蓝/灰证据图和来源页脚，并在正文中覆盖 GHB
+母版页眉；封面与致谢页仍沿用 GHB。字段缺失时不会改变任何默认 GHB 视觉。详见
+[visual-styles/consulting-research-cn-v1.md](visual-styles/consulting-research-cn-v1.md)。
+
 `ghb_ppt.py plan --workflow-mode standard` 会投影 `confirmation.json`、
 `content_model.json`、`layout_plan.json`、`design_spec.md` 和 `spec_lock.md`，
 供现有转换器兼容使用。投影文件不要求用户逐份维护。

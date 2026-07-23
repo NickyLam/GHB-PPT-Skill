@@ -22,6 +22,7 @@ from typing import Any
 WORKFLOW_MODES = ("quick", "standard", "strict")
 GENERATED_ORIGIN = "standard-projection"
 CONTENT_PROFILES = frozenset({"consulting-evidence-cn-v1"})
+VISUAL_PROFILES = frozenset({"consulting-research-cn-v1"})
 CONSULTING_CLAIM_TYPES = frozenset({"fact", "inference", "recommendation"})
 CONSULTING_SO_WHAT_TYPES = frozenset({"inference", "recommendation"})
 
@@ -154,6 +155,25 @@ def _content_profile(plan: dict[str, Any], path: Path) -> str | None:
     return profile
 
 
+def _visual_profile(plan: dict[str, Any], path: Path) -> str | None:
+    """Return the explicitly selected Standard visual profile, if any.
+
+    A visual profile is deliberately separate from ``brief.visual_style``:
+    the latter remains a free-form description, while this field selects a
+    documented, auditable visual contract.  No default is inferred so existing
+    Standard projects preserve their GHB appearance byte-for-byte.
+    """
+    style = plan.get("style")
+    if not isinstance(style, dict):
+        return None
+    profile = style.get("visual_profile")
+    if profile in (None, ""):
+        return None
+    if not isinstance(profile, str) or profile not in VISUAL_PROFILES:
+        raise WorkflowProfileError(f"{path} has unsupported visual_profile: {profile!r}")
+    return profile
+
+
 def _validate_consulting_content(content: Any, slide: dict[str, Any], index: int, path: Path) -> None:
     if not isinstance(content, dict):
         raise WorkflowProfileError(f"{path} slide {index} consulting_content must be an object")
@@ -228,6 +248,7 @@ def _validate_deck_plan(plan: Any, path: Path) -> dict[str, Any]:
     if not isinstance(slides, list) or not slides:
         raise WorkflowProfileError(f"{path} slides must be a non-empty list")
     content_profile = _content_profile(plan, path)
+    _visual_profile(plan, path)
     for index, slide in enumerate(slides, start=1):
         if not isinstance(slide, dict):
             raise WorkflowProfileError(f"{path} slide {index} must be an object")
@@ -278,6 +299,75 @@ def _projection_paths(project: Path) -> tuple[Path, ...]:
     )
 
 
+def _projected_spec_lock(brief: dict[str, Any], visual_profile: str | None) -> str:
+    """Create the execution lock for a compact Standard contract.
+
+    The legacy, GHB-profile lock remains untouched unless the author has
+    explicitly selected a supported visual profile.  The research profile uses
+    the parseable PPT Master lock format so authored SVG colors and font stacks
+    can be checked rather than merely described in prose.
+    """
+    if visual_profile != "consulting-research-cn-v1":
+        return (
+            "# origin: standard-projection\ncanvas: 1280x720\n"
+            f"mode: {brief['mode']}\n"
+            f"visual_style: {brief['visual_style']}\n"
+            "colors: GHB template profile\n"
+            "typography: Source Han Sans SC with Office-safe fallback\n"
+            "safe_area: x=64..1216, y=170..680\n"
+        )
+
+    return f"""# origin: standard-projection
+## canvas
+- viewBox: 0 0 1280 720
+- format: PPT 16:9
+
+## mode
+- mode: {brief['mode']}
+
+## visual_style
+- visual_style: custom
+- visual_style_behavior: white research-editorial field; rectilinear evidence graphics; typographic hierarchy, rules, and whitespace instead of cards or dashboard chrome
+
+## visual_profile
+- name: consulting-research-cn-v1
+- body_master_behavior: full-canvas white body overlay; retain GHB cover and ending only
+
+## colors
+- paper: #FFFFFF
+- ink: #1F1F1F
+- text_secondary: #5C5C5C
+- rule: #C9C9C9
+- grid: #E6E6E6
+- navy: #102A83
+- blue: #00A6E8
+- pale_blue: #DDF3FC
+- risk: #A92A2A
+
+## typography
+- font_family: 'Source Han Sans SC', 'Microsoft YaHei', Arial, sans-serif
+- title_family: 'Songti SC', SimSun, serif
+- body: 24
+- title: 42
+- subtitle: 28
+- label: 20
+- annotation: 16
+- source: 15
+- footer: 14
+- metric: 64
+
+## icons
+- library: none
+- inventory: none
+
+## safe_area
+- bounds: x=76..1204, y=56..672
+
+## forbidden
+- GHB red card shells, rounded dashboard cards, gradients, shadows, decorative icons, and native template section labels on body pages
+"""
+
+
 def materialize_standard_contract(project: Path) -> list[Path]:
     """Project a confirmed brief/deck plan into legacy compatibility artifacts.
 
@@ -294,6 +384,7 @@ def materialize_standard_contract(project: Path) -> list[Path]:
     brief = _validate_brief(_read_json(brief_path), brief_path)
     plan = _validate_deck_plan(_read_json(plan_path), plan_path)
     content_profile = _content_profile(plan, plan_path)
+    visual_profile = _visual_profile(plan, plan_path)
     generated_projection = _generated(project / "confirmation.json")
     protected = [
         path
@@ -318,6 +409,8 @@ def materialize_standard_contract(project: Path) -> list[Path]:
         "content_tradeoffs": {"expand": [], "omit": [], "combine": []},
         "visual_assets": brief.get("assets") or {"image_source": "none", "icon_set": "none"},
     }
+    if visual_profile is not None:
+        decisions["visual_profile"] = visual_profile
     confirmation = {
         "schema": "ghb.confirmation.v1",
         "origin": GENERATED_ORIGIN,
@@ -389,6 +482,8 @@ def materialize_standard_contract(project: Path) -> list[Path]:
                 row[passthrough] = slide[passthrough]
         if content_profile is not None:
             row["content_profile"] = content_profile
+        if visual_profile is not None:
+            row["visual_profile"] = visual_profile
         if "consulting_content" in slide:
             row["consulting_content"] = deepcopy(slide["consulting_content"])
         layout_rows.append(row)
@@ -420,6 +515,9 @@ def materialize_standard_contract(project: Path) -> list[Path]:
         content_profile_line = (
             f"- Content profile: {content_profile}\n" if content_profile is not None else ""
         )
+        visual_profile_line = (
+            f"- Visual profile: {visual_profile}\n" if visual_profile is not None else ""
+        )
         design_spec.write_text(
             "<!-- origin: standard-projection -->\n# Standard Design Brief\n\n"
             f"- Audience: {brief['audience']}\n"
@@ -427,6 +525,7 @@ def materialize_standard_contract(project: Path) -> list[Path]:
             f"- Mode: {brief['mode']}\n"
             f"- Visual style: {brief['visual_style']}\n"
             f"{content_profile_line}"
+            f"{visual_profile_line}"
             f"- Page count: {brief['page_count']}\n",
             encoding="utf-8",
         )
@@ -438,15 +537,7 @@ def materialize_standard_contract(project: Path) -> list[Path]:
         )
     )
     if lock_is_projection:
-        spec_lock.write_text(
-            "# origin: standard-projection\ncanvas: 1280x720\n"
-            f"mode: {brief['mode']}\n"
-            f"visual_style: {brief['visual_style']}\n"
-            "colors: GHB template profile\n"
-            "typography: Source Han Sans SC with Office-safe fallback\n"
-            "safe_area: x=64..1216, y=170..680\n",
-            encoding="utf-8",
-        )
+        spec_lock.write_text(_projected_spec_lock(brief, visual_profile), encoding="utf-8")
         written.append(spec_lock)
     return written
 
