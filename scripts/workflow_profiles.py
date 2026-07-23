@@ -382,7 +382,9 @@ def materialize_standard_contract(project: Path) -> list[Path]:
                 },
             },
         }
-        for passthrough in ("time_order", "sequence", "comparison_criteria", "axes", "loop_closure"):
+        for passthrough in (
+            "time_order", "order_signal", "sequence", "comparison_criteria", "axes", "loop_closure"
+        ):
             if passthrough in slide:
                 row[passthrough] = slide[passthrough]
         if content_profile is not None:

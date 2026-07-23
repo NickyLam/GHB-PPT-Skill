@@ -125,6 +125,22 @@ def test_standard_default_projection_does_not_emit_consulting_profile() -> None:
         assert "Content profile:" not in design
 
 
+def test_standard_projection_preserves_timeline_order_signal() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        project = Path(tmp) / "project"
+        _seed_confirmed_standard(project)
+        plan_path = project / "deck_plan.json"
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        plan["slides"][0]["layout"] = "timeline"
+        plan["slides"][0]["order_signal"] = "next quarter → next 12 months → capital cycle"
+        _write(plan_path, plan)
+
+        materialize_standard_contract(project)
+
+        layout = json.loads((project / "layout_plan.json").read_text(encoding="utf-8"))
+        assert layout[0]["order_signal"] == plan["slides"][0]["order_signal"]
+
+
 def test_standard_consulting_profile_rejects_unknown_profile_and_unmapped_fact() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         project = Path(tmp) / "project"
