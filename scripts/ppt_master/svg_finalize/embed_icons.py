@@ -175,9 +175,10 @@ def parse_use_element(use_match: str) -> Dict[str, Union[str, float]]:
     if icon_match:
         attrs['icon'] = icon_match.group(1)
     
-    # Extract numeric attributes
+    # GHB packaging note: match complete XML attribute names so QA metadata
+    # such as data-qa-box cannot shadow the short x/y geometry attributes.
     for attr in ['x', 'y', 'width', 'height']:
-        match = re.search(rf'{attr}="([^"]+)"', use_match)
+        match = re.search(rf'(?:^|\s){re.escape(attr)}="([^"]+)"', use_match)
         if match:
             attrs[attr] = float(match.group(1))
     

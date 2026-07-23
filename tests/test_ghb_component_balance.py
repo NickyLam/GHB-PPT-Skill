@@ -38,6 +38,40 @@ NO_SLOTS = _svg(
     'data-qa-box="100 100 500 400"/>'
 )
 
+MISALIGNED_PEER_SLOTS = _svg(
+    '<g data-component="model-route" data-component-id="left" '
+    'data-qa-peer-group="model-routes" data-qa-box="100 100 320 176">'
+    '<g data-component-parent="left" data-component-slot="icon" '
+    'data-qa-box="124 124 56 56"/>'
+    '<g data-component-parent="left" data-component-slot="title-1" '
+    'data-qa-box="124 178 240 32"/>'
+    '</g>'
+    '<g data-component="model-route" data-component-id="right" '
+    'data-qa-peer-group="model-routes" data-qa-box="440 100 320 176">'
+    '<g data-component-parent="right" data-component-slot="icon" '
+    'data-qa-box="464 124 56 56"/>'
+    '<g data-component-parent="right" data-component-slot="title-1" '
+    'data-qa-box="536 136 180 32"/>'
+    '</g>'
+)
+
+ALIGNED_PEER_SLOTS = _svg(
+    '<g data-component="model-route" data-component-id="left" '
+    'data-qa-peer-group="model-routes" data-qa-box="100 100 320 176">'
+    '<g data-component-parent="left" data-component-slot="icon" '
+    'data-qa-box="124 124 56 56"/>'
+    '<g data-component-parent="left" data-component-slot="title-1" '
+    'data-qa-box="124 178 240 32"/>'
+    '</g>'
+    '<g data-component="model-route" data-component-id="right" '
+    'data-qa-peer-group="model-routes" data-qa-box="440 100 320 176">'
+    '<g data-component-parent="right" data-component-slot="icon" '
+    'data-qa-box="464 124 56 56"/>'
+    '<g data-component-parent="right" data-component-slot="title-1" '
+    'data-qa-box="464 178 240 32"/>'
+    '</g>'
+)
+
 
 class ComponentVoidTest(unittest.TestCase):
     def test_hollow_card_reports_component_void_error(self):
@@ -65,6 +99,16 @@ class ComponentVoidTest(unittest.TestCase):
 
     def test_invalid_svg_is_silent(self):
         self.assertEqual(analyze_component_balance("<svg", slide_id="s1"), [])
+
+    def test_misaligned_peer_slots_are_rejected(self):
+        findings = analyze_component_balance(MISALIGNED_PEER_SLOTS, slide_id="s1")
+        self.assertTrue(
+            any(item["code"] == "component-peer-slot-outlier" for item in findings),
+            findings,
+        )
+
+    def test_aligned_peer_slots_pass(self):
+        self.assertEqual(analyze_component_balance(ALIGNED_PEER_SLOTS, slide_id="s1"), [])
 
 
 class ComponentVoidIntegrationTest(unittest.TestCase):

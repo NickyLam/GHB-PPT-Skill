@@ -7,8 +7,10 @@ codes: ``component-slot-overflow`` (a slot escaping its card) and
 *not* catch a card that is structurally valid but visually hollow: a large card
 with sparse content that leaves a tall empty band inside it. That "card void" is
 a common return source, so this GHB-side module adds the missing
-``component-void`` finding and is deliberately scoped to that gap to avoid
-double-reporting the codes the upstream checker already owns.
+``component-void`` finding. It also checks that repeated components declaring a
+``data-qa-peer-group`` use the same relative slot origins; equal outer cards do
+not look aligned when one card puts its title beside the icon while its peers
+put the title below it.
 
 Detection is pure geometry over declared component/slot QA boxes; it never
 guesses glyph ink bounds, matching the rest of the measurable-geometry gate.
@@ -32,6 +34,7 @@ from scripts.ppt_master.visual_asset_checker import Box, _box_from_element  # no
 # (uniformly padded) from tripping the gate.
 DEFAULT_VOID_OCCUPANCY = 0.45
 DEFAULT_VOID_BAND_PX = 200.0
+DEFAULT_PEER_SLOT_TOLERANCE_PX = 8.0
 
 
 def _finding(
@@ -109,12 +112,78 @@ def _collect_components(root: ET.Element) -> tuple[dict[str, Box], dict[str, lis
     return components, slots
 
 
+def _peer_slot_findings(
+    root: ET.Element,
+    *,
+    slide_id: str,
+    tolerance_px: float,
+) -> list[dict[str, Any]]:
+    components: dict[str, tuple[Box, str]] = {}
+    groups: dict[str, list[str]] = {}
+    slots: dict[str, dict[str, Box]] = {}
+    for elem in root.iter():
+        component_id = (elem.get("data-component-id") or "").strip()
+        peer_group = (elem.get("data-qa-peer-group") or "").strip()
+        if not component_id or not peer_group or not (elem.get("data-component") or "").strip():
+            continue
+        box = _box_from_element(elem)
+        if not box or box.width <= 0 or box.height <= 0:
+            continue
+        components[component_id] = (box, peer_group)
+        groups.setdefault(peer_group, []).append(component_id)
+        slots.setdefault(component_id, {})
+    for elem in root.iter():
+        parent_id = (elem.get("data-component-parent") or "").strip()
+        slot_name = (elem.get("data-component-slot") or "").strip()
+        if parent_id not in components or not slot_name:
+            continue
+        box = _box_from_element(elem)
+        if box and box.width > 0 and box.height > 0:
+            slots[parent_id][slot_name] = box
+
+    findings: list[dict[str, Any]] = []
+    for peer_group, member_ids in groups.items():
+        if len(member_ids) < 2:
+            continue
+        common_slots = set.intersection(*(set(slots[member_id]) for member_id in member_ids))
+        for slot_name in sorted(common_slots):
+            origins = []
+            for member_id in member_ids:
+                component_box = components[member_id][0]
+                slot_box = slots[member_id][slot_name]
+                origins.append((member_id, slot_box.x - component_box.x, slot_box.y - component_box.y))
+            x_values = [origin[1] for origin in origins]
+            y_values = [origin[2] for origin in origins]
+            x_spread = max(x_values) - min(x_values)
+            y_spread = max(y_values) - min(y_values)
+            if x_spread <= tolerance_px and y_spread <= tolerance_px:
+                continue
+            findings.append(_finding(
+                "component-peer-slot-outlier",
+                slide_id,
+                {
+                    "peer_group": peer_group,
+                    "slot": slot_name,
+                    "relative_origins": [
+                        {"component": member_id, "x": round(x, 2), "y": round(y, 2)}
+                        for member_id, x, y in origins
+                    ],
+                    "x_spread_px": round(x_spread, 2),
+                    "y_spread_px": round(y_spread, 2),
+                },
+                {"max_origin_spread_px": tolerance_px},
+                "Use one shared internal slot template for all components in the peer group.",
+            ))
+    return findings
+
+
 def analyze_component_balance(
     svg: str,
     *,
     slide_id: str,
     void_occupancy_threshold: float = DEFAULT_VOID_OCCUPANCY,
     void_band_px: float = DEFAULT_VOID_BAND_PX,
+    peer_slot_tolerance_px: float = DEFAULT_PEER_SLOT_TOLERANCE_PX,
 ) -> list[dict[str, Any]]:
     """Return ``component-void`` findings for hollow cards, or ``[]``.
 
@@ -126,7 +195,11 @@ def analyze_component_balance(
     except ET.ParseError:
         return []
     components, slots = _collect_components(root)
-    findings: list[dict[str, Any]] = []
+    findings = _peer_slot_findings(
+        root,
+        slide_id=slide_id,
+        tolerance_px=peer_slot_tolerance_px,
+    )
     for component_id, box in components.items():
         member_slots = slots.get(component_id, [])
         if not member_slots:
