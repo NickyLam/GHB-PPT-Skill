@@ -16,6 +16,7 @@ from scripts.render_ghb_pptx import (
     RenderError,
     _font_warning,
     _render_environment,
+    build_parser,
     make_contact_sheet,
     render_pptx,
 )
@@ -63,6 +64,32 @@ class RenderGhbPptxTest(unittest.TestCase):
             self.assertEqual(env["XDG_CACHE_HOME"], str(cache))
             self.assertEqual(env["FONTCONFIG_FILE"], str(config))
             self.assertEqual(env["FONTCONFIG_PATH"], str(root))
+
+    def test_explicit_font_file_gets_a_private_fontconfig_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base_config = root / "fonts.conf"
+            base_config.write_text("<fontconfig/>", encoding="utf-8")
+            font_file = root / "Kaiti.ttf"
+            font_file.write_bytes(b"font payload")
+            cache = root / "cache"
+            with (
+                mock.patch("scripts.render_ghb_pptx.FONTCONFIG_FILES", (base_config,)),
+                mock.patch.dict("scripts.render_ghb_pptx.os.environ", {}, clear=True),
+            ):
+                env = _render_environment(cache, font_paths=[font_file])
+            generated_config = Path(env["FONTCONFIG_FILE"])
+            self.assertNotEqual(generated_config, base_config)
+            config = generated_config.read_text(encoding="utf-8")
+            self.assertIn(str(font_file.parent), config)
+            self.assertIn(str(cache), config)
+            self.assertEqual(env["FONTCONFIG_PATH"], str(root))
+
+    def test_render_cli_accepts_repeatable_font_file(self):
+        parsed = build_parser().parse_args(
+            ["deck.pptx", "--output-dir", "render", "--font-file", "Kaiti.ttf"]
+        )
+        self.assertEqual(parsed.font_files, [Path("Kaiti.ttf")])
 
     def test_missing_renderer_still_writes_atomic_failure_report(self):
         with tempfile.TemporaryDirectory() as tmp:

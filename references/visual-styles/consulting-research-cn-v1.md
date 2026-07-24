@@ -14,7 +14,9 @@
   为默认意图，左边界内收 24 px，其可见右边线严格贴齐 1280 px 页面边界。构建时必须把
   DrawingML 写成真实可用的字体：优先 `KaiTi/STKaiti/HuaWenKaiTi`，缺失时仅允许已验证的
   衬线替代 `Songti SC/SimSun`，并将请求值、实际值和替换次数写入
-  `reports/font-resolution-report.json`；禁止静默回退成无衬线字体。
+  `reports/font-resolution-report.json`；禁止静默回退成无衬线字体。操作者提供
+  `--consulting-font /path/Kaiti.ttf` 时，必须读取文件内部字体名、让正文和右上框都使用该名字；
+  与 `--embed-fonts` 同用时，最终 PPTX 还必须嵌入该字体，渲染器只在本次运行临时加载它。
 - `bg-surface` 只能是模板正文面板 `x=56, y=96, width=1168, height=608` 的白色底版；
   禁止 `0 0 1280 720` 的全画布白色覆盖层，也不得在页眉区域另画自定义栏目标题。
 - 内容宜与 `consulting-evidence-cn-v1` 组合，但不强制绑定。资料不支持的数字、趋势、
@@ -60,7 +62,9 @@ GHB Logo                         原生章节标题框（短章节名）
 3. 最终渲染中，正文必须可见 GHB Logo 与右上原生章节标题框；自定义内容不得压住页眉。
    同时必须可见细线、来源页脚和至少一个蓝/灰证据关系；禁用全幅白底、红色卡片壳与阴影。
 4. 检查 `reports/font-resolution-report.json`：请求字体为 `KaiTi` 时，实际字体必须是
-   `KaiTi/STKaiti/HuaWenKaiTi` 或明确记录的 `Songti SC/SimSun`；未生成报告、替换次数为
-   0 且 `resolution_state` 不为 `already-resolved`、或无衬线回退均为失败。
+   `KaiTi/STKaiti/HuaWenKaiTi` 或明确记录的 `Songti SC/SimSun`；若传入
+   `--consulting-font`，实际字体必须与该文件的内部楷体族一致，且 `--embed-fonts` 的报告必须
+   包含同一字体；未生成报告、替换次数为 0 且 `resolution_state` 不为 `already-resolved`、或
+   无衬线回退均为失败。
 5. 继续执行现有 `check-project`、`check-svg`、release build、渲染、逐页人工检查、
    PPTX 回读和 ZIP 完整性检查。

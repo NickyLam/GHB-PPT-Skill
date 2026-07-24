@@ -930,13 +930,27 @@ def _fontconfig_output() -> str:
     return completed.stdout if completed.returncode == 0 else ""
 
 
-def _profiled_font_resolution(project: Path) -> tuple[str | None, str | None]:
+def _profiled_font_resolution(
+    project: Path,
+    *,
+    consulting_font: Path | None = None,
+) -> tuple[str | None, str | None]:
     """Resolve the one actual typeface written into a consulting profile deck."""
 
     section_frame_font, _ = _profiled_section_frame_options(project)
     if section_frame_font is None:
+        if consulting_font is not None:
+            raise PipelineError(
+                "--consulting-font requires visual_profile consulting-research-cn-v1"
+            )
         return None, None
-    resolved = resolve_consulting_research_font(_fontconfig_output())
+    try:
+        resolved = resolve_consulting_research_font(
+            _fontconfig_output(),
+            consulting_font=consulting_font,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise PipelineError(f"invalid --consulting-font: {exc}") from exc
     if resolved is None:
         raise PipelineError(
             "consulting-research-cn-v1 needs KaiTi/STKaiti or a verified serif fallback "
@@ -951,6 +965,7 @@ def apply_profile_font_resolution(
     pptx: Path,
     requested_typeface: str | None,
     resolved_typeface: str | None,
+    consulting_font: Path | None = None,
 ) -> Path:
     """Make the content PPTX use the profile font that is real on this host."""
 
@@ -971,8 +986,8 @@ def apply_profile_font_resolution(
         )
     except (OSError, zipfile.BadZipFile) as exc:
         raise PipelineError(f"consulting font resolution failed: {exc}") from exc
-    already_resolved = False
-    if requested_typeface != resolved_typeface and replacements == 0:
+    already_resolved = requested_typeface == resolved_typeface
+    if replacements == 0:
         try:
             already_resolved = count_pptx_typeface(pptx, typeface=resolved_typeface) > 0
         except (OSError, zipfile.BadZipFile) as exc:
@@ -990,6 +1005,11 @@ def apply_profile_font_resolution(
         "resolution_state": "already-resolved" if already_resolved else "rewritten",
         "pptx": str(pptx.resolve()),
     }
+    if consulting_font is not None:
+        payload["consulting_font"] = {
+            "file_name": consulting_font.name,
+            "sha256": _file_digest(consulting_font),
+        }
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     run.record.stages.append({"stage": "resolve-consulting-font", **payload})
@@ -1016,6 +1036,20 @@ def _resolve_embed_font_paths(explicit: list[Path]) -> list[Path]:
             "--embed-fonts could not resolve an installed CJK font file; pass --embed-font PATH"
         )
     return [Path(font_file)]
+
+
+def _effective_embed_font_paths(
+    explicit: list[Path],
+    *,
+    consulting_font: Path | None,
+) -> list[Path]:
+    """Keep explicit embeddings intact while adding one exact consulting asset."""
+    if consulting_font is None:
+        return explicit
+    target = consulting_font.expanduser().resolve()
+    if any(path.expanduser().resolve() == target for path in explicit):
+        return explicit
+    return [consulting_font, *explicit]
 
 
 def embed_deck(run: RunContext, *, pptx: Path, font_paths: list[Path]) -> Path:
@@ -1154,19 +1188,20 @@ def render_deck(
     pptx: Path,
     output_dir: Path,
     dpi: int = 144,
+    font_paths: list[Path] | None = None,
 ) -> Path:
     if not pptx.is_file() and not run.dry_run:
         raise PipelineError(f"PPTX not found: {pptx}")
-    run.run(
-        "render",
-        [
-            sys.executable,
-            str(ROOT / "scripts" / "render_ghb_pptx.py"),
-            str(pptx),
-            "--output-dir", str(output_dir),
-            "--dpi", str(dpi),
-        ],
-    )
+    command = [
+        sys.executable,
+        str(ROOT / "scripts" / "render_ghb_pptx.py"),
+        str(pptx),
+        "--output-dir", str(output_dir),
+        "--dpi", str(dpi),
+    ]
+    for font_path in font_paths or []:
+        command.extend(["--font-file", str(font_path)])
+    run.run("render", command)
     run.output(output_dir / "render-report.json")
     run.output(output_dir / "contact-sheet.png")
     run.checkpoint(
@@ -1926,6 +1961,11 @@ def parser() -> argparse.ArgumentParser:
     content = sub.add_parser("build-content", help="Finalize SVG and export editable content PPTX")
     add_project(content)
     content.add_argument("--output", type=Path)
+    content.add_argument(
+        "--consulting-font",
+        type=Path,
+        help="Operator-local KaiTi font file for consulting-research-cn-v1 exact delivery",
+    )
 
     merge = sub.add_parser("merge", help="Merge cover, editable body, master, and ending")
     add_project(merge)
@@ -1934,6 +1974,11 @@ def parser() -> argparse.ArgumentParser:
     merge.add_argument("--cover", type=Path)
     merge.add_argument("--output", type=Path)
     merge.add_argument("--content-layout", type=int)
+    merge.add_argument(
+        "--consulting-font",
+        type=Path,
+        help="Operator-local KaiTi font file for consulting-research-cn-v1 exact delivery",
+    )
     ending = merge.add_mutually_exclusive_group()
     ending.add_argument("--no-ending", action="store_true")
     ending.add_argument("--ending-slide", type=int)
@@ -2005,6 +2050,11 @@ def parser() -> argparse.ArgumentParser:
     build.add_argument("--subtitle")
     build.add_argument("--date")
     build.add_argument("--content-layout", type=int)
+    build.add_argument(
+        "--consulting-font",
+        type=Path,
+        help="Operator-local KaiTi font file for consulting-research-cn-v1 exact delivery",
+    )
     build.add_argument("--no-render", action="store_true")
     build.add_argument("--render-dpi", type=int, default=144)
     build.add_argument("--review", action="store_true")
@@ -2147,6 +2197,11 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
             keep_intermediate=args.keep_intermediate,
         )
+        consulting_font = (
+            _operator_local_file(args.consulting_font, project, label="consulting font")
+            if getattr(args, "consulting_font", None) is not None
+            else None
+        )
         try:
             if args.command == "build-cover":
                 build_cover(
@@ -2174,7 +2229,10 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 run.checkpoint("check-project", [])
             elif args.command == "build-content":
-                requested_typeface, resolved_typeface = _profiled_font_resolution(project)
+                requested_typeface, resolved_typeface = _profiled_font_resolution(
+                    project,
+                    consulting_font=consulting_font,
+                )
                 content_path = _project_output(project, args.output, "content.pptx")
                 build_content(
                     run,
@@ -2186,6 +2244,7 @@ def main(argv: list[str] | None = None) -> int:
                     pptx=content_path,
                     requested_typeface=requested_typeface,
                     resolved_typeface=resolved_typeface,
+                    consulting_font=consulting_font,
                 )
             elif args.command == "merge":
                 check_project_contract(
@@ -2198,7 +2257,10 @@ def main(argv: list[str] | None = None) -> int:
                     content_layout=args.content_layout,
                     ending_slide=args.ending_slide,
                 )
-                requested_typeface, resolved_typeface = _profiled_font_resolution(project)
+                requested_typeface, resolved_typeface = _profiled_font_resolution(
+                    project,
+                    consulting_font=consulting_font,
+                )
                 section_frame_font, section_frame_left_inset_px = _profiled_section_frame_options(
                     project,
                     resolved_typeface=resolved_typeface,
@@ -2209,6 +2271,7 @@ def main(argv: list[str] | None = None) -> int:
                     pptx=content_path,
                     requested_typeface=requested_typeface,
                     resolved_typeface=resolved_typeface,
+                    consulting_font=consulting_font,
                 )
                 merged = merge_deck(
                     run,
@@ -2223,7 +2286,14 @@ def main(argv: list[str] | None = None) -> int:
                     section_frame_left_inset_px=section_frame_left_inset_px,
                 )
                 if args.embed_fonts:
-                    embed_deck(run, pptx=merged, font_paths=args.embed_font_paths)
+                    embed_deck(
+                        run,
+                        pptx=merged,
+                        font_paths=_effective_embed_font_paths(
+                            args.embed_font_paths,
+                            consulting_font=consulting_font,
+                        ),
+                    )
                 else:
                     discard_stale_font_embed_report(run)
             elif args.command in {"validate", "report"}:
@@ -2419,7 +2489,10 @@ def main(argv: list[str] | None = None) -> int:
                     content_layout=args.content_layout,
                     ending_slide=args.ending_slide,
                 )
-                requested_typeface, resolved_typeface = _profiled_font_resolution(project)
+                requested_typeface, resolved_typeface = _profiled_font_resolution(
+                    project,
+                    consulting_font=consulting_font,
+                )
                 section_frame_font, section_frame_left_inset_px = _profiled_section_frame_options(
                     project,
                     resolved_typeface=resolved_typeface,
@@ -2448,6 +2521,7 @@ def main(argv: list[str] | None = None) -> int:
                     pptx=content_path,
                     requested_typeface=requested_typeface,
                     resolved_typeface=resolved_typeface,
+                    consulting_font=consulting_font,
                 )
                 merge_deck(
                     run,
@@ -2513,7 +2587,14 @@ def main(argv: list[str] | None = None) -> int:
                             section_frame_left_inset_px=section_frame_left_inset_px,
                         )
                 if args.embed_fonts:
-                    embed_deck(run, pptx=final_path, font_paths=args.embed_font_paths)
+                    embed_deck(
+                        run,
+                        pptx=final_path,
+                        font_paths=_effective_embed_font_paths(
+                            args.embed_font_paths,
+                            consulting_font=consulting_font,
+                        ),
+                    )
                 else:
                     discard_stale_font_embed_report(run)
                 render_dir = None
@@ -2524,6 +2605,7 @@ def main(argv: list[str] | None = None) -> int:
                             pptx=final_path,
                             output_dir=project / "render",
                             dpi=args.render_dpi,
+                            font_paths=[consulting_font] if consulting_font else None,
                         )
                     else:
                         message = "no renderer detected; skipped final PPTX rendering"

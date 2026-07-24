@@ -34,6 +34,41 @@ _CONSULTING_RESEARCH_FONT_ALIASES = {
 }
 
 
+def _canonical_consulting_research_font(value: str) -> str | None:
+    """Map a localized family name to the consulting profile's canonical name."""
+    normalized = _normalized_font_name(value)
+    for candidate, aliases in _CONSULTING_RESEARCH_FONT_ALIASES.items():
+        if any(_normalized_font_name(alias) == normalized for alias in aliases):
+            return candidate
+    return None
+
+
+def typeface_from_font_file(font_path: Path) -> str:
+    """Read the family name declared inside one operator-provided font file."""
+    if not font_path.is_file():
+        raise FileNotFoundError(f"font file not found: {font_path}")
+    try:
+        from fontTools.ttLib import TTFont
+    except ImportError as exc:  # pragma: no cover - environment dependent
+        raise RuntimeError(
+            "fontTools is required to inspect --consulting-font; install it with pip install fonttools"
+        ) from exc
+    font = None
+    try:
+        font = TTFont(str(font_path), lazy=True)
+        names = font["name"]
+        for name_id in (1, 16, 4, 6):
+            value = names.getDebugName(name_id)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    except Exception as exc:  # noqa: BLE001 - surface invalid operator assets clearly
+        raise ValueError(f"cannot read font metadata from {font_path.name}: {exc}") from exc
+    finally:
+        if font is not None:
+            font.close()
+    raise ValueError(f"font {font_path.name} has no usable family name")
+
+
 def detect_cjk_fonts(font_output: str) -> dict[str, bool]:
     """Return availability for supported CJK fonts from ``fc-list`` output."""
     normalized = font_output.lower()
@@ -52,7 +87,11 @@ def preferred_cjk_font(fonts: dict[str, bool]) -> str | None:
     return next((font for font in SUPPORTED_CJK_FONTS if fonts.get(font)), None)
 
 
-def resolve_consulting_research_font(fc_list_output: str) -> str | None:
+def resolve_consulting_research_font(
+    fc_list_output: str,
+    *,
+    consulting_font: Path | None = None,
+) -> str | None:
     """Choose a real typeface for the consulting research profile.
 
     SVG/CSS can express a fallback stack, but DrawingML stores one typeface per
@@ -61,6 +100,16 @@ def resolve_consulting_research_font(fc_list_output: str) -> str | None:
     substitution in the rendered deck.  ``Songti SC`` / ``SimSun`` are the
     verified serif fallback only when a true KaiTi family is unavailable.
     """
+    if consulting_font is not None:
+        family = typeface_from_font_file(consulting_font)
+        canonical = _canonical_consulting_research_font(family)
+        if canonical not in {"KaiTi", "STKaiti", "HuaWenKaiTi"}:
+            raise ValueError(
+                f"{consulting_font.name} declares {family!r}; "
+                "--consulting-font must be a KaiTi/STKaiti/HuaWenKaiTi family"
+            )
+        return canonical
+
     installed: set[str] = set()
     for line in fc_list_output.splitlines():
         family_segment = line.partition(":")[2] if ":" in line else line

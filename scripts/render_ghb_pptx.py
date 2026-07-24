@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from xml.sax.saxutils import escape
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -138,17 +139,58 @@ def _run(command: list[str], *, env: dict[str, str] | None = None) -> RenderComm
     )
 
 
-def _render_environment(cache_dir: Path) -> dict[str, str]:
-    """Give isolated LibreOffice a writable cache and host font directories."""
+def _host_fontconfig_file() -> Path | None:
+    return next((candidate for candidate in FONTCONFIG_FILES if candidate.is_file()), None)
+
+
+def _private_fontconfig_file(font_paths: list[Path], *, cache_dir: Path) -> Path:
+    """Create a temporary Fontconfig view of operator-provided fonts only."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    normalized = [path.expanduser().resolve() for path in font_paths]
+    missing = [path for path in normalized if not path.is_file()]
+    if missing:
+        raise RenderError(f"font file not found: {missing[0]}")
+    host_config = _host_fontconfig_file()
+    directories = sorted({str(path.parent) for path in normalized})
+    include = (
+        f'  <include ignore_missing="yes">{escape(str(host_config))}</include>\n'
+        if host_config is not None
+        else ""
+    )
+    font_dirs = "".join(f"  <dir>{escape(directory)}</dir>\n" for directory in directories)
+    config = (
+        '<?xml version="1.0"?>\n'
+        '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">\n'
+        '<fontconfig>\n'
+        f"{include}"
+        f"{font_dirs}"
+        f"  <cachedir>{escape(str(cache_dir))}</cachedir>\n"
+        '</fontconfig>\n'
+    )
+    destination = cache_dir.parent / "operator-fonts.conf"
+    destination.write_text(config, encoding="utf-8")
+    return destination
+
+
+def _render_environment(
+    cache_dir: Path,
+    *,
+    font_paths: list[Path] | None = None,
+) -> dict[str, str]:
+    """Give isolated LibreOffice a writable cache and optional private font view."""
     env = os.environ.copy()
     env["XDG_CACHE_HOME"] = str(cache_dir)
+    if font_paths:
+        generated = _private_fontconfig_file(font_paths, cache_dir=cache_dir)
+        env["FONTCONFIG_FILE"] = str(generated)
+        env["FONTCONFIG_PATH"] = str(generated.parent)
+        return env
     configured = env.get("FONTCONFIG_FILE")
     if not configured or not Path(configured).is_file():
-        for candidate in FONTCONFIG_FILES:
-            if candidate.is_file():
-                env["FONTCONFIG_FILE"] = str(candidate)
-                env["FONTCONFIG_PATH"] = str(candidate.parent)
-                break
+        candidate = _host_fontconfig_file()
+        if candidate is not None:
+            env["FONTCONFIG_FILE"] = str(candidate)
+            env["FONTCONFIG_PATH"] = str(candidate.parent)
     return env
 
 
@@ -205,7 +247,10 @@ def make_contact_sheet(
     return output
 
 
-def _font_warning() -> str | None:
+def _font_warning(font_paths: list[Path] | None = None) -> str | None:
+    if font_paths:
+        missing = [path for path in font_paths if not path.is_file()]
+        return f"font file not found: {missing[0]}" if missing else None
     fc_list = shutil.which("fc-list")
     if not fc_list:
         return "fontconfig is unavailable; target CJK font presence was not checked"
@@ -228,6 +273,7 @@ def _render_outputs(
     pdftoppm: str,
     dpi: int,
     columns: int,
+    font_paths: list[Path] | None = None,
 ) -> tuple[Path, list[Path], Path]:
     with tempfile.TemporaryDirectory(prefix="ghb-render-") as tmp:
         staging = Path(tmp) / "output"
@@ -246,7 +292,10 @@ def _render_outputs(
             "--outdir", str(staging),
             str(staged_source),
         ]
-        conversion = _run(command, env=_render_environment(font_cache))
+        conversion = _run(
+            command,
+            env=_render_environment(font_cache, font_paths=font_paths),
+        )
         report.commands.append(conversion)
         generated_pdf = staging / "input.pdf"
         if conversion.returncode or not generated_pdf.is_file():
@@ -291,6 +340,7 @@ def render_pptx(
     renderer: str = "auto",
     dpi: int = 144,
     columns: int = 3,
+    font_paths: list[Path] | None = None,
 ) -> RenderReport:
     output_dir.mkdir(parents=True, exist_ok=True)
     pptx_exists = pptx.is_file()
@@ -321,8 +371,9 @@ def render_pptx(
         pdftoppm = shutil.which("pdftoppm")
         if not pdftoppm:
             raise RenderError("pdftoppm is required for deterministic per-page PNG rendering")
-        warning = _font_warning()
-        font = font_evidence(warning)
+        resolved_font_paths = [path.expanduser().resolve() for path in font_paths or []]
+        warning = _font_warning(resolved_font_paths)
+        font = font_evidence(warning, font_paths=resolved_font_paths)
         if warning:
             report.warnings.append(warning)
         report.font = font
@@ -342,6 +393,7 @@ def render_pptx(
             pdftoppm=pdftoppm,
             dpi=dpi,
             columns=columns,
+            font_paths=resolved_font_paths,
         )
     except (OSError, RenderError) as exc:
         report.status = "error"
@@ -359,7 +411,11 @@ def render_pptx(
     return report
 
 
-def font_evidence(warning: str | None) -> dict[str, Any]:
+def font_evidence(
+    warning: str | None,
+    *,
+    font_paths: list[Path] | None = None,
+) -> dict[str, Any]:
     """Project the target-font probe into stable render evidence."""
     if warning:
         return {
@@ -367,7 +423,10 @@ def font_evidence(warning: str | None) -> dict[str, Any]:
             "warnings": [warning],
             "limitation_codes": ["target-font-missing"],
         }
-    return {"status": "available", "warnings": [], "limitation_codes": []}
+    payload: dict[str, Any] = {"status": "available", "warnings": [], "limitation_codes": []}
+    if font_paths:
+        payload["operator_font_files"] = [path.name for path in font_paths]
+    return payload
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -377,6 +436,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--renderer", choices=("auto", "soffice", "libreoffice"), default="auto")
     parser.add_argument("--dpi", type=int, default=144)
     parser.add_argument("--columns", type=int, default=3)
+    parser.add_argument(
+        "--font-file",
+        type=Path,
+        action="append",
+        default=[],
+        dest="font_files",
+        help="Operator-provided font file visible only to this render run (repeatable)",
+    )
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -390,6 +457,7 @@ def main(argv: list[str] | None = None) -> int:
             renderer=args.renderer,
             dpi=args.dpi,
             columns=args.columns,
+            font_paths=args.font_files,
         )
     except (OSError, RenderError) as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
