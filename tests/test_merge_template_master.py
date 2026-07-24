@@ -135,6 +135,17 @@ class MergeTemplateMasterTest(unittest.TestCase):
                 xfrm = frame.find("p:grpSpPr/a:xfrm", NS)
                 off = xfrm.find("a:off", NS)
                 ext = xfrm.find("a:ext", NS)
+                child_off = xfrm.find("a:chOff", NS)
+                child_ext = xfrm.find("a:chExt", NS)
+                title_shape = next(
+                    shape
+                    for shape in frame.findall(".//p:sp", NS)
+                    if "".join(node.text or "" for node in shape.findall(".//a:t", NS))
+                    == "投资判断"
+                )
+                title_xfrm = title_shape.find("p:spPr/a:xfrm", NS)
+                title_off = title_xfrm.find("a:off", NS)
+                title_ext = title_xfrm.find("a:ext", NS)
                 fonts = [
                     node.get("typeface")
                     for node in (
@@ -143,15 +154,24 @@ class MergeTemplateMasterTest(unittest.TestCase):
                         + frame.findall(".//a:cs", NS)
                     )
                 ]
-                return width, int(off.get("x")), int(ext.get("cx")), fonts
+                return (
+                    width,
+                    int(off.get("x")),
+                    int(ext.get("cx")),
+                    int(child_off.get("x")) + int(child_ext.get("cx")),
+                    int(title_off.get("x")) + int(title_ext.get("cx")),
+                    fonts,
+                )
 
-            width, default_x, default_width, _ = frame_geometry(default.output)
-            profiled_width, profiled_x, profiled_frame_width, fonts = frame_geometry(profiled.output)
+            width, default_x, default_width, default_child_right, default_visible_right, _ = frame_geometry(default.output)
+            profiled_width, profiled_x, profiled_frame_width, profiled_child_right, profiled_visible_right, fonts = frame_geometry(profiled.output)
             inset = round(24 * width / 1280)
             self.assertEqual(profiled_width, width)
             self.assertEqual(profiled_x + profiled_frame_width, width)
             self.assertEqual(profiled_x - default_x, inset)
             self.assertEqual(default_width - profiled_frame_width, inset)
+            self.assertLess(default_visible_right, default_child_right)
+            self.assertEqual(profiled_visible_right, profiled_child_right)
             self.assertTrue(fonts)
             self.assertTrue(all(font == "KaiTi" for font in fonts))
 

@@ -363,7 +363,7 @@ def _projected_spec_lock(brief: dict[str, Any], visual_profile: str | None) -> s
 ## template_header
 - preserve: GHB logo at upper left and native section-title frame at upper right
 - section_label: required id='template-section-label'; short chapter name only; reserve x=930..1224, y=96..176
-- section_frame: use KaiTi; left edge inset 24 px; right edge flush with x=1280
+- section_frame: use KaiTi; left edge inset 24 px; visible right border flush with x=1280
 
 ## safe_area
 - body_surface: x=56..1224, y=96..704; white panel only, never a full-canvas overlay

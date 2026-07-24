@@ -153,6 +153,33 @@ def parse_rels(parts: dict[str, bytes], part: str) -> ET.Element:
         raise MergeError(f"invalid relationships XML: {name}: {exc}") from exc
 
 
+def flush_section_frame_visible_right_edge(frame: ET.Element) -> None:
+    """Extend the native title shape to the right edge of its group coordinate space."""
+
+    frame_xfrm = frame.find("p:grpSpPr/a:xfrm", NS)
+    child_off = frame_xfrm.find("a:chOff", NS) if frame_xfrm is not None else None
+    child_ext = frame_xfrm.find("a:chExt", NS) if frame_xfrm is not None else None
+    if child_off is None or child_ext is None:
+        raise MergeError("template section frame has no child coordinate geometry")
+    title_shapes = [
+        shape
+        for shape in frame.findall(".//p:sp", NS)
+        if SECTION_FRAME_PLACEHOLDER in [node.text or "" for node in shape.findall(".//a:t", NS)]
+    ]
+    if len(title_shapes) != 1:
+        raise MergeError("template section frame must contain exactly one visible title shape")
+    title_xfrm = title_shapes[0].find("p:spPr/a:xfrm", NS)
+    title_off = title_xfrm.find("a:off", NS) if title_xfrm is not None else None
+    title_ext = title_xfrm.find("a:ext", NS) if title_xfrm is not None else None
+    if title_off is None or title_ext is None:
+        raise MergeError("template section frame title shape has no geometry")
+    visible_right = int(child_off.get("x", "0")) + int(child_ext.get("cx", "0"))
+    title_x = int(title_off.get("x", "0"))
+    if visible_right <= title_x:
+        raise MergeError("template section frame title shape has no visible width")
+    title_ext.set("cx", str(visible_right - title_x))
+
+
 def find_template_section_frame(
     template: dict[str, bytes],
     template_slides: list[str],
@@ -207,6 +234,11 @@ def find_template_section_frame(
             raise MergeError("section frame left inset leaves no visible title frame")
         frame_off.set("x", str(max(0, slide_width - frame_width) + inset))
         frame_ext.set("cx", str(frame_width - inset))
+        # The template's outer group is not the visible right edge: its title
+        # shape ends a small distance before the group's child extent. For the
+        # consulting profile, eliminate that render-visible seam while leaving
+        # the default GHB frame geometry untouched.
+        flush_section_frame_visible_right_edge(frame)
     # PowerPoint attached authoring tags to the placeholder shape. They are
     # slide-specific metadata, not visual content, so carrying their r:id into
     # another slide would create a dangling relationship. Remove that metadata

@@ -138,7 +138,7 @@ def test_standard_consulting_research_visual_profile_is_opt_in_and_projected() -
         assert "preserve the GHB logo" in lock
         assert "section_label: required id='template-section-label'" in lock
         assert "font_family: 'KaiTi'" in lock
-        assert "right edge flush with x=1280" in lock
+        assert "visible right border flush with x=1280" in lock
         assert "full-canvas white overlays" in lock
         assert "#00A6E8" in lock
 
