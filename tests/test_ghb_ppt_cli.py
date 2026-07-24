@@ -3,6 +3,7 @@ import io
 import json
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 from pathlib import Path
 
@@ -17,11 +18,14 @@ from scripts.ghb_ppt import (
     require_completed_review,
     timestamped_candidates,
     validation_error_codes,
+    apply_profile_font_resolution,
     build_evidence_items,
     build_content,
     check_svg,
+    discard_stale_font_embed_report,
     evidence_freshness,
     doctor_payload,
+    _profiled_font_resolution,
     _profiled_section_frame_options,
     load_review_config,
     _load_review_authorization,
@@ -32,6 +36,26 @@ from scripts.validate_project_contract import confirmation_digest, validate_proj
 
 
 class GhbPptCliTest(unittest.TestCase):
+    def test_consulting_profile_resolves_a_real_font_without_changing_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "deck_plan.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "ghb.deck-plan.v1",
+                        "style": {"visual_profile": "consulting-research-cn-v1"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch(
+                "scripts.ghb_ppt._fontconfig_output",
+                return_value="/fonts/Songti.ttc: Songti SC:style=Regular\n",
+            ):
+                self.assertEqual(_profiled_font_resolution(project), ("KaiTi", "Songti SC"))
+            self.assertEqual(_profiled_font_resolution(project / "default"), (None, None))
+
     def test_consulting_profile_selects_kaiti_and_right_flush_title_frame(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)
@@ -46,6 +70,128 @@ class GhbPptCliTest(unittest.TestCase):
             )
             self.assertEqual(_profiled_section_frame_options(project), ("KaiTi", 24.0))
             self.assertEqual(_profiled_section_frame_options(project / "default"), (None, 0.0))
+
+    def test_consulting_build_resolves_body_and_native_header_to_the_same_real_font(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "deck_plan.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "ghb.deck-plan.v1",
+                        "style": {"visual_profile": "consulting-research-cn-v1"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            events = []
+            with (
+                mock.patch("scripts.ghb_ppt.check_project_contract"),
+                mock.patch("scripts.ghb_ppt.build_cover"),
+                mock.patch("scripts.ghb_ppt.build_content", side_effect=lambda *a, **k: events.append("content")),
+                mock.patch(
+                    "scripts.ghb_ppt._profiled_font_resolution",
+                    return_value=("KaiTi", "Songti SC"),
+                ),
+                mock.patch(
+                    "scripts.ghb_ppt.apply_profile_font_resolution",
+                    side_effect=lambda *a, **k: events.append("font"),
+                ),
+                mock.patch(
+                    "scripts.ghb_ppt.merge_deck",
+                    side_effect=lambda *a, **k: events.append("merge"),
+                ) as merge,
+                mock.patch(
+                    "scripts.ghb_ppt.validate_deck",
+                    return_value=(project / "a", project / "b"),
+                ),
+                mock.patch.object(RunContext, "checkpoint"),
+            ):
+                code = main([
+                    "build", "--project", str(project), "--dry-run", "--no-render",
+                    "--title", "T", "--subtitle", "S", "--date", "D",
+                ])
+
+            self.assertEqual(code, 0)
+            self.assertLess(events.index("content"), events.index("font"))
+            self.assertLess(events.index("font"), events.index("merge"))
+            self.assertEqual(merge.call_args.kwargs["section_frame_font"], "Songti SC")
+
+    def test_apply_profile_font_resolution_records_the_actual_typeface(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            run = RunContext(project, "build")
+            deck = project / "content.pptx"
+            with zipfile.ZipFile(deck, "w") as archive:
+                archive.writestr(
+                    "ppt/slides/slide1.xml",
+                    '<a:latin xmlns:a="a" typeface="KaiTi"/>',
+                )
+
+            apply_profile_font_resolution(
+                run,
+                pptx=deck,
+                requested_typeface="KaiTi",
+                resolved_typeface="Songti SC",
+            )
+
+            payload = json.loads((project / "reports" / "font-resolution-report.json").read_text())
+            self.assertEqual(payload["resolved_typeface"], "Songti SC")
+            self.assertEqual(payload["replacements"], 1)
+            self.assertEqual(payload["resolution_state"], "rewritten")
+
+    def test_apply_profile_font_resolution_accepts_already_resolved_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            run = RunContext(project, "merge")
+            deck = project / "content.pptx"
+            with zipfile.ZipFile(deck, "w") as archive:
+                archive.writestr(
+                    "ppt/slides/slide1.xml",
+                    '<a:latin xmlns:a="a" typeface="Songti SC"/>',
+                )
+
+            apply_profile_font_resolution(
+                run,
+                pptx=deck,
+                requested_typeface="KaiTi",
+                resolved_typeface="Songti SC",
+            )
+
+            payload = json.loads((project / "reports" / "font-resolution-report.json").read_text())
+            self.assertEqual(payload["replacements"], 0)
+            self.assertEqual(payload["resolution_state"], "already-resolved")
+
+    def test_apply_profile_font_resolution_rejects_a_missing_kaiti_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            run = RunContext(project, "build")
+            deck = project / "content.pptx"
+            with zipfile.ZipFile(deck, "w") as archive:
+                archive.writestr(
+                    "ppt/slides/slide1.xml",
+                    '<a:latin xmlns:a="a" typeface="Source Han Sans SC"/>',
+                )
+
+            with self.assertRaisesRegex(PipelineError, "no requested KaiTi runs"):
+                apply_profile_font_resolution(
+                    run,
+                    pptx=deck,
+                    requested_typeface="KaiTi",
+                    resolved_typeface="Songti SC",
+                )
+
+    def test_non_embedding_build_discards_stale_font_embedding_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            report_path = project / "reports" / "font-embed-report.json"
+            report_path.parent.mkdir()
+            report_path.write_text('{"schema":"ghb.font-embed-report.v1"}', encoding="utf-8")
+            run = RunContext(project, "build")
+
+            discard_stale_font_embed_report(run)
+
+            self.assertFalse(report_path.exists())
+
 
     def test_skill_drift_payload_compares_installed_copy_without_writing_it(self):
         with tempfile.TemporaryDirectory() as tmp:

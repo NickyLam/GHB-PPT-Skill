@@ -10,8 +10,11 @@
 - 仅改正文 SVG；GHB 封面、致谢页、OOXML 合并、字体嵌入与质量门保持现有流程。
 - 保留 GHB 正文页的左上 Logo、右上原生章节标题框和模板正文底版。每页必须使用
   `id="template-section-label"` 写入 2–8 个字的短章节名，合并器会将其迁入原生右上框。
-- 研究型 profile 的标题、正文和图表标签默认使用 `KaiTi`；右上原生框同样使用 `KaiTi`，
-  左边界内收 24 px，其可见右边线严格贴齐 1280 px 页面边界。
+- 研究型 profile 的标题、正文和图表标签以 `KaiTi` 为默认意图；右上原生框同样以 `KaiTi`
+  为默认意图，左边界内收 24 px，其可见右边线严格贴齐 1280 px 页面边界。构建时必须把
+  DrawingML 写成真实可用的字体：优先 `KaiTi/STKaiti/HuaWenKaiTi`，缺失时仅允许已验证的
+  衬线替代 `Songti SC/SimSun`，并将请求值、实际值和替换次数写入
+  `reports/font-resolution-report.json`；禁止静默回退成无衬线字体。
 - `bg-surface` 只能是模板正文面板 `x=56, y=96, width=1168, height=608` 的白色底版；
   禁止 `0 0 1280 720` 的全画布白色覆盖层，也不得在页眉区域另画自定义栏目标题。
 - 内容宜与 `consulting-evidence-cn-v1` 组合，但不强制绑定。资料不支持的数字、趋势、
@@ -22,8 +25,8 @@
 | 维度 | 必须执行 | 禁止 |
 |---|---|---|
 | 画面 | 保留 GHB Logo、右上原生框和模板正文底版；正文内白底、无阴影、无渐变，用留白与细线组织信息 | 全幅白色遮罩、覆盖模板页眉、重复绘制银行页眉、额外卡片外壳 |
-| 标题 | 在页眉下方写结论句，`KaiTi, STKaiti, SimSun, serif`，约 34–40 px；标题下放细灰分隔线 | 50 px 黑体大标题、主题名式标题、标题红色竖条 |
-| 正文 | `KaiTi, STKaiti, SimSun, serif`，一页一个结论 + 一个主证据结构 | 多列圆角卡片、黑色或红色横幅当作结论 |
+| 标题 | 在页眉下方写结论句，作者意图为 `KaiTi, STKaiti, SimSun, serif`，约 34–40 px；最终 PPTX 必须使用字体解析报告中的实际楷体/衬线字体；标题下放细灰分隔线 | 50 px 黑体大标题、主题名式标题、标题红色竖条 |
+| 正文 | 作者意图为 `KaiTi, STKaiti, SimSun, serif`，最终 PPTX 必须使用字体解析报告中的实际楷体/衬线字体；一页一个结论 + 一个主证据结构 | 多列圆角卡片、黑色或红色横幅当作结论 |
 | 色彩 | 墨黑 `#1F1F1F`、灰 `#5C5C5C/#C9C9C9`、海军蓝 `#102A83`、亮蓝 `#00A6E8`；红 `#A92A2A` 只表示风险 | 用品牌红区分普通模块，或超过两个强调色 |
 | 图表 | 直接标注数值；灰为基线、海军蓝为比较、亮蓝为被强调对象；细网格线 | 3D 图、装饰性图标、无基线的孤立 KPI、大色块仪表盘 |
 | 来源 | 底部细线之下左侧标注来源/口径，右侧页码 | 来源藏在卡片或与结论混排 |
@@ -56,5 +59,8 @@ GHB Logo                         原生章节标题框（短章节名）
    `bg-surface`（模板正文面板）、`header`、`template-section-label`、`source-note` 与 `footer`。
 3. 最终渲染中，正文必须可见 GHB Logo 与右上原生章节标题框；自定义内容不得压住页眉。
    同时必须可见细线、来源页脚和至少一个蓝/灰证据关系；禁用全幅白底、红色卡片壳与阴影。
-4. 继续执行现有 `check-project`、`check-svg`、release build、渲染、逐页人工检查、
+4. 检查 `reports/font-resolution-report.json`：请求字体为 `KaiTi` 时，实际字体必须是
+   `KaiTi/STKaiti/HuaWenKaiTi` 或明确记录的 `Songti SC/SimSun`；未生成报告、替换次数为
+   0 且 `resolution_state` 不为 `already-resolved`、或无衬线回退均为失败。
+5. 继续执行现有 `check-project`、`check-svg`、release build、渲染、逐页人工检查、
    PPTX 回读和 ZIP 完整性检查。

@@ -81,9 +81,9 @@
 }
 ```
 
-它锁定楷体研究式内容、细分隔线、蓝/灰证据图和来源页脚，同时保留 GHB
+它锁定以 `KaiTi` 为默认意图的研究式内容、细分隔线、蓝/灰证据图和来源页脚，同时保留 GHB
 左上 Logo、右上原生章节标题框（可见右边线贴齐页面边界）和模板正文底版；封面与致谢页仍沿用 GHB。字段缺失时不会改变任何默认 GHB 视觉。详见
-[visual-styles/consulting-research-cn-v1.md](visual-styles/consulting-research-cn-v1.md)。
+[visual-styles/consulting-research-cn-v1.md](visual-styles/consulting-research-cn-v1.md)。构建报告必须记录实际写入 PPTX 的字体；不能把缺失的 `KaiTi` 静默渲染为无衬线字体。
 
 `ghb_ppt.py plan --workflow-mode standard` 会投影 `confirmation.json`、
 `content_model.json`、`layout_plan.json`、`design_spec.md` 和 `spec_lock.md`，
